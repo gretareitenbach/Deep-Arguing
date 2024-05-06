@@ -5,14 +5,18 @@ import matplotlib.pyplot as plt
 
 class AACBR:
 
-    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcome) -> None:
+    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcome, use_symmetric_attacks = True, build_parallel = False) -> None:
         self.comparison_func = comparison_func
         self.X_train = X_train
         self.y_train = y_train
         self.default_case = default_case
         self.default_outcome = default_outcome
+        self.use_symmetric_attacks = use_symmetric_attacks
         self.add_default_case(default_case, default_outcome)
-        self.build_af()
+        if build_parallel:
+            self.build_af_parallel()
+        else:
+            self.build_af()
 
     def add_default_case(self, default_case, default_outcome):
 
@@ -23,7 +27,7 @@ class AACBR:
     def build_af(self):
         # TODO: Use more efficient implementation that sorts topologically as in AA-CBR Library
 
-        A = np.zeros((len(self.X_train), len(self.X_train)))
+        A = np.zeros((len(self.X_train), len(self.X_train)), dtype=np.float32)
 
         for i, attacker in enumerate(self.X_train):
             if i == self.default_index:
@@ -34,10 +38,47 @@ class AACBR:
 
                 if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
                     A[i, j] = -1
-                elif all(attacker == target):
+                elif self.use_symmetric_attacks and all(attacker == target):
                     A[i, j] = -1
 
         self.A = A
+
+    def cartesian_product_simple_transpose(self, arrays):
+        # https://stackoverflow.com/questions/11144513/cartesian-product-of-x-and-y-array-points-into-single-array-of-2d-points
+        la = len(arrays)
+        dtype = np.result_type(*arrays)
+        arr = np.empty([la] + [len(a) for a in arrays], dtype=dtype)
+        for i, a in enumerate(np.ix_(*arrays)):
+            arr[i, ...] = a
+        return arr.reshape(la, -1).T
+    
+    def build_af_parallel(self):
+
+        #TODO: Could find a way to make use of Topological ordering to speed this up further
+        train_size = len(self.X_train)
+        indexes = self.cartesian_product_simple_transpose(
+            [np.arange(train_size),
+             np.arange(train_size),
+             np.arange(train_size)
+            ]
+        )
+
+        attackers, attackers_labels = self.X_train[indexes[:, 0]], self.y_train[indexes[:, 0]]
+        targets, targets_labels     = self.X_train[indexes[:, 1]], self.y_train[indexes[:, 1]]
+        blockers, blockers_labels   = self.X_train[indexes[:, 2]], self.y_train[indexes[:, 2]]
+
+        potential_attacks = np.logical_and(attackers_labels != targets_labels, self.comparison_func(attackers, targets))
+        is_blocked = np.logical_and(blockers_labels == attackers_labels, np.logical_and(self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
+        symmetric_attacks = np.logical_and(attackers_labels != targets_labels, np.all(attackers == targets, axis=1))
+        attacks = np.logical_or(np.logical_and(potential_attacks, np.logical_not(is_blocked)), symmetric_attacks)
+
+
+        attacks = attacks.reshape((train_size, train_size, train_size))
+        attacks = np.all(attacks, axis=-1)
+        attacks[self.default_index, :] = False
+        self.A = np.where(attacks, -1, 0)
+
+
 
     def is_concise(self, attacker, target, attacker_outcome):
         return not any([
@@ -70,6 +111,9 @@ class AACBR:
 
         result = np.logical_not(self.comparison_func(
             new_cases[:, np.newaxis, :], self.X_train))
+        
+        # Default should not be attacked by new case
+        result[:, self.default_index] = False
 
         return result
 
