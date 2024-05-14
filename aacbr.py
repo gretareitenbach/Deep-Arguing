@@ -35,7 +35,8 @@ class AACBR:
             for j, target in enumerate(self.X_train):
                 if self.y_train[i] == self.y_train[j]:
                     continue
-
+                if self.comparison_func(attacker, target)[0]:
+                    print("AHH")
                 if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
                     A[i, j] = -1
                 elif self.use_symmetric_attacks and all(attacker == target):
