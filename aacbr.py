@@ -1,6 +1,7 @@
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+import random
 
 
 class AACBR:
@@ -35,8 +36,10 @@ class AACBR:
             for j, target in enumerate(self.X_train):
                 if self.y_train[i] == self.y_train[j]:
                     continue
-                if self.comparison_func(attacker, target)[0]:
-                    print("AHH")
+                # if np.all(target == 0):
+                #     print(attacker)
+                # if self.comparison_func(attacker, target)[0]:
+                #     print("AHH")
                 if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
                     A[i, j] = -1
                 elif self.use_symmetric_attacks and all(attacker == target):
@@ -70,7 +73,7 @@ class AACBR:
 
         potential_attacks = np.logical_and(attackers_labels != targets_labels, self.comparison_func(attackers, targets))
         is_blocked = np.logical_and(blockers_labels == attackers_labels, np.logical_and(self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
-        symmetric_attacks = np.logical_and(attackers_labels != targets_labels, np.all(attackers == targets, axis=1))
+        symmetric_attacks = np.logical_and(self.use_symmetric_attacks, np.logical_and(attackers_labels != targets_labels, np.all(attackers == targets, axis=1)))
         attacks = np.logical_or(np.logical_and(potential_attacks, np.logical_not(is_blocked)), symmetric_attacks)
 
 
@@ -93,17 +96,33 @@ class AACBR:
         edges = zip(rows.tolist(), cols.tolist())
         gr = nx.Graph()
         gr.add_edges_from(edges)
-        pos = nx.nx_agraph.graphviz_layout(
-            gr, prog='twopi', root=str(self.default_index))
+        # pos = nx.nx_agraph.graphviz_layout(
+        #     gr, prog='twopi', root=str(self.default_index))
+        pos = nx.nx_agraph.graphviz_layout(gr, prog='dot')
         colors = ['red' if self.y_train[x] ==
                   self.default_outcome else 'blue' for x in list(gr.nodes)]
-        if self.default_index != None:
+        if self.default_index != None and self.default_index in list(gr.nodes):
             a = list(gr.nodes).index(self.default_index)
             colors[a] = 'green'
+            pos.update({self.default_index: (0, 0)})
+
+        # for k, v in pos.items():
+        #     pos.update({k: (v[0] * random.randint(-100, 100), v[1])})
 
         plt.figure(figsize=(20, 20))
         nx.draw(gr, pos, labels={x: x for x in list(gr.nodes)},
                 arrowstyle='-|>', arrows=True, node_color=colors)
+        plt.show()
+
+    def show_matrix(self):
+        plt.figure(figsize=(10, 10))
+
+        B = self.A.copy()
+        plt.imshow(B, cmap='viridis', interpolation='nearest')
+        plt.colorbar(label='Value')
+        plt.xlabel('Nodes')
+        plt.ylabel('Nodes')
+        plt.title('Edges')
         plt.show()
 
     def get_new_case_attacks_mask(self, new_cases):
