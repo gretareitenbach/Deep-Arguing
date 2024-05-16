@@ -7,22 +7,49 @@ class GradualSemantics(ABC):
     @abstractmethod
     def aggregation_func(self, A, strengths):
         """
-        A = N x N adjacency matrix 
-        strengths =  N x 1  - strength vector
+        Computes the aggregation vector based on the given adjacency matrix and strength vector.
 
-        return N x 1 - B aggregation vector
+        Parameters:
+            A : Array-like
+                N x N adjacency matrix representing connections between nodes.
+            strengths : Array-like
+                N x 1 vector representing strengths of nodes.
+
+        Returns:
+            Array-like
+                N x 1 aggregation vector.
+
+        Examples:
+            # Example usage:
+            A = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+            strengths = np.array([0.5, 0.8, 0.6])
+            result = aggregation_func(A, strengths)
         """
         pass
 
     @abstractmethod
     def influence_func(self, base_scores, aggregations):
         """
-        base_scores = N x 1 - B base_score vectors
-        aggregations =  N x 1 - B aggregation vectors
+        Computes the strength vector based on the given base score vectors and aggregation vectors.
 
-        return N x 1 - strength vector
+        Parameters:
+            base_scores : Array-like
+                N x 1 vector representing base scores.
+            aggregations : Array-like
+                N x 1 vector representing aggregation scores.
+
+        Returns:
+            Array-like
+                N x 1 strength vector.
+
+        Examples:
+            # Example usage:
+            base_scores = np.array([0.5, 0.8, 0.6])
+            aggregations = np.array([0.2, 0.4, 0.3])
+            result = influence_func(base_scores, aggregations)
         """
         pass
+
 
     def forward(self, A, base_scores, strengths):
         aggregations = self.aggregation_func(A, strengths)
