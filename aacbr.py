@@ -6,24 +6,27 @@ import random
 
 class AACBR:
 
-    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcome, use_symmetric_attacks = True, build_parallel = False) -> None:
+    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes, use_symmetric_attacks = True, build_parallel = False) -> None:
         self.comparison_func = comparison_func
         self.X_train = X_train
         self.y_train = y_train
         self.default_case = default_case
-        self.default_outcome = default_outcome
+        self.default_outcomes = default_outcomes
         self.use_symmetric_attacks = use_symmetric_attacks
-        self.add_default_case(default_case, default_outcome)
+        self.add_default_cases(default_case, default_outcomes)
         if build_parallel:
             self.build_af_parallel()
         else:
             self.build_af()
 
-    def add_default_case(self, default_case, default_outcome):
+    def add_default_cases(self, default_case, default_outcomes):
 
-        self.X_train = np.append(self.X_train, [default_case], axis=0)
-        self.y_train = np.append(self.y_train, [default_outcome])
-        self.default_index = len(self.X_train) - 1
+        pre = len(self.X_train)
+        self.X_train = np.append(self.X_train, [default_case]*len(default_outcomes), axis=0)
+        self.y_train = np.append(self.y_train, default_outcomes)
+        post = len(self.X_train)
+        self.default_indexes = list(range(pre, post)) 
+        # self.outcome_map = {outcome: self.default_indexes[i] for i, outcome in enumerate(self.default_outcomes)}
 
     def build_af(self):
         # TODO: Use more efficient implementation that sorts topologically as in AA-CBR Library
@@ -31,7 +34,7 @@ class AACBR:
         A = np.zeros((len(self.X_train), len(self.X_train)), dtype=np.float32)
 
         for i, attacker in enumerate(self.X_train):
-            if i == self.default_index:
+            if i in self.default_indexes:
                 continue
             for j, target in enumerate(self.X_train):
                 if self.y_train[i] == self.y_train[j]:
@@ -79,7 +82,7 @@ class AACBR:
 
         attacks = attacks.reshape((train_size, train_size, train_size))
         attacks = np.all(attacks, axis=-1)
-        attacks[self.default_index, :] = False
+        attacks[self.default_indexes, :] = False
         self.A = np.where(attacks, -1, 0)
 
 
@@ -94,24 +97,38 @@ class AACBR:
     def show_graph_with_labels(self):
         rows, cols = np.where(self.A != 0)
         edges = zip(rows.tolist(), cols.tolist())
-        gr = nx.Graph()
+
+        gr = nx.DiGraph()
         gr.add_edges_from(edges)
-        # pos = nx.nx_agraph.graphviz_layout(
-        #     gr, prog='twopi', root=str(self.default_index))
-        pos = nx.nx_agraph.graphviz_layout(gr, prog='dot')
-        colors = ['red' if self.y_train[x] ==
-                  self.default_outcome else 'blue' for x in list(gr.nodes)]
-        if self.default_index != None and self.default_index in list(gr.nodes):
-            a = list(gr.nodes).index(self.default_index)
-            colors[a] = 'green'
-            pos.update({self.default_index: (0, 0)})
+        pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
+                                           args='-Gsplines=true -Gnodesep=2')
+
+        unique_labels = np.unique(self.y_train)
+        colormap = plt.get_cmap('gist_rainbow', len(unique_labels))
+        label_to_color = {label: colormap(i) for i, label in enumerate(unique_labels)}
+        node_colors = [label_to_color[self.y_train[node]] for node in list(gr.nodes)]
+
+        assert(all([default_index in list(gr.nodes) for default_index in self.default_indexes]))
+
+
+        labels = {x: x for x in list(gr.nodes)}
+        for i, default_index in enumerate(self.default_indexes):
+            labels.update({default_index: "Default"})
+            # pos.update({default_index: (0 + i * 100, 0)})
 
         # for k, v in pos.items():
         #     pos.update({k: (v[0] * random.randint(-100, 100), v[1])})
 
-        plt.figure(figsize=(20, 20))
-        nx.draw(gr, pos, labels={x: x for x in list(gr.nodes)},
-                arrowstyle='-|>', arrows=True, node_color=colors)
+        f = plt.figure(figsize=(20, 20))
+        ax = f.add_subplot(1, 1, 1)
+        for i, label in enumerate(unique_labels):
+            ax.plot([0], [0], color=colormap(i), label=f'Class: {label}')
+
+        nx.draw(gr, pos, labels=labels,
+                arrowstyle='-|>', arrows=True, node_color=node_colors, 
+                node_size=100, font_size = 5, width=0.4)
+
+        plt.legend()
         plt.show()
 
     def show_matrix(self):
@@ -133,7 +150,7 @@ class AACBR:
             new_cases[:, np.newaxis, :], self.X_train))
         
         # Default should not be attacked by new case
-        result[:, self.default_index] = False
+        result[:, self.default_indexes] = False
 
         return result
 
@@ -180,7 +197,7 @@ class AACBR:
         new_cases_attacks = self.get_new_case_attacks_mask(new_cases)
         grounded = self.compute_grounded(new_cases_attacks)
         predicted = np.where(
-            grounded[:, self.default_index], self.default_outcome, 1 - self.default_outcome)
+            grounded[:, self.default_indexes], 1, 0)
         return predicted
 
     def __call__(self, new_cases):
