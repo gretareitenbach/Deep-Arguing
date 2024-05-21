@@ -4,6 +4,11 @@ from typing import Any
 
 class GradualSemantics(ABC):
 
+    def __init__(self, max_iters, epsilon) -> None:
+        super().__init__()
+        self.max_iters = max_iters
+        self.epsilon = epsilon
+
     @abstractmethod
     def aggregation_func(self, A, strengths):
         """
@@ -18,6 +23,12 @@ class GradualSemantics(ABC):
         Returns:
             Array-like
                 N x 1 aggregation vector.
+        
+        Note:
+            Strengths may be batched with a batch size B in dimension 0
+            and the result should therefore have size B in dimension 0 too.
+            If A is batched with size B, strengths should be too
+
 
         Examples:
             # Example usage:
@@ -41,6 +52,10 @@ class GradualSemantics(ABC):
         Returns:
             Array-like
                 N x 1 strength vector.
+            
+        Note:
+            base_scores may be batched with a batch size B in dimension 0
+            and the result should therefore have size B in dimension 0 too.
 
         Examples:
             # Example usage:
@@ -55,16 +70,16 @@ class GradualSemantics(ABC):
         aggregations = self.aggregation_func(A, strengths)
         return self.influence_func(base_scores, aggregations)
 
-    def forward_till_convergence(self, A, base_scores, max_iters, epsilon):
+    def forward_till_convergence(self, A, base_scores):
         strengths = [base_scores]
         # TODO: change to use one of the following stop conditions:
         #   (convergence under some epsilon or max iters reached) OR
         #   sort the nodes topologically and figure out how to do a single pass with matrix operations -> Only works for ACYCLIC graphs
-        for i in range(max_iters):
+        for i in range(self.max_iters):
             # TODO: consider epsilon in forward pass
             strengths.append(self.forward(A, base_scores, strengths[i]))
 
         return strengths
 
-    def __call__(self, A, base_scores, max_iters, epsilon) -> Any:
-        return self.forward_till_convergence(A, base_scores, max_iters, epsilon)
+    def __call__(self, A, base_scores) -> Any:
+        return self.forward_till_convergence(A, base_scores)
