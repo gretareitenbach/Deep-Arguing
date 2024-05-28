@@ -6,43 +6,63 @@ import random
 
 class AACBR:
 
-    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes, use_symmetric_attacks = True, build_parallel = False) -> None:
+
+    #TODO: Allow X_train/y_train to contain all cases - including the ones we will use for validating in gradual aacbr
+    # When we build the AF, we will only consider the cases in the casebase_indices
+    # This way we can create an Adjecency matrix that is larger than the size of the casebase
+    # And are only populated by those that are in casebase_indices 
+    # - so that we can use a fixed size Adjacency Matrix in gradual aacbr
+    # TODO: Add some asserts/error catching to deal with the possible size differences, maybe we don't need adjacency size? 
+
+    def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes,
+                 use_symmetric_attacks=True, build_parallel=False, casebase_indices=None) -> None:
         self.comparison_func = comparison_func
         self.X_train = X_train
         self.y_train = y_train
         self.default_case = default_case
         self.default_outcomes = default_outcomes
         self.use_symmetric_attacks = use_symmetric_attacks
+        self.casebase_indices = casebase_indices
+
+
         self.add_default_cases(default_case, default_outcomes)
         if build_parallel:
             self.build_af_parallel()
         else:
             self.build_af()
+        
+        
 
     def add_default_cases(self, default_case, default_outcomes):
 
         pre = len(self.X_train)
-        self.X_train = np.append(self.X_train, [default_case]*len(default_outcomes), axis=0)
+        self.X_train = np.append(
+            self.X_train, [default_case]*len(default_outcomes), axis=0)
         self.y_train = np.append(self.y_train, default_outcomes)
         post = len(self.X_train)
-        self.default_indexes = list(range(pre, post)) 
+        self.default_indexes = list(range(pre, post))
         # self.outcome_map = {outcome: self.default_indexes[i] for i, outcome in enumerate(self.default_outcomes)}
+    
+    def get_indices(self):
+        if self.casebase_indices is None:
+            return list(range(len(self.X_train)))
+        else:
+            return np.concatenate((self.casebase_indices, np.array(self.default_indexes)))
 
     def build_af(self):
         # TODO: Use more efficient implementation that sorts topologically as in AA-CBR Library
 
         A = np.zeros((len(self.X_train), len(self.X_train)), dtype=np.float32)
 
-        for i, attacker in enumerate(self.X_train):
+        for i in self.get_indices():
+            attacker = self.X_train[i] 
             if i in self.default_indexes:
                 continue
-            for j, target in enumerate(self.X_train):
+            for j in self.get_indices():
+                target = self.X_train[j] 
                 if self.y_train[i] == self.y_train[j]:
                     continue
-                # if np.all(target == 0):
-                #     print(attacker)
-                # if self.comparison_func(attacker, target)[0]:
-                #     print("AHH")
+
                 if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
                     A[i, j] = -1
                 elif self.use_symmetric_attacks and all(attacker == target):
@@ -58,41 +78,54 @@ class AACBR:
         for i, a in enumerate(np.ix_(*arrays)):
             arr[i, ...] = a
         return arr.reshape(la, -1).T
-    
+
     def build_af_parallel(self):
 
-        #TODO: Could find a way to make use of Topological ordering to speed this up further
+        # TODO: Could find a way to make use of Topological ordering to speed this up further
         train_size = len(self.X_train)
         indexes = self.cartesian_product_simple_transpose(
             [np.arange(train_size),
              np.arange(train_size),
              np.arange(train_size)
-            ]
+             ]
         )
+
+        # [0, 0, 0]
+        # [0, 0, 1]
+        # [0, 0, 2]
+        # [0, 1, 0]
+        # [0, 1, 1]
+        # [0, 1, 2]
+        ...
+        # [2, 2, 2]
 
         attackers, attackers_labels = self.X_train[indexes[:, 0]], self.y_train[indexes[:, 0]]
         targets, targets_labels     = self.X_train[indexes[:, 1]], self.y_train[indexes[:, 1]]
         blockers, blockers_labels   = self.X_train[indexes[:, 2]], self.y_train[indexes[:, 2]]
 
+        attackers_mask = np.isin(indexes[:, 0], self.get_indices())
+        targets_mask = np.isin(indexes[:, 1], self.get_indices())
+        blockers_mask = np.logical_not(np.isin(indexes[:, 2], self.get_indices()))
+        # index_mask = True
+
+
         potential_attacks = np.logical_and(attackers_labels != targets_labels, self.comparison_func(attackers, targets))
         is_blocked = np.logical_and(blockers_labels == attackers_labels, np.logical_and(self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
         symmetric_attacks = np.logical_and(self.use_symmetric_attacks, np.logical_and(attackers_labels != targets_labels, np.all(attackers == targets, axis=1)))
         attacks = np.logical_or(np.logical_and(potential_attacks, np.logical_not(is_blocked)), symmetric_attacks)
-
+        
+        attacks[blockers_mask] = True
+        attacks = np.logical_and(attacks, np.logical_and(attackers_mask, targets_mask))
 
         attacks = attacks.reshape((train_size, train_size, train_size))
         attacks = np.all(attacks, axis=-1)
         attacks[self.default_indexes, :] = False
         self.A = np.where(attacks, -1, 0)
 
-
-
     def is_concise(self, attacker, target, attacker_outcome):
         return not any([
             self.y_train[k] == attacker_outcome and
-            self.comparison_func(attacker, blocker)[
-                0] and self.comparison_func(blocker, target)[0]
-            for k, blocker in enumerate(self.X_train)])
+            self.comparison_func(attacker, self.X_train[k])[0] and self.comparison_func(self.X_train[k], target)[0] for k in self.get_indices()])
 
     def show_graph_with_labels(self):
         rows, cols = np.where(self.A != 0)
@@ -105,11 +138,13 @@ class AACBR:
 
         unique_labels = np.unique(self.y_train)
         colormap = plt.get_cmap('gist_rainbow', len(unique_labels))
-        label_to_color = {label: colormap(i) for i, label in enumerate(unique_labels)}
-        node_colors = [label_to_color[self.y_train[node]] for node in list(gr.nodes)]
+        label_to_color = {label: colormap(i)
+                          for i, label in enumerate(unique_labels)}
+        node_colors = [label_to_color[self.y_train[node]]
+                       for node in list(gr.nodes)]
 
-        assert(all([default_index in list(gr.nodes) for default_index in self.default_indexes]))
-
+        assert (all([default_index in list(gr.nodes)
+                for default_index in self.default_indexes]))
 
         labels = {x: x for x in list(gr.nodes)}
         for i, default_index in enumerate(self.default_indexes):
@@ -125,8 +160,8 @@ class AACBR:
             ax.plot([0], [0], color=colormap(i), label=f'Class: {label}')
 
         nx.draw(gr, pos, labels=labels,
-                arrowstyle='-|>', arrows=True, node_color=node_colors, 
-                node_size=100, font_size = 5, width=0.4)
+                arrowstyle='-|>', arrows=True, node_color=node_colors,
+                node_size=100, font_size=5, width=0.4)
 
         plt.legend()
         plt.show()
@@ -145,12 +180,17 @@ class AACBR:
     def get_new_case_attacks_mask(self, new_cases):
         if new_cases.ndim == 1:
             new_cases = np.expand_dims(new_cases, axis=0)
-
+        
         result = np.logical_not(self.comparison_func(
             new_cases[:, np.newaxis, :], self.X_train))
-        
+
         # Default should not be attacked by new case
         result[:, self.default_indexes] = False
+
+        # Cases that are not in the casebase indices are not attacked
+        mask = np.ones(len(self.X_train), dtype=bool)
+        mask[self.get_indices()] = False
+        result[:, mask] = False
 
         return result
 
