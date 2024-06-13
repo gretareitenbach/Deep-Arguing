@@ -4,6 +4,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+class LearnedPartialOrder(torch.nn.Module):
+    def __init__(self, no_features):
+        super(LearnedPartialOrder, self).__init__()
+        self.W = torch.nn.Parameter(torch.Tensor(no_features))
+        torch.nn.init.normal_(self.W)
+    
+    def forward(self, a, b):
+        if b.ndim == 1:
+            b = b.unsqueeze(0)
+
+        result =  torch.relu(torch.matmul(a, self.W) - torch.matmul(b, self.W))
+        return result
+    
+
+
+
 class AACBRTorch(torch.nn.Module):
 
     def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes,
@@ -16,7 +32,7 @@ class AACBRTorch(torch.nn.Module):
         self.y_train = y_train
         self.default_case = default_case
         self.default_outcomes = default_outcomes
-        self.use_symmetric_attacks = use_symmetric_attacks
+        self.use_symmetric_attacks = torch.tensor(use_symmetric_attacks)
         self.casebase_indices = casebase_indices
 
         self.add_default_cases(default_case, default_outcomes)
@@ -38,35 +54,9 @@ class AACBRTorch(torch.nn.Module):
 
     def get_indices(self):
         if self.casebase_indices is None:
-            return list(range(len(self.X_train)))
+            return torch.arange(len(self.X_train))
         else:
             return torch.cat((self.casebase_indices, self.default_indexes))
-
-    def build_af(self):
-        # Builds an AF with a matrix representation with a size of len(X_train)
-        # If casebase_indices is  specified, only cases at these indices will be used to build the AF
-        # which can result in a matrix that is larger than necessary but has a fixed size
-        # and nodes in a fixed location if the casebase changes
-        # TODO: Use more efficient implementation that sorts topologically as in AA-CBR Library
-
-        A = torch.zeros((len(self.X_train), len(self.X_train)),
-                        dtype=torch.float32)
-
-        for i in self.get_indices():
-            attacker = self.X_train[i]
-            if i in self.default_indexes:
-                continue
-            for j in self.get_indices():
-                target = self.X_train[j]
-                if self.y_train[i] == self.y_train[j]:
-                    continue
-
-                if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
-                    A[i, j] = -1
-                elif self.use_symmetric_attacks and all(attacker == target):
-                    A[i, j] = -1
-
-        self.A = A
 
     def build_af_parallel(self):
 
@@ -74,7 +64,7 @@ class AACBRTorch(torch.nn.Module):
         train_size = len(self.X_train)
         all_indices = torch.arange(train_size)
         indexes = torch.cartesian_prod(
-            [all_indices, all_indices,  all_indices]
+            all_indices, all_indices,  all_indices
         )
 
         attackers, attackers_labels = self.X_train[indexes[:, 0]
@@ -90,8 +80,12 @@ class AACBRTorch(torch.nn.Module):
             torch.isin(indexes[:, 2], self.get_indices()))
         # index_mask = True
 
+        print("COMP", self.comparison_func(attackers, targets))
+        
+
         potential_attacks = torch.logical_and(
             attackers_labels != targets_labels, self.comparison_func(attackers, targets))
+
         is_blocked = torch.logical_and(blockers_labels == attackers_labels, torch.logical_and(
             self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
         symmetric_attacks = torch.logical_and(self.use_symmetric_attacks, torch.logical_and(
