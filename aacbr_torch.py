@@ -235,6 +235,8 @@ class AACBRTorch(torch.nn.Module):
         # Batch A - to support multiple new_cases at once
         A = torch.tile(A.unsqueeze(0), (batch_size, 1, 1))
 
+        # TODO: THIS MIGHT NOT PROP GRADIENTS CORRECTLY
+        # Change to a torch.where method?
         A[new_cases_attacks, :] = 0
 
         # Find unattacked nodes (i.e columns with all 0s)
@@ -255,19 +257,40 @@ class AACBRTorch(torch.nn.Module):
             if torch.all(A[attacked] == 0):
                 break
 
+            # TODO: THIS MIGHT NOT PROP GRADIENTS CORRECTLY
+            # Change to a torch.where method?
             A[attacked, :] = 0
+
+
+        print("A clone", A.requires_grad)
+
 
         final_unattacked = torch.logical_and(
             torch.all(A[:,] == 0, axis=1), torch.logical_not(new_cases_attacks))
 
-        return final_unattacked
+        a = torch.where(new_cases_attacks, 1, 0)
+        b = A.clone()
+        b = (1 + b)
+        b = b.prod(axis=1)
+
+        c = torch.mul((1-a), b)
+        # print("c requires_grad", c.requires_grad)
+
+        # assert(torch.all((c == 1) == final_unattacked))
+        return c
+        
+        
+        # print("final_unattacked requires_grad", final_unattacked.requires_grad)
+
+        # return final_unattacked
 
     def forward(self, new_cases):
         new_cases_attacks = self.get_new_case_attacks_mask(new_cases)
         grounded = self.compute_grounded(new_cases_attacks)
-        predicted = torch.where(
-            grounded[:, self.default_indexes], 1, 0)
-        return predicted
+        return grounded[:, self.default_indexes]
+        # predicted = torch.where(
+        #     grounded[:, self.default_indexes], 1, 0)
+        # return predicted
 
     # def __call__(self, new_cases):
     #     return self.forward(new_cases)
