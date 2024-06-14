@@ -14,8 +14,7 @@ class LearnedPartialOrder(torch.nn.Module):
         if b.ndim == 1:
             b = b.unsqueeze(0)
 
-        result =  torch.relu(torch.matmul(a, self.W) - torch.matmul(b, self.W))
-        return result
+        return torch.matmul(a, self.W) > torch.matmul(b, self.W)
     
 
 
@@ -80,27 +79,77 @@ class AACBRTorch(torch.nn.Module):
             torch.isin(indexes[:, 2], self.get_indices()))
         # index_mask = True
 
-        print("COMP", self.comparison_func(attackers, targets))
-        
-
         potential_attacks = torch.logical_and(
             attackers_labels != targets_labels, self.comparison_func(attackers, targets))
 
+        b = torch.where(self.comparison_func(attackers, targets), 1, 0)
+        a = torch.abs(attackers_labels - targets_labels)
+        a = torch.clamp(a, 0, 1)
+        a = torch.mul(a, b)
+        print("a requires_grad", a.requires_grad)
+
+        assert(torch.all((a == 1) == potential_attacks))
+        
+
         is_blocked = torch.logical_and(blockers_labels == attackers_labels, torch.logical_and(
             self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
+
+        d = torch.mul(torch.where(self.comparison_func(attackers, blockers), 1, 0), torch.where(self.comparison_func(blockers, targets), 1, 0))
+        c = torch.abs(blockers_labels - attackers_labels)
+        c = 1 - torch.clamp(c, 0, 1)
+        c = torch.mul(c, d)
+        print("c requires_grad", c.requires_grad)
+        assert(torch.all((c == 1) == is_blocked))
+        
+
         symmetric_attacks = torch.logical_and(self.use_symmetric_attacks, torch.logical_and(
             attackers_labels != targets_labels, torch.all(attackers == targets, axis=1)))
+        
+        # TODO: NEED TO HANDLE SYMMETRIC ATTACKS
+        # g = torch.where(symmetric_attacks, 1, 0)
+        # print(g)
+        # if self.use_symmetric_attacks:
+        #     h = torch.all(attackers == targets, axis=1)
+        #     h = torch.where(h, 1, 0)
+        #     print(h)
+
+        #     g = torch.abs(attackers_labels - targets_labels)
+        #     g = torch.clamp(g, 0, 1)
+        #     g = torch.mul(g, h)
+        # else:
+        #     g = torch.ones_like(a)
+
+
         attacks = torch.logical_or(torch.logical_and(
             potential_attacks, torch.logical_not(is_blocked)), symmetric_attacks)
-
         attacks[blockers_mask] = True
         attacks = torch.logical_and(
             attacks, torch.logical_and(attackers_mask, targets_mask))
+        
+        e = torch.mul(a, (1 - c))
+        e = torch.where(blockers_mask, 1, e)
+        e = torch.where(attackers_mask, e, 0)
+        e = torch.where(targets_mask, e, 0)
+        print("e requires_grad", e.requires_grad)
+
 
         attacks = attacks.reshape((train_size, train_size, train_size))
         attacks = torch.all(attacks, axis=-1)
-        attacks[self.default_indexes, :] = False
-        self.A = torch.where(attacks, -1, 0)
+
+
+        f = e.reshape((train_size, train_size, train_size))
+        print(f.shape)
+        f = f.prod(axis=-1)
+        print(f.shape)
+        print("f requires_grad", f.requires_grad)
+        # TODO: NEED TO HANDLE DEFAULTS
+        self.A = -f
+        print("A requires_grad", self.A.requires_grad)
+
+
+        # attacks[self.default_indexes, :] = False
+        # self.A = torch.where(attacks, -1, 0)
+        # assert(torch.all(-f == self.A))
 
     def is_concise(self, attacker, target, attacker_outcome):
         return not any([
