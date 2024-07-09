@@ -214,7 +214,7 @@ class AACBR:
 
             mask = unattacked[:, :, np.newaxis]
 
-            # Get the rows of the adjacency matrix that are unattacekd and zero the attacked rows
+            # Get the rows of the adjacency matrix that are unattacked and zero the attacked rows
             only_unattacked = np.where(mask, A, 0)
 
             # Get the mask of the rows that are attacked by unattacked rows

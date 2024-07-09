@@ -10,22 +10,48 @@ class LearnedPartialOrder(torch.nn.Module):
         self.W = torch.nn.Parameter(torch.Tensor(no_features))
         torch.nn.init.normal_(self.W)
     
-    def forward(self, a, b):
+    def forward(self, a, b, old=False):
         if b.ndim == 1:
             b = b.unsqueeze(0)
 
-        return torch.matmul(a, self.W) > torch.matmul(b, self.W)
+        # if old:
+        #     return torch.matmul(a, self.W) > torch.matmul(b, self.W)
+
+        a_score = torch.matmul(a, self.W)
+        b_score = torch.matmul(b, self.W)
+
+        return torch.sigmoid((a_score - b_score) * 100)
+    
+    def plot_parameters(self):
+        weights = self.W.detach().numpy()
+        plt.figure(figsize=(20, 5))
+        plt.bar(range(len(weights)), weights)
+        for i, value in enumerate(weights):
+            plt.text(i, value + (0.1 * (-1 if value <= 0 else 1)), str(round(value, 3)), ha='center', fontsize=6)
+        plt.xlabel('Features')
+        plt.ylabel('Weights')
+        plt.title('Feature Attribution Weights')
+        plt.show()
     
 
+class RoundSTE(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return torch.round(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
 
 
 class AACBRTorch(torch.nn.Module):
 
     def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes,
-                 use_symmetric_attacks=True, build_parallel=False, casebase_indices=None) -> None:
+                 use_symmetric_attacks=True, casebase_indices=None) -> None:
 
         super(AACBRTorch, self).__init__()
         assert (len(X_train) == len(y_train))
+
         self.comparison_func = comparison_func
         self.X_train = X_train
         self.y_train = y_train
@@ -35,10 +61,10 @@ class AACBRTorch(torch.nn.Module):
         self.casebase_indices = casebase_indices
 
         self.add_default_cases(default_case, default_outcomes)
-        if build_parallel:
-            self.build_af_parallel()
-        else:
-            self.build_af()
+        self.build_af_parallel()
+    
+    def set_casebase_indices(self, casebase_indices):
+        self.casebase_indices = casebase_indices
 
     def add_default_cases(self, default_case, default_outcomes):
 
@@ -48,7 +74,7 @@ class AACBRTorch(torch.nn.Module):
         self.y_train = torch.cat((self.y_train, default_outcomes), dim=0)
 
         post = len(self.X_train)
-        self.default_indexes = list(range(pre, post))
+        self.default_indexes = torch.tensor(list(range(pre, post)))
         # self.outcome_map = {outcome: self.default_indexes[i] for i, outcome in enumerate(self.default_outcomes)}
 
     def get_indices(self):
@@ -79,77 +105,65 @@ class AACBRTorch(torch.nn.Module):
             torch.isin(indexes[:, 2], self.get_indices()))
         # index_mask = True
 
-        potential_attacks = torch.logical_and(
-            attackers_labels != targets_labels, self.comparison_func(attackers, targets))
 
-        b = torch.where(self.comparison_func(attackers, targets), 1, 0)
-        a = torch.abs(attackers_labels - targets_labels)
-        a = torch.clamp(a, 0, 1)
-        a = torch.mul(a, b)
-        print("a requires_grad", a.requires_grad)
+        round_ste = RoundSTE.apply
 
-        assert(torch.all((a == 1) == potential_attacks))
+        # Check potential attackers:
+
+        # TODO: NOT SURE ROUND IS NECESSARY?
+        # attack_argets = round_ste(self.comparison_func(attackers, targets))
+
+        attack_targets = self.comparison_func(attackers, targets)
+        differing_labels = torch.abs(attackers_labels - targets_labels)
+        differing_labels = torch.clamp(differing_labels, 0, 1)
+        attack_targets = torch.mul(differing_labels, attack_targets)
+
         
 
-        is_blocked = torch.logical_and(blockers_labels == attackers_labels, torch.logical_and(
-            self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets)))
+        # Check blocked attackers:
 
-        d = torch.mul(torch.where(self.comparison_func(attackers, blockers), 1, 0), torch.where(self.comparison_func(blockers, targets), 1, 0))
-        c = torch.abs(blockers_labels - attackers_labels)
-        c = 1 - torch.clamp(c, 0, 1)
-        c = torch.mul(c, d)
-        print("c requires_grad", c.requires_grad)
-        assert(torch.all((c == 1) == is_blocked))
-        
+        # TODO: NOT SURE ROUND IS NECESSARY?
+        # blocked_attacks = torch.mul(round_ste(self.comparison_func(attackers, blockers)), round_ste(self.comparison_func(blockers, targets)))
 
-        symmetric_attacks = torch.logical_and(self.use_symmetric_attacks, torch.logical_and(
-            attackers_labels != targets_labels, torch.all(attackers == targets, axis=1)))
+        blocked_attacks = torch.mul(self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets))
+        differing_labels = torch.abs(blockers_labels - attackers_labels)
+        differing_labels = 1 - torch.clamp(differing_labels, 0, 1)
+        blocked_attacks = torch.mul(differing_labels, blocked_attacks)
         
+        # Handle Symmetric attacks
         # TODO: NEED TO HANDLE SYMMETRIC ATTACKS
-        # g = torch.where(symmetric_attacks, 1, 0)
-        # print(g)
-        # if self.use_symmetric_attacks:
-        #     h = torch.all(attackers == targets, axis=1)
-        #     h = torch.where(h, 1, 0)
-        #     print(h)
 
-        #     g = torch.abs(attackers_labels - targets_labels)
-        #     g = torch.clamp(g, 0, 1)
-        #     g = torch.mul(g, h)
-        # else:
-        #     g = torch.ones_like(a)
+            # g = torch.where(symmetric_attacks, 1, 0)
+            # print(g)
 
+            # if self.use_symmetric_attacks:
+            #     h = torch.all(attackers == targets, axis=1)
+            #     h = torch.where(h, 1, 0)
+            #     print(h)
 
-        attacks = torch.logical_or(torch.logical_and(
-            potential_attacks, torch.logical_not(is_blocked)), symmetric_attacks)
-        attacks[blockers_mask] = True
-        attacks = torch.logical_and(
-            attacks, torch.logical_and(attackers_mask, targets_mask))
-        
-        e = torch.mul(a, (1 - c))
-        e = torch.where(blockers_mask, 1, e)
-        e = torch.where(attackers_mask, e, 0)
-        e = torch.where(targets_mask, e, 0)
-        print("e requires_grad", e.requires_grad)
+            #     g = torch.abs(attackers_labels - targets_labels)
+            #     g = torch.clamp(g, 0, 1)
+            #     g = torch.mul(g, h)
+            # else:
+            #     g = torch.ones_like(a)
 
 
-        attacks = attacks.reshape((train_size, train_size, train_size))
-        attacks = torch.all(attacks, axis=-1)
+        # Combine potential attacks and blocked attacks 
+        attacks = torch.mul(attack_targets, (1 - blocked_attacks))
+        attacks = torch.where(blockers_mask, 1, attacks)
+        attacks = torch.where(attackers_mask, attacks, 0)
+        attacks = torch.where(targets_mask, attacks, 0)
 
 
-        f = e.reshape((train_size, train_size, train_size))
-        print(f.shape)
-        f = f.prod(axis=-1)
-        print(f.shape)
-        print("f requires_grad", f.requires_grad)
-        # TODO: NEED TO HANDLE DEFAULTS
-        self.A = -f
-        print("A requires_grad", self.A.requires_grad)
+        # Resolve to adjacency matrix
+        all_attacks = attacks.reshape((train_size, train_size, train_size))
+        A = all_attacks.prod(axis=-1)
+        # TODO: NEED TO ENSURE DEFAULTS DO NOT ATTACK ANYTHING USING A TORCH.WHERE
+            # attacks[self.default_indexes, :] = False
+            # self.A = torch.where(attacks, -1, 0)
+        self.A = -A
 
 
-        # attacks[self.default_indexes, :] = False
-        # self.A = torch.where(attacks, -1, 0)
-        # assert(torch.all(-f == self.A))
 
     def is_concise(self, attacker, target, attacker_outcome):
         return not any([
@@ -207,11 +221,15 @@ class AACBRTorch(torch.nn.Module):
         plt.show()
 
     def get_new_case_attacks_mask(self, new_cases):
+
+        #TODO: Investigate if gradient computation is going wrong here:
+
         if new_cases.ndim == 1:
             new_cases = new_cases.unsqueeze(0)
 
         result = torch.logical_not(self.comparison_func(
             new_cases.unsqueeze(1), self.X_train))
+        
 
         # Default should not be attacked by new case
         result[:, self.default_indexes] = False
@@ -235,13 +253,29 @@ class AACBRTorch(torch.nn.Module):
         # Batch A - to support multiple new_cases at once
         A = torch.tile(A.unsqueeze(0), (batch_size, 1, 1))
 
-        # TODO: THIS MIGHT NOT PROP GRADIENTS CORRECTLY
-        # Change to a torch.where method?
-        A[new_cases_attacks, :] = 0
+        n = A.shape[-1]
+
+        # Filter cases in A that are attacked by new_cases
+        new_cases_attacks_mask = new_cases_attacks.unsqueeze(-1).repeat(1, 1, n)
+        A = torch.where(new_cases_attacks_mask, 0, A)
 
         # Find unattacked nodes (i.e columns with all 0s)
         # For each node, x, that they attack, set all attacks originating from x to 0
         # Repeat until no more changes
+        """
+        a -> b -> c
+
+        [0, 1, 0],
+        [0, 0, 1],
+        [0, 0, 0]
+
+        first iteration:
+            unattacked = [true, false, false] as column 0 is all 0s
+            Mask = [[true], [false], [false]] -> dim change
+            only_unattacked = [[0, 1, 0],  [0, 0, 0],  [0, 0, 0]] -> only the first row is unattacked so give that row only
+            attacked =  [false, true, false] as the first row is non-zero in column 1
+            A  = [[0, 1, 0], [0, 0, 0], [0, 0, 0]]
+        """
         while True:
             unattacked = torch.logical_and(torch.all(A == 0, axis=1), torch.logical_not(
                 new_cases_attacks))  # Shape: B x n
@@ -256,41 +290,24 @@ class AACBRTorch(torch.nn.Module):
 
             if torch.all(A[attacked] == 0):
                 break
-
-            # TODO: THIS MIGHT NOT PROP GRADIENTS CORRECTLY
-            # Change to a torch.where method?
-            A[attacked, :] = 0
-
-
-        print("A clone", A.requires_grad)
+            
+            # Filter out attacked nodes
+            attacked_mask = attacked.unsqueeze(-1).repeat(1, 1, n)
+            A = torch.where(attacked_mask, 0, A)
 
 
-        final_unattacked = torch.logical_and(
-            torch.all(A[:,] == 0, axis=1), torch.logical_not(new_cases_attacks))
+        new_cases_attacks_ints = torch.where(new_cases_attacks, 1, 0)
+        A = (1 + A)
+        result = A.prod(axis=1)
+        result = torch.mul((1-new_cases_attacks_ints), result)
 
-        a = torch.where(new_cases_attacks, 1, 0)
-        b = A.clone()
-        b = (1 + b)
-        b = b.prod(axis=1)
-
-        c = torch.mul((1-a), b)
-        # print("c requires_grad", c.requires_grad)
-
-        # assert(torch.all((c == 1) == final_unattacked))
-        return c
+        return result
         
         
-        # print("final_unattacked requires_grad", final_unattacked.requires_grad)
-
-        # return final_unattacked
 
     def forward(self, new_cases):
+        
         new_cases_attacks = self.get_new_case_attacks_mask(new_cases)
         grounded = self.compute_grounded(new_cases_attacks)
         return grounded[:, self.default_indexes]
-        # predicted = torch.where(
-        #     grounded[:, self.default_indexes], 1, 0)
-        # return predicted
 
-    # def __call__(self, new_cases):
-    #     return self.forward(new_cases)
