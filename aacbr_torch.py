@@ -161,7 +161,8 @@ class AACBRTorch(torch.nn.Module):
         # TODO: NEED TO ENSURE DEFAULTS DO NOT ATTACK ANYTHING USING A TORCH.WHERE
             # attacks[self.default_indexes, :] = False
             # self.A = torch.where(attacks, -1, 0)
-        self.A = -A
+
+        self.A = (-A)
 
 
 
@@ -180,11 +181,11 @@ class AACBRTorch(torch.nn.Module):
         pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
                                            args='-Gsplines=true -Gnodesep=2')
 
-        unique_labels = np.unique(self.y_train)
+        unique_labels = np.unique(self.y_train.cpu().detach().numpy())
         colormap = plt.get_cmap('gist_rainbow', len(unique_labels))
         label_to_color = {label: colormap(i)
                           for i, label in enumerate(unique_labels)}
-        node_colors = [label_to_color[self.y_train[node]]
+        node_colors = [label_to_color[self.y_train.cpu().detach().numpy()[node]]
                        for node in list(gr.nodes)]
 
         assert (all([default_index in list(gr.nodes)
