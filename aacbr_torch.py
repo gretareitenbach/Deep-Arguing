@@ -9,7 +9,7 @@ class LearnedPartialOrder(torch.nn.Module):
         super(LearnedPartialOrder, self).__init__()
         self.W = torch.nn.Parameter(torch.Tensor(no_features))
         torch.nn.init.normal_(self.W)
-    
+
     def forward(self, a, b, old=False):
         if b.ndim == 1:
             b = b.unsqueeze(0)
@@ -21,18 +21,19 @@ class LearnedPartialOrder(torch.nn.Module):
         b_score = torch.matmul(b, self.W)
 
         return torch.sigmoid((a_score - b_score) * 100)
-    
+
     def plot_parameters(self):
         weights = self.W.detach().numpy()
         plt.figure(figsize=(20, 5))
         plt.bar(range(len(weights)), weights)
         for i, value in enumerate(weights):
-            plt.text(i, value + (0.1 * (-1 if value <= 0 else 1)), str(round(value, 3)), ha='center', fontsize=6)
+            plt.text(i, value + (0.1 * (-1 if value <= 0 else 1)),
+                     str(round(value, 3)), ha='center', fontsize=6)
         plt.xlabel('Features')
         plt.ylabel('Weights')
         plt.title('Feature Attribution Weights')
         plt.show()
-    
+
 
 class RoundSTE(torch.autograd.Function):
     @staticmethod
@@ -47,7 +48,7 @@ class RoundSTE(torch.autograd.Function):
 class AACBRTorch(torch.nn.Module):
 
     def __init__(self, X_train, y_train, comparison_func, default_case, default_outcomes,
-                 use_symmetric_attacks=True, casebase_indices=None) -> None:
+                 use_symmetric_attacks=True, casebase_indices=None, hard_edges=False) -> None:
 
         super(AACBRTorch, self).__init__()
         assert (len(X_train) == len(y_train))
@@ -59,10 +60,11 @@ class AACBRTorch(torch.nn.Module):
         self.default_outcomes = default_outcomes
         self.use_symmetric_attacks = torch.tensor(use_symmetric_attacks)
         self.casebase_indices = casebase_indices
+        self.hard_edges = hard_edges
 
         self.add_default_cases(default_case, default_outcomes)
         self.build_af_parallel()
-    
+
     def set_casebase_indices(self, casebase_indices):
         self.casebase_indices = casebase_indices
 
@@ -82,6 +84,16 @@ class AACBRTorch(torch.nn.Module):
             return torch.arange(len(self.X_train))
         else:
             return torch.cat((self.casebase_indices, self.default_indexes))
+    
+    def has_symmetric_attacks(self):
+        train_size = len(self.X_train)
+        # all_indices = torch.arange(train_size)
+        for i in range(train_size):
+            for j in range(train_size):
+                if torch.logical_and((self.A[i, j] == self.A[j, i]), self.A[i, j] != 0):
+                    print("TRUE")
+                    return True
+
 
     def build_af_parallel(self):
 
@@ -103,68 +115,62 @@ class AACBRTorch(torch.nn.Module):
         targets_mask = torch.isin(indexes[:, 1], self.get_indices())
         blockers_mask = torch.logical_not(
             torch.isin(indexes[:, 2], self.get_indices()))
-        # index_mask = True
-
 
         round_ste = RoundSTE.apply
 
+        if self.hard_edges:
+            edge_func = round_ste
+        else:
+            def edge_func(x): return x
+
         # Check potential attackers:
-
-        # TODO: NOT SURE ROUND IS NECESSARY?
-        # attack_argets = round_ste(self.comparison_func(attackers, targets))
-
-        attack_targets = self.comparison_func(attackers, targets)
+        attack_targets = edge_func(self.comparison_func(attackers, targets))
         differing_labels = torch.abs(attackers_labels - targets_labels)
         differing_labels = torch.clamp(differing_labels, 0, 1)
         attack_targets = torch.mul(differing_labels, attack_targets)
 
-        
-
         # Check blocked attackers:
 
-        # TODO: NOT SURE ROUND IS NECESSARY?
-        # blocked_attacks = torch.mul(round_ste(self.comparison_func(attackers, blockers)), round_ste(self.comparison_func(blockers, targets)))
-
-        blocked_attacks = torch.mul(self.comparison_func(attackers, blockers), self.comparison_func(blockers, targets))
+        blocked_attacks = torch.mul(edge_func(self.comparison_func(attackers, blockers)),
+                                    edge_func(self.comparison_func(blockers, targets)))
         differing_labels = torch.abs(blockers_labels - attackers_labels)
         differing_labels = 1 - torch.clamp(differing_labels, 0, 1)
         blocked_attacks = torch.mul(differing_labels, blocked_attacks)
-        
+
         # Handle Symmetric attacks
-        # TODO: NEED TO HANDLE SYMMETRIC ATTACKS
+        # TODO: NEED TO CONSIDER SYMMETRIC ATTACKS
+        # Right now: if hard_edges then set symmetric attacks to 1 otherwise 0.5
+        # TODO: If not self.use_symmetric_attacks then set all symmetric attacks to 0 
 
-            # g = torch.where(symmetric_attacks, 1, 0)
-            # print(g)
-
-            # if self.use_symmetric_attacks:
-            #     h = torch.all(attackers == targets, axis=1)
-            #     h = torch.where(h, 1, 0)
-            #     print(h)
-
-            #     g = torch.abs(attackers_labels - targets_labels)
-            #     g = torch.clamp(g, 0, 1)
-            #     g = torch.mul(g, h)
-            # else:
-            #     g = torch.ones_like(a)
+        if not self.use_symmetric_attacks:
+            print("Attack targets before", attack_targets)
+            symmetric_mask = torch.all(attackers == targets, dim=1)
+            print("Symm mask:", symmetric_mask.reshape((train_size, train_size, train_size)))
+            attack_targets = torch.where(symmetric_mask, 0, attack_targets)
+            print("Attack targets after", attack_targets)
 
 
-        # Combine potential attacks and blocked attacks 
+
+        # Combine potential attacks and blocked attacks
         attacks = torch.mul(attack_targets, (1 - blocked_attacks))
         attacks = torch.where(blockers_mask, 1, attacks)
         attacks = torch.where(attackers_mask, attacks, 0)
         attacks = torch.where(targets_mask, attacks, 0)
 
-
         # Resolve to adjacency matrix
         all_attacks = attacks.reshape((train_size, train_size, train_size))
         A = all_attacks.prod(axis=-1)
-        # TODO: NEED TO ENSURE DEFAULTS DO NOT ATTACK ANYTHING USING A TORCH.WHERE
-            # attacks[self.default_indexes, :] = False
-            # self.A = torch.where(attacks, -1, 0)
+
+        n = A.shape[-1]
+
+        # Prevent defaults from attacking
+        default_mask = torch.zeros((n)) == 0
+        default_mask[self.default_indexes] = False
+        default_mask = default_mask.unsqueeze(-1).repeat(1, n)
+
+        A = torch.where(default_mask, A, 0)
 
         self.A = (-A)
-
-
 
     def is_concise(self, attacker, target, attacker_outcome):
         return not any([
@@ -223,14 +229,13 @@ class AACBRTorch(torch.nn.Module):
 
     def get_new_case_attacks_mask(self, new_cases):
 
-        #TODO: Investigate if gradient computation is going wrong here:
+        # TODO: Investigate if gradient computation is going wrong here:
 
         if new_cases.ndim == 1:
             new_cases = new_cases.unsqueeze(0)
 
         result = torch.logical_not(self.comparison_func(
             new_cases.unsqueeze(1), self.X_train))
-        
 
         # Default should not be attacked by new case
         result[:, self.default_indexes] = False
@@ -257,7 +262,8 @@ class AACBRTorch(torch.nn.Module):
         n = A.shape[-1]
 
         # Filter cases in A that are attacked by new_cases
-        new_cases_attacks_mask = new_cases_attacks.unsqueeze(-1).repeat(1, 1, n)
+        new_cases_attacks_mask = new_cases_attacks.unsqueeze(
+            -1).repeat(1, 1, n)
         A = torch.where(new_cases_attacks_mask, 0, A)
 
         # Find unattacked nodes (i.e columns with all 0s)
@@ -291,11 +297,10 @@ class AACBRTorch(torch.nn.Module):
 
             if torch.all(A[attacked] == 0):
                 break
-            
+
             # Filter out attacked nodes
             attacked_mask = attacked.unsqueeze(-1).repeat(1, 1, n)
             A = torch.where(attacked_mask, 0, A)
-
 
         new_cases_attacks_ints = torch.where(new_cases_attacks, 1, 0)
         A = (1 + A)
@@ -303,12 +308,9 @@ class AACBRTorch(torch.nn.Module):
         result = torch.mul((1-new_cases_attacks_ints), result)
 
         return result
-        
-        
 
     def forward(self, new_cases):
-        
+
         new_cases_attacks = self.get_new_case_attacks_mask(new_cases)
         grounded = self.compute_grounded(new_cases_attacks)
         return grounded[:, self.default_indexes]
-

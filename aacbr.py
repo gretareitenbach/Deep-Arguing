@@ -116,6 +116,7 @@ class AACBR:
 
         attacks = attacks.reshape((train_size, train_size, train_size))
         attacks = np.all(attacks, axis=-1)
+        # TODO: CONSIDER PREVENT DEFAULTS FROM ATTACKING IN BLOCKED ATTACKS OTHERWISE THEY MAY BLOCK SOMETHING THEYS SHOULDN'T?
         attacks[self.default_indexes, :] = False
         self.A = np.where(attacks, -1, 0)
 
