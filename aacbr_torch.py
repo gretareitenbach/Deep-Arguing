@@ -124,10 +124,13 @@ class AACBRTorch(torch.nn.Module):
             def edge_func(x): return x
 
         # Check potential attackers:
-        attack_targets = edge_func(self.comparison_func(attackers, targets))
+        attack_targets = edge_func(self.comparison_func(attackers, targets)) 
+        print(attack_targets.reshape(train_size, train_size, train_size))
         differing_labels = torch.abs(attackers_labels - targets_labels)
         differing_labels = torch.clamp(differing_labels, 0, 1)
         attack_targets = torch.mul(differing_labels, attack_targets)
+
+        print(attack_targets.reshape(train_size, train_size, train_size))
 
         # Check blocked attackers:
 
@@ -136,6 +139,7 @@ class AACBRTorch(torch.nn.Module):
         differing_labels = torch.abs(blockers_labels - attackers_labels)
         differing_labels = 1 - torch.clamp(differing_labels, 0, 1)
         blocked_attacks = torch.mul(differing_labels, blocked_attacks)
+        print(blocked_attacks.reshape(train_size, train_size, train_size))
 
         # Handle Symmetric attacks
         # TODO: NEED TO CONSIDER SYMMETRIC ATTACKS
@@ -143,16 +147,17 @@ class AACBRTorch(torch.nn.Module):
         # TODO: If not self.use_symmetric_attacks then set all symmetric attacks to 0 
 
         if not self.use_symmetric_attacks:
-            print("Attack targets before", attack_targets)
+            # print("Attack targets before", attack_targets)
             symmetric_mask = torch.all(attackers == targets, dim=1)
-            print("Symm mask:", symmetric_mask.reshape((train_size, train_size, train_size)))
+            # print("Symm mask:", symmetric_mask.reshape((train_size, train_size, train_size)))
             attack_targets = torch.where(symmetric_mask, 0, attack_targets)
-            print("Attack targets after", attack_targets)
+            # print("Attack targets after", attack_targets)
 
 
 
         # Combine potential attacks and blocked attacks
         attacks = torch.mul(attack_targets, (1 - blocked_attacks))
+        print(attacks.reshape(train_size, train_size, train_size))
         attacks = torch.where(blockers_mask, 1, attacks)
         attacks = torch.where(attackers_mask, attacks, 0)
         attacks = torch.where(targets_mask, attacks, 0)
