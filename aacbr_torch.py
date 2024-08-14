@@ -21,6 +21,7 @@ class LearnedPartialOrder(torch.nn.Module):
         b_score = torch.matmul(b, self.W)
 
         return torch.sigmoid((a_score - b_score) * 100)
+        # return torch.sigmoid((a_score - b_score) )
 
     def plot_parameters(self):
         weights = self.W.detach().numpy()
@@ -101,20 +102,18 @@ class AACBRTorch(torch.nn.Module):
         train_size = len(self.X_train)
         all_indices = torch.arange(train_size)
         indexes = torch.cartesian_prod(
-            all_indices, all_indices,  all_indices
+            all_indices, all_indices, all_indices
         )
 
-        attackers, attackers_labels = self.X_train[indexes[:, 0]
-                                                   ], self.y_train[indexes[:, 0]]
-        targets, targets_labels = self.X_train[indexes[:, 1]
-                                               ], self.y_train[indexes[:, 1]]
-        blockers, blockers_labels = self.X_train[indexes[:, 2]
-                                                 ], self.y_train[indexes[:, 2]]
+        attackers, attackers_labels = self.X_train[indexes[:, 0]], self.y_train[indexes[:, 0]]
+        targets, targets_labels = self.X_train[indexes[:, 1]], self.y_train[indexes[:, 1]]
+        blockers, blockers_labels = self.X_train[indexes[:, 2]], self.y_train[indexes[:, 2]]
 
         attackers_mask = torch.isin(indexes[:, 0], self.get_indices())
+        attackers_default_mask = torch.isin(indexes[:, 0], self.default_indexes)
         targets_mask = torch.isin(indexes[:, 1], self.get_indices())
-        blockers_mask = torch.logical_not(
-            torch.isin(indexes[:, 2], self.get_indices()))
+        blockers_mask = torch.logical_not(torch.isin(indexes[:, 2], self.get_indices()))
+        blockers_default_mask = torch.isin(indexes[:, 2], self.default_indexes)
 
         round_ste = RoundSTE.apply
 
@@ -123,29 +122,27 @@ class AACBRTorch(torch.nn.Module):
         else:
             def edge_func(x): return x
 
+
         # Check potential attackers:
         attack_targets = edge_func(self.comparison_func(attackers, targets)) 
-        print(attack_targets.reshape(train_size, train_size, train_size))
-        differing_labels = torch.abs(attackers_labels - targets_labels)
-        differing_labels = torch.clamp(differing_labels, 0, 1)
-        attack_targets = torch.mul(differing_labels, attack_targets)
+        differing_labels = attackers_labels != targets_labels
+        attack_targets = torch.where(differing_labels, attack_targets, 0)
+        # Ensure defaults do not attack:
+        attack_targets = torch.where(attackers_default_mask, 0, attack_targets)
 
-        print(attack_targets.reshape(train_size, train_size, train_size))
 
-        # Check blocked attackers:
 
+        # Minimal Attacks:
         blocked_attacks = torch.mul(edge_func(self.comparison_func(attackers, blockers)),
                                     edge_func(self.comparison_func(blockers, targets)))
-        differing_labels = torch.abs(blockers_labels - attackers_labels)
-        differing_labels = 1 - torch.clamp(differing_labels, 0, 1)
-        blocked_attacks = torch.mul(differing_labels, blocked_attacks)
-        print(blocked_attacks.reshape(train_size, train_size, train_size))
 
-        # Handle Symmetric attacks
-        # TODO: NEED TO CONSIDER SYMMETRIC ATTACKS
-        # Right now: if hard_edges then set symmetric attacks to 1 otherwise 0.5
-        # TODO: If not self.use_symmetric_attacks then set all symmetric attacks to 0 
+        same_labels = blockers_labels == attackers_labels
+        blocked_attacks = torch.where(same_labels, blocked_attacks, 0)
+        # Ensure defaults do not block:
+        blocked_attacks = torch.where(blockers_default_mask, 0, blocked_attacks)
 
+
+        # Remove symmetric attacks 
         if not self.use_symmetric_attacks:
             # print("Attack targets before", attack_targets)
             symmetric_mask = torch.all(attackers == targets, dim=1)
@@ -157,24 +154,13 @@ class AACBRTorch(torch.nn.Module):
 
         # Combine potential attacks and blocked attacks
         attacks = torch.mul(attack_targets, (1 - blocked_attacks))
-        print(attacks.reshape(train_size, train_size, train_size))
         attacks = torch.where(blockers_mask, 1, attacks)
         attacks = torch.where(attackers_mask, attacks, 0)
         attacks = torch.where(targets_mask, attacks, 0)
 
-        # Resolve to adjacency matrix
+        # Convert to adjacency matrix
         all_attacks = attacks.reshape((train_size, train_size, train_size))
         A = all_attacks.prod(axis=-1)
-
-        n = A.shape[-1]
-
-        # Prevent defaults from attacking
-        default_mask = torch.zeros((n)) == 0
-        default_mask[self.default_indexes] = False
-        default_mask = default_mask.unsqueeze(-1).repeat(1, n)
-
-        A = torch.where(default_mask, A, 0)
-
         self.A = (-A)
 
     def is_concise(self, attacker, target, attacker_outcome):
