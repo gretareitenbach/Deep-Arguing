@@ -18,11 +18,14 @@ class FeatureWeightedPartialOrder(ComputePartialOrder):
         if target.ndim == 1:
             target = target.unsqueeze(0)
 
+        if attacker.ndim == 1:
+            attacker = attacker.unsqueeze(0)
+
 
         attacker_score = torch.matmul(attacker, self.W)
         target_score = torch.matmul(target, self.W)
 
-        return torch.sigmoid((attacker_score - target_score) * self.sharpness)
+        return torch.sigmoid((attacker_score - target_score) * self.sharpness) 
 
 
     def plot_parameters(self):

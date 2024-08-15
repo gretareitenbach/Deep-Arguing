@@ -70,7 +70,11 @@ class GradualAACBR(torch.nn.Module):
     def __potential_attackers(self, X_attackers, X_targets, y_attackers, 
                               y_targets, defaults_not_attack, attackers_default_mask):
         attack_targets = self.casebase_edge_weights(X_attackers, X_targets) 
-        differing_labels = y_attackers != y_targets
+        assert(attack_targets.ndim == 1)
+        if len(y_attackers.shape) == 2:
+            differing_labels = torch.all(y_attackers != y_targets, dim=-1)
+        else:
+            differing_labels = y_attackers != y_targets
         attack_targets = torch.where(differing_labels, attack_targets, 0)
 
         if defaults_not_attack:
@@ -82,7 +86,12 @@ class GradualAACBR(torch.nn.Module):
                           y_attackers, defaults_not_attack, blockers_default_mask):
         blocked_attacks = torch.mul(self.casebase_edge_weights(X_attackers, X_blockers),
                                     self.casebase_edge_weights(X_blockers, X_targets))
-        same_labels = y_blockers == y_attackers
+
+        if len(y_attackers.shape) == 2:
+            same_labels = torch.all(y_blockers == y_attackers, dim=-1)
+        else:
+            same_labels = y_blockers == y_attackers
+
         blocked_attacks = torch.where(same_labels, blocked_attacks, 0)
 
         if defaults_not_attack:
@@ -150,7 +159,7 @@ class GradualAACBR(torch.nn.Module):
 
     def show_graph_with_labels(self):
         A = self.A.detach().cpu().numpy()
-        y_train = self.y_train.cpu().detach().numpy()
+        y_train = np.argmax(self.y_train.cpu().detach().numpy(), axis=1)
         default_indexes = self.default_indexes.cpu().detach().numpy()
 
         # rows, cols = np.where(A != 0)
@@ -187,12 +196,12 @@ class GradualAACBR(torch.nn.Module):
 
         nx.draw(gr, pos, labels=labels,
                 arrowstyle='-|>', arrows=True, node_color=node_colors,
-                node_size=1000, font_size=5, width=0.4)
+                node_size=100, font_size=5, width=0.4)
         labels = nx.get_edge_attributes(gr, 'weight')
         rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
 
         # Draw the edge labels with rounded weights
-        nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels)
+        nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels, font_size=5)
 
         plt.legend()
         plt.show()
@@ -200,7 +209,7 @@ class GradualAACBR(torch.nn.Module):
     def show_matrix(self):
         plt.figure(figsize=(10, 10))
         A = self.A.detach().cpu().numpy()
-        plt.imshow(A, cmap='viridis', interpolation='nearest')
+        plt.imshow(A, cmap='cividis', interpolation='nearest')
         plt.colorbar(label='Value')
         plt.xlabel('Nodes')
         plt.ylabel('Nodes')
