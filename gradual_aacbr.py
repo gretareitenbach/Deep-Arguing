@@ -62,7 +62,47 @@ class GradualAACBR(torch.nn.Module):
         # Convert to adjacency matrix
         all_attacks = attacks.reshape((train_size, train_size, train_size))
         A = all_attacks.prod(axis=-1)
-        self.A = (-A)
+        self.A = (-A) 
+        self.X_train = X_train
+        self.y_train = y_train
+        self.default_indexes = default_indexes
+
+    def fit_no_blockers(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
+            use_symmetric_attacks = True, defaults_not_attack = True):
+        
+
+        if (X_train is None or y_train is None or len(X_train) != len(y_train)):
+            raise(Exception("Length of X_train must match length of y_train."))
+
+        if (X_default is None or y_default is None or len(X_default) != len(y_default)):
+            raise(Exception("Length of X_default must match length of y_default"))
+
+        self.A = None
+        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+
+        train_size = len(X_train)
+        indexes = torch.arange(train_size)
+        index_prod = torch.cartesian_prod(indexes, indexes)
+
+        X_attackers, y_attackers = X_train[index_prod[:, 0]], y_train[index_prod[:, 0]]
+        X_targets, y_targets     = X_train[index_prod[:, 1]], y_train[index_prod[:, 1]]
+
+        attackers_default_mask = torch.isin(index_prod[:, 0], default_indexes)
+
+        attack_targets = self.__potential_attackers(X_attackers, X_targets, y_attackers, 
+                                                    y_targets, defaults_not_attack, attackers_default_mask) 
+        
+        
+        # Remove symmetric attacks 
+        if not use_symmetric_attacks:
+            symmetric_mask = torch.all(X_attackers == X_targets, dim=1)
+            attack_targets = torch.where(symmetric_mask, 0, attack_targets)
+
+        # Combine potential attacks and blocked attacks
+
+        # Convert to adjacency matrix
+        A = attack_targets.reshape((train_size, train_size))
+        self.A = (-A) 
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes

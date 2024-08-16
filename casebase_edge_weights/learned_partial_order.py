@@ -12,8 +12,8 @@ class LearnedPartialOrder(ComputePartialOrder):
         # TODO: Consider other methods of initialising weights
         self.sharpness = sharpness
 
-        self.fc1 = torch.nn.Linear(no_features * 2, 1)
-        # self.fc2 = torch.nn.Linear(no_hidden, 1)
+        self.fc1 = torch.nn.Linear(no_features * 2, no_hidden)
+        self.fc2 = torch.nn.Linear(no_hidden, 1)
 
 
 
@@ -31,9 +31,12 @@ class LearnedPartialOrder(ComputePartialOrder):
 
         concat = torch.cat((attacker, target), dim=1)
         out = F.sigmoid(self.fc1(concat))
-        # out = F.sigmoid(self.fc2(out))
+        out = F.sigmoid(self.fc2(out))
 
-        return torch.sigmoid(out * self.sharpness).squeeze() 
+        # print(out)
+        result = torch.sigmoid(out * self.sharpness).squeeze() 
+        # print(result)
+        return result
 
 
     def plot_parameters(self):
