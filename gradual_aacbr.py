@@ -21,6 +21,12 @@ class GradualAACBR(torch.nn.Module):
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
     
+    def casebase_edge_weights_strict(self, attacker, target):
+        return self.casebase_edge_weights(attacker, target) * (1 - self.casebase_edge_weights(target, attacker))
+
+    def casebase_edge_weights_equal(self, attacker, target):
+        return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
+    
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
             use_symmetric_attacks = True, defaults_not_attack = True):
         
@@ -50,18 +56,21 @@ class GradualAACBR(torch.nn.Module):
         
         blocked_attacks = self.__minimal_attacks(X_attackers, X_blockers, X_targets, y_blockers, 
                                                  y_attackers, defaults_not_attack, blockers_default_mask)
-        
-        # Remove symmetric attacks 
-        if not use_symmetric_attacks:
-            symmetric_mask = torch.all(X_attackers == X_targets, dim=1)
-            attack_targets = torch.where(symmetric_mask, 0, attack_targets)
+
+        if use_symmetric_attacks: 
+            symmetric_attacks = self.__symmetric_attacks(X_attackers, X_targets, y_attackers, 
+                                                        y_targets, defaults_not_attack, attackers_default_mask)
+        else:
+            symmetric_attacks = torch.zeros_like(attack_targets)
+
+        symmetric_attacks = symmetric_attacks.reshape((train_size, train_size, train_size)).prod(axis=-1)
 
         # Combine potential attacks and blocked attacks
         attacks = torch.mul(attack_targets, blocked_attacks)
 
         # Convert to adjacency matrix
         all_attacks = attacks.reshape((train_size, train_size, train_size))
-        A = all_attacks.prod(axis=-1)
+        A = all_attacks.prod(axis=-1) + symmetric_attacks
         self.A = (-A) 
         self.X_train = X_train
         self.y_train = y_train
@@ -92,23 +101,48 @@ class GradualAACBR(torch.nn.Module):
         attack_targets = self.__potential_attackers(X_attackers, X_targets, y_attackers, 
                                                     y_targets, defaults_not_attack, attackers_default_mask) 
         
-        # Remove symmetric attacks 
-        if not use_symmetric_attacks:
-            symmetric_mask = torch.all(X_attackers == X_targets, dim=1)
-            attack_targets = torch.where(symmetric_mask, 0, attack_targets)
+        if use_symmetric_attacks: 
+            symmetric_attacks = self.__symmetric_attacks(X_attackers, X_targets, y_attackers, 
+                                                        y_targets, defaults_not_attack, attackers_default_mask)
+        else:
+            symmetric_attacks = torch.zeros_like(attack_targets)
+
+        symmetric_attacks = symmetric_attacks.reshape((train_size, train_size))
 
         # Combine potential attacks and blocked attacks
 
         # Convert to adjacency matrix
-        A = attack_targets.reshape((train_size, train_size))
+        A = attack_targets.reshape((train_size, train_size)) + symmetric_attacks
         self.A = (-A) 
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
-    
+
+
+    def __symmetric_attacks(self, X_attackers, X_targets, y_attackers, 
+                              y_targets, defaults_not_attack, attackers_default_mask):
+
+        attack_targets = self.casebase_edge_weights_equal(X_attackers, X_targets)
+
+        assert(attack_targets.ndim == 1)
+        if len(y_attackers.shape) == 2:
+            differing_labels = torch.any(y_attackers != y_targets, dim=-1)
+        else:
+            differing_labels = y_attackers != y_targets
+            print(differing_labels)
+
+        attack_targets = torch.where(differing_labels, attack_targets, 0)
+
+        if defaults_not_attack:
+            attack_targets = torch.where(attackers_default_mask, 0, attack_targets)
+        
+        return attack_targets
+
     def __potential_attackers(self, X_attackers, X_targets, y_attackers, 
                               y_targets, defaults_not_attack, attackers_default_mask):
-        attack_targets = self.casebase_edge_weights(X_attackers, X_targets) 
+
+        attack_targets = self.casebase_edge_weights_strict(X_attackers, X_targets) 
+
         assert(attack_targets.ndim == 1)
         if len(y_attackers.shape) == 2:
             differing_labels = torch.any(y_attackers != y_targets, dim=-1)
@@ -125,8 +159,8 @@ class GradualAACBR(torch.nn.Module):
     
     def __minimal_attacks(self, X_attackers, X_blockers, X_targets, y_blockers, 
                           y_attackers, defaults_not_attack, blockers_default_mask):
-        blocked_attacks = torch.mul(self.casebase_edge_weights(X_attackers, X_blockers),
-                                    self.casebase_edge_weights(X_blockers, X_targets))
+        blocked_attacks = torch.mul(self.casebase_edge_weights_strict(X_attackers, X_blockers),
+                                    self.casebase_edge_weights_strict(X_blockers, X_targets))
 
         if len(y_attackers.shape) == 2:
             same_labels = torch.any(y_blockers == y_attackers, dim=-1)
@@ -209,7 +243,7 @@ class GradualAACBR(torch.nn.Module):
         # gr = nx.DiGraph()
         # gr.add_edges_from(edges)
 
-        gr = nx.from_numpy_array(A)
+        gr = nx.from_numpy_array(A, create_using=nx.DiGraph)
         pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
                                            args='-Gsplines=true -Gnodesep=2')
 
@@ -238,6 +272,7 @@ class GradualAACBR(torch.nn.Module):
         nx.draw(gr, pos, labels=labels,
                 arrowstyle='-|>', arrows=True, node_color=node_colors,
                 node_size=100, font_size=5, width=0.4)
+                
         labels = nx.get_edge_attributes(gr, 'weight')
         rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
 
