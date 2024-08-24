@@ -92,7 +92,6 @@ class GradualAACBR(torch.nn.Module):
         attack_targets = self.__potential_attackers(X_attackers, X_targets, y_attackers, 
                                                     y_targets, defaults_not_attack, attackers_default_mask) 
         
-        
         # Remove symmetric attacks 
         if not use_symmetric_attacks:
             symmetric_mask = torch.all(X_attackers == X_targets, dim=1)
@@ -112,9 +111,11 @@ class GradualAACBR(torch.nn.Module):
         attack_targets = self.casebase_edge_weights(X_attackers, X_targets) 
         assert(attack_targets.ndim == 1)
         if len(y_attackers.shape) == 2:
-            differing_labels = torch.all(y_attackers != y_targets, dim=-1)
+            differing_labels = torch.any(y_attackers != y_targets, dim=-1)
         else:
             differing_labels = y_attackers != y_targets
+            print(differing_labels)
+
         attack_targets = torch.where(differing_labels, attack_targets, 0)
 
         if defaults_not_attack:
@@ -128,7 +129,7 @@ class GradualAACBR(torch.nn.Module):
                                     self.casebase_edge_weights(X_blockers, X_targets))
 
         if len(y_attackers.shape) == 2:
-            same_labels = torch.all(y_blockers == y_attackers, dim=-1)
+            same_labels = torch.any(y_blockers == y_attackers, dim=-1)
         else:
             same_labels = y_blockers == y_attackers
 
