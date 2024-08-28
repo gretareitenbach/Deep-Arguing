@@ -29,7 +29,7 @@ class FeatureWeightedPartialOrder(ComputePartialOrder):
 
 
     def plot_parameters(self):
-        weights = self.W.detach().numpy()
+        weights = self.W.detach().cpu().numpy()
         plt.figure(figsize=(20, 5))
         plt.bar(range(len(weights)), weights)
         for i, value in enumerate(weights):

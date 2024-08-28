@@ -89,9 +89,12 @@ class GradualAACBR(torch.nn.Module):
         self.A = None
         X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
 
+        device = X_train.device
+
         train_size = len(X_train)
-        indexes = torch.arange(train_size)
-        index_prod = torch.cartesian_prod(indexes, indexes)
+        indexes = torch.arange(train_size).to(device)
+        index_prod = torch.cartesian_prod(indexes, indexes).to(device)
+        default_indexes = default_indexes.to(device)
 
         X_attackers, y_attackers = X_train[index_prod[:, 0]], y_train[index_prod[:, 0]]
         X_targets, y_targets     = X_train[index_prod[:, 1]], y_train[index_prod[:, 1]]
