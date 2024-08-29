@@ -32,10 +32,10 @@ class GradualAACBR(torch.nn.Module):
         
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
-            raise(Exception("Length of X_train must match length of y_train."))
+            raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
 
         if (X_default is None or y_default is None or len(X_default) != len(y_default)):
-            raise(Exception("Length of X_default must match length of y_default"))
+            raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
 
         self.A = None
         X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
@@ -81,10 +81,10 @@ class GradualAACBR(torch.nn.Module):
         
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
-            raise(Exception("Length of X_train must match length of y_train."))
+            raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
 
         if (X_default is None or y_default is None or len(X_default) != len(y_default)):
-            raise(Exception("Length of X_default must match length of y_default"))
+            raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
 
         self.A = None
         X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
