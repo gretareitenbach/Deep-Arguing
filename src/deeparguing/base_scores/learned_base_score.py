@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
-from .compute_base_scores import ComputeBaseScores
+from deeparguing.base_scores.compute_base_scores import ComputeBaseScores
 import matplotlib.pyplot as plt
-from feature_extractor.feature_extractor import FeatureExtractor
+from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 
 
 class LearnedBaseScore(ComputeBaseScores):

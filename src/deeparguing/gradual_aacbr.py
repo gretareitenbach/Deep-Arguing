@@ -2,10 +2,10 @@ import torch
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-from semantics.gradual_semantics import GradualSemantics
-from irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
-from casebase_edge_weights.compute_partial_order import ComputePartialOrder
-from base_scores.compute_base_scores import ComputeBaseScores 
+from deeparguing.semantics.gradual_semantics import GradualSemantics
+from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
+from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
+from deeparguing.base_scores.compute_base_scores import ComputeBaseScores 
 from typing import Callable
 
 

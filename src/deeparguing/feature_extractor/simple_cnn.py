@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .feature_extractor import FeatureExtractor
+from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 
 class SimpleCNN(FeatureExtractor):
 

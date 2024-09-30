@@ -1,5 +1,5 @@
 import torch
-from .compute_partial_order import ComputePartialOrder
+from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 import matplotlib.pyplot as plt
 
 

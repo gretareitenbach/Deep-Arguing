@@ -1,5 +1,5 @@
 import torch
-from .compute_irrelevance import ComputeIrrelevance
+from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
 import matplotlib.pyplot as plt
 
 

@@ -1,7 +1,7 @@
 import torch
-from .compute_irrelevance import ComputeIrrelevance
+from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
 import matplotlib.pyplot as plt
-from casebase_edge_weights.compute_partial_order import ComputePartialOrder
+from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 
 class RegularIrrelevance(ComputeIrrelevance):
 

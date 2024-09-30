@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
-from .compute_partial_order import ComputePartialOrder
+from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 import matplotlib.pyplot as plt
-from feature_extractor.feature_extractor import FeatureExtractor
+from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 
 
 class LearnedPartialOrder(ComputePartialOrder):

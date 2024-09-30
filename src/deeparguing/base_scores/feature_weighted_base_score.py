@@ -1,5 +1,5 @@
 import torch
-from .compute_base_scores import ComputeBaseScores
+from deeparguing.base_scores.compute_base_scores import ComputeBaseScores
 import matplotlib.pyplot as plt
 
 

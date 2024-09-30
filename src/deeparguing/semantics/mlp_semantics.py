@@ -1,8 +1,8 @@
-from .gradual_semantics import GradualSemantics
+from deeparguing.semantics.gradual_semantics import GradualSemantics
 import torch
 
 
-class ReluSemantics(GradualSemantics):
+class MLPBasedSemantics(GradualSemantics):
 
     def __init__(self, max_iters, epsilon) -> None:
         super().__init__(max_iters, epsilon)    
@@ -11,6 +11,6 @@ class ReluSemantics(GradualSemantics):
         return torch.matmul(torch.transpose(A, -2, -1), strengths)
 
     def influence_func(self, base_scores, aggregations):
-        return torch.relu(
-            torch.relu(base_scores) + aggregations
+        return torch.sigmoid(
+            torch.log(base_scores/(1 - base_scores)) + aggregations
         )
