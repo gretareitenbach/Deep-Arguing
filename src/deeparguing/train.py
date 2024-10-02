@@ -28,7 +28,7 @@ def train_step(model,
     return loss
 
 
-def train(model,
+def train_model(model,
           X_casebase, y_casebase, X_new_cases, y_new_cases, X_defaults, y_defaults,
           optimizer, criterion, epochs,
           use_symmetric_attacks,
@@ -49,6 +49,12 @@ def train(model,
 
         pbar.set_description(
             f'Epoch {epoch + 1}, Loss: {round(loss.item()/len(X_new_cases), 4)}')
+    
+    # print model gradients:
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name, param.grad)
+
 
     if plot_loss_curve:
 
@@ -56,7 +62,7 @@ def train(model,
         plt.show()
 
 
-def dynamic_train(model,
+def dynamic_train_model(model,
                   X_train, y_train, X_defaults, y_defaults,
                   optimizer, criterion, epochs,
                   use_symmetric_attacks, n_splits,
@@ -94,8 +100,6 @@ def dynamic_train(model,
 def run_gradual_model(model, X_casebase, y_casebase,
                       X_defaults, y_defaults, new_cases, use_symmetric_attacks, use_blockers=False):
 
-    # model.fit(PREPROCESS_FUNC(X_train), y_train, X_default, y_default, USE_SYMMETRIC_ATTACKS)
-    # model.fit_no_blockers(PREPROCESS_FUNC(X_train), y_train, X_default, y_default, USE_SYMMETRIC_ATTACKS)
 
     model.fit(X_casebase, y_casebase, X_defaults, y_defaults,
               use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)

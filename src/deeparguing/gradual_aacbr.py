@@ -6,14 +6,14 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
 from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 from deeparguing.base_scores.compute_base_scores import ComputeBaseScores 
-from typing import Callable
 
 
 class GradualAACBR(torch.nn.Module):
 
     def __init__(self, gradual_semantics: GradualSemantics, compute_base_score: ComputeBaseScores, 
                        irrelevance_edge_weights: ComputeIrrelevance, casebase_edge_weights: ComputePartialOrder):
-        super(GradualAACBR, self).__init__()
+        super().__init__() 
+
 
         self.gradual_semantics = gradual_semantics
         self.compute_base_scores = compute_base_score
@@ -28,6 +28,17 @@ class GradualAACBR(torch.nn.Module):
         return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
+
+        fit_func = self.fit_with_blockers if use_blockers else self.fit_no_blockers
+
+        fit_func(X_train, y_train, X_default, y_default, 
+                 use_symmetric_attacks=use_symmetric_attacks, defaults_not_attack=defaults_not_attack)
+
+    
+
+
+    def fit_with_blockers(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
             use_symmetric_attacks = True, defaults_not_attack = True):
         
 

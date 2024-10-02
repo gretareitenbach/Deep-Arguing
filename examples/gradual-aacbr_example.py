@@ -2,7 +2,6 @@ import torch
 import deeparguing
 import deeparguing.semantics.relu_semantics as rs
 import deeparguing.base_scores.feature_weighted_base_score as fwbs
-import deeparguing.casebase_edge_weights.feature_weighted_partial_order as fwpo
 import deeparguing.irrelevance_edge_weights.feature_weighted_irrelevance as fwi
 
 
