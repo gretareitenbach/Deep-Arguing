@@ -1,6 +1,6 @@
 TODO:
 
-#    0. Refactor MNIST example
+###    0. Refactor MNIST example
     1. Ensure the order we pass X_casebase, X_default and X_new_case is consistent
     2. Change X_<SET>, y_<SET> to just a dictionary of <SET> that can be indexed as <SET>["x"]
     3. Make sure both train functions take in the same arguments so that we can swap them out
@@ -11,6 +11,6 @@ TODO:
     8. Put clustering into it's own module in the deeparguing package - ensure it has a consistent interface so we can try different clustering methods
     9. Put normalizing data as a helper function
     10. Put baseline testing into a separate examples file
-    11. Reorganize examples directory to have subdirectories by dataset 
+###    11. Reorganize examples directory to have subdirectories by dataset 
     12. Separate hyperparameter training and running the model into separate notebooks for each dataset
     13. Add batching when constructing the AF from the casebase so we can use larger casebases

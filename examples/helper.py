@@ -9,7 +9,7 @@ from typing import Callable
 
 def load_iris():
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../data/iris/iris.data')
+    data = pd.read_csv('../../data/iris/iris.data')
 
     data = data.values
 
