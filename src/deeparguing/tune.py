@@ -10,7 +10,7 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
               X_eval_new_cases, y_eval_new_cases,
               show_confusion=False, print_matrix=False,
               print_compute_graph=False, print_graph=False, print_results=False, use_blockers=False,
-              disable_tqdm = False, plot_loss_curve = False):
+              disable_tqdm = False, plot_loss_curve = False, device="cpu"):
 
     semantics = config["semantics"]
     partial_order = config["partial_order"]
@@ -20,7 +20,7 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
     model = GradualAACBR(semantics,
                          base_score,
                          irrelevance,
-                         partial_order)
+                         partial_order).to(device)
     
     
 
@@ -47,17 +47,21 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
 
 def tune_model(search_space, X_casebase, y_casebase, X_default, y_default, 
                X_train_new_cases, y_train_new_cases, X_eval_new_cases, y_eval_new_cases,
-                disable_tqdm = False, num_cpus=12, num_samples=1000, metric="accuracy"):
+                disable_tqdm = False, num_cpus=12, num_gpus = 0, num_samples=1000, metric="accuracy", device="cpu"):
 
     if not ray.is_initialized():
         ray.init(num_cpus=num_cpus)
 
+
     tuner = tune.Tuner(
-        tune.with_parameters(objective, X_casebase=X_casebase, y_casebase=y_casebase, X_default=X_default,
+        tune.with_resources(
+            tune.with_parameters(objective, X_casebase=X_casebase, y_casebase=y_casebase, X_default=X_default,
                              y_default=y_default, 
                              X_train_new_cases=X_train_new_cases, y_train_new_cases=y_train_new_cases, 
                              X_eval_new_cases = X_eval_new_cases, y_eval_new_cases = y_eval_new_cases,
-                             disable_tqdm = disable_tqdm),
+                             disable_tqdm = disable_tqdm, device=device),
+            resources={"cpu": num_cpus, "gpu": num_gpus}
+        ),
         tune_config=tune.TuneConfig(
             metric=metric,
             mode="max",
@@ -73,18 +77,3 @@ def tune_model(search_space, X_casebase, y_casebase, X_default, y_default,
     print("Best score found was: ", results.get_best_result().metrics[metric])
     return best_params
 
-
-# search_space = {
-#     "semantics": ...,
-#     "partial_order": ...,
-#     "irrelevance": ...,
-#     "base_score": ...,
-#     "train": ...,
-#     "no_iters": tune.choice([15, 20, 25]),
-#     "epochs": tune.choice([250, 750, 1500, 3000]),
-#     "lr": tune.loguniform(1e-4, 1e-1),
-#     "momentum": tune.loguniform(1e-4, 1e-1),
-#     "sharpness": tune.loguniform(1e-1, 1e1),
-#     "seed": tune.randint(0, 100),
-#     "symmetric_attacks": tune.choice([True, False]),
-# }

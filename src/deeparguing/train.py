@@ -50,10 +50,10 @@ def train_model(model,
         pbar.set_description(
             f'Epoch {epoch + 1}, Loss: {round(loss.item()/len(X_new_cases), 4)}')
     
-    # print model gradients:
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(name, param.grad)
+    # # print model gradients:
+    # for name, param in model.named_parameters():
+    #     if param.requires_grad:
+    #         print(name, param.grad)
 
 
     if plot_loss_curve:
@@ -116,13 +116,13 @@ def evaluate_model(model, X_train, y_train, X_default, y_default, new_cases, new
     predicted = final_strengths.cpu().detach().numpy()
 
     predicted = np.argmax(predicted, axis=1)
-    new_cases_labels_orig = np.argmax(new_cases_labels, axis=1)
+    new_cases_labels_orig = np.argmax(new_cases_labels.cpu().detach().numpy(), axis=1)
 
     results = (
         accuracy_score(new_cases_labels_orig, predicted),
-        precision_score(new_cases_labels_orig, predicted, average='macro'),
-        recall_score(new_cases_labels_orig, predicted, average='macro'),
-        f1_score(new_cases_labels_orig, predicted, average='macro')
+        precision_score(new_cases_labels_orig, predicted, average='macro', zero_division=0),
+        recall_score(new_cases_labels_orig, predicted, average='macro', zero_division=0),
+        f1_score(new_cases_labels_orig, predicted, average='macro', zero_division=0)
     )
 
     if print_results:

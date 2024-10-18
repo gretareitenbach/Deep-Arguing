@@ -143,7 +143,6 @@ class GradualAACBR(torch.nn.Module):
             differing_labels = torch.any(y_attackers != y_targets, dim=-1)
         else:
             differing_labels = y_attackers != y_targets
-            print(differing_labels)
 
         attack_targets = torch.where(differing_labels, attack_targets, 0)
 
@@ -162,7 +161,6 @@ class GradualAACBR(torch.nn.Module):
             differing_labels = torch.any(y_attackers != y_targets, dim=-1)
         else:
             differing_labels = y_attackers != y_targets
-            print(differing_labels)
 
         attack_targets = torch.where(differing_labels, attack_targets, 0)
 
