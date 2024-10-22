@@ -1,6 +1,6 @@
 itables==1.6.3
 pandas==2.2.2
 scikit_learn==1.4.0
-torch==2.1.2
+torch==2.3.0
 torchviz==0.0.2
 ucimlrepo==0.0.6

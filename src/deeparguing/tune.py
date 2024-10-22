@@ -9,7 +9,7 @@ from deeparguing.train import evaluate_model
 def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_cases, y_train_new_cases,
               X_eval_new_cases, y_eval_new_cases,
               show_confusion=False, print_matrix=False,
-              print_compute_graph=False, print_graph=False, print_results=False, use_blockers=False,
+              print_compute_graph=False, print_graph=False, print_results=False,
               disable_tqdm = False, plot_loss_curve = False, device="cpu"):
 
     semantics = config["semantics"]
@@ -28,19 +28,16 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
     optimizer = optim.SGD(model.parameters(),
                           lr=config["lr"], momentum=config["momentum"])
 
-    config["train"](model,
-          X_casebase, y_casebase, X_train_new_cases, y_train_new_cases, X_default, y_default,
-          optimizer, criterion, config["epochs"],
-          config["symmetric_attacks"],
-          use_blockers=False, plot_loss_curve=plot_loss_curve, disable_tqdm=disable_tqdm)
-
+    config["train"](model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, config["epochs"], config["use_symmetric_attacks"], 
+                    X_new_cases=X_train_new_cases, y_new_cases=y_train_new_cases, n_splits = config.get("n_splits", None), use_blockers=config["use_blockers"], 
+                    plot_loss_curve=plot_loss_curve, disable_tqdm=disable_tqdm, random_split_state=config.get("random_split_state", None))
 
     accuracy, precision, recall, f1 = evaluate_model(model, X_casebase, y_casebase, X_default, y_default, 
                                                      X_eval_new_cases, y_eval_new_cases,
                                                      show_confusion=show_confusion, print_matrix=print_matrix,
                                                      print_compute_graph=print_compute_graph, print_graph=print_graph,
-                                                     print_results=print_results, use_symmetric_attacks=config["symmetric_attacks"], 
-                                                     use_blockers=use_blockers)
+                                                     print_results=print_results, use_symmetric_attacks=config["use_symmetric_attacks"], 
+                                                     use_blockers=config["use_blockers"])
 
     return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
 

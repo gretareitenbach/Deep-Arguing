@@ -30,18 +30,6 @@ class GradualAACBR(torch.nn.Module):
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
             use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
 
-        fit_func = self.fit_with_blockers if use_blockers else self.fit_no_blockers
-
-        fit_func(X_train, y_train, X_default, y_default, 
-                 use_symmetric_attacks=use_symmetric_attacks, defaults_not_attack=defaults_not_attack)
-
-    
-
-
-    def fit_with_blockers(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True):
-        
-
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
 
@@ -53,138 +41,89 @@ class GradualAACBR(torch.nn.Module):
 
         train_size = len(X_train)
         indexes = torch.arange(train_size)
-        index_prod = torch.cartesian_prod(indexes, indexes, indexes)
-
-        X_attackers, y_attackers = X_train[index_prod[:, 0]], y_train[index_prod[:, 0]]
-        X_targets, y_targets     = X_train[index_prod[:, 1]], y_train[index_prod[:, 1]]
-        X_blockers, y_blockers   = X_train[index_prod[:, 2]], y_train[index_prod[:, 2]]
-
-        attackers_default_mask = torch.isin(index_prod[:, 0], default_indexes)
-        blockers_default_mask  = torch.isin(index_prod[:, 2], default_indexes)
-
-        attack_targets = self.__potential_attackers(X_attackers, X_targets, y_attackers, 
-                                                    y_targets, defaults_not_attack, attackers_default_mask) 
         
-        blocked_attacks = self.__minimal_attacks(X_attackers, X_blockers, X_targets, y_blockers, 
-                                                 y_attackers, defaults_not_attack, blockers_default_mask)
+        index_prod = torch.cartesian_prod(indexes, indexes)
 
-        if use_symmetric_attacks: 
-            symmetric_attacks = self.__symmetric_attacks(X_attackers, X_targets, y_attackers, 
-                                                        y_targets, defaults_not_attack, attackers_default_mask)
-        else:
-            symmetric_attacks = torch.zeros_like(attack_targets)
+        idx_attackers = index_prod[:, 0]
+        idx_targets = index_prod[:, 1]
 
-        symmetric_attacks = symmetric_attacks.reshape((train_size, train_size, train_size)).prod(axis=-1)
+        attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size))
 
-        # Combine potential attacks and blocked attacks
-        attacks = torch.mul(attack_targets, blocked_attacks)
-
-        # Convert to adjacency matrix
-        all_attacks = attacks.reshape((train_size, train_size, train_size))
-        A = all_attacks.prod(axis=-1) + symmetric_attacks
-        self.A = (-A) 
-        self.X_train = X_train
-        self.y_train = y_train
-        self.default_indexes = default_indexes
-
-    def fit_no_blockers(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True):
+        X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
+        X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
         
 
-        if (X_train is None or y_train is None or len(X_train) != len(y_train)):
-            raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
+        edge_weights_strict = self.casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
 
-        if (X_default is None or y_default is None or len(X_default) != len(y_default)):
-            raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
+        if defaults_not_attack:
+            edge_weights_strict = torch.where(attackers_default_mask, 0, edge_weights_strict)
 
-        self.A = None
-        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+        attacks, differing_labels = self.__potential_attacks(edge_weights_strict, y_attackers, y_targets, train_size)
 
-        device = X_train.device
+        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
 
-        train_size = len(X_train)
-        indexes = torch.arange(train_size).to(device)
-        index_prod = torch.cartesian_prod(indexes, indexes).to(device)
-        default_indexes = default_indexes.to(device)
 
-        X_attackers, y_attackers = X_train[index_prod[:, 0]], y_train[index_prod[:, 0]]
-        X_targets, y_targets     = X_train[index_prod[:, 1]], y_train[index_prod[:, 1]]
+        symmetric_attacks = self.__symmetric_attacks(use_symmetric_attacks, X_attackers,  X_targets, 
+                               defaults_not_attack, attackers_default_mask, train_size, differing_labels)
 
-        attackers_default_mask = torch.isin(index_prod[:, 0], default_indexes)
-
-        attack_targets = self.__potential_attackers(X_attackers, X_targets, y_attackers, 
-                                                    y_targets, defaults_not_attack, attackers_default_mask) 
-        
-        if use_symmetric_attacks: 
-            symmetric_attacks = self.__symmetric_attacks(X_attackers, X_targets, y_attackers, 
-                                                        y_targets, defaults_not_attack, attackers_default_mask)
-        else:
-            symmetric_attacks = torch.zeros_like(attack_targets)
-
-        symmetric_attacks = symmetric_attacks.reshape((train_size, train_size))
-
-        # Combine potential attacks and blocked attacks
-
-        # Convert to adjacency matrix
-        A = attack_targets.reshape((train_size, train_size)) + symmetric_attacks
-        self.A = (-A) 
+        self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
 
 
-    def __symmetric_attacks(self, X_attackers, X_targets, y_attackers, 
-                              y_targets, defaults_not_attack, attackers_default_mask):
 
-        attack_targets = self.casebase_edge_weights_equal(X_attackers, X_targets)
 
-        assert(attack_targets.ndim == 1)
+    def __symmetric_attacks(self, use_symmetric_attacks, X_attackers,  X_targets, 
+                               defaults_not_attack, attackers_default_mask, train_size, differing_labels):
+
+        if use_symmetric_attacks: 
+            symmetric_attacks = self.casebase_edge_weights_equal(X_attackers, X_targets)
+            symmetric_attacks = torch.reshape(symmetric_attacks, (train_size, train_size))
+            symmetric_attacks = torch.where(differing_labels, symmetric_attacks, 0)
+            if defaults_not_attack:
+                symmetric_attacks = torch.where(attackers_default_mask, 0, symmetric_attacks)
+            
+        else:
+            symmetric_attacks = torch.zeros((train_size, train_size))
+        
+        return symmetric_attacks 
+
+    def __potential_attacks(self, edge_weights_strict,  y_attackers, y_targets,  train_size):
+
+
+
         if len(y_attackers.shape) == 2:
             differing_labels = torch.any(y_attackers != y_targets, dim=-1)
         else:
             differing_labels = y_attackers != y_targets
-
-        attack_targets = torch.where(differing_labels, attack_targets, 0)
-
-        if defaults_not_attack:
-            attack_targets = torch.where(attackers_default_mask, 0, attack_targets)
         
-        return attack_targets
+        differing_labels = torch.reshape(differing_labels, (train_size, train_size))
 
-    def __potential_attackers(self, X_attackers, X_targets, y_attackers, 
-                              y_targets, defaults_not_attack, attackers_default_mask):
+        attacks = torch.where(differing_labels, edge_weights_strict, 0)
 
-        attack_targets = self.casebase_edge_weights_strict(X_attackers, X_targets) 
+        return attacks, differing_labels
 
-        assert(attack_targets.ndim == 1)
-        if len(y_attackers.shape) == 2:
-            differing_labels = torch.any(y_attackers != y_targets, dim=-1)
-        else:
-            differing_labels = y_attackers != y_targets
-
-        attack_targets = torch.where(differing_labels, attack_targets, 0)
-
-        if defaults_not_attack:
-            attack_targets = torch.where(attackers_default_mask, 0, attack_targets)
-        
-        return attack_targets
     
-    def __minimal_attacks(self, X_attackers, X_blockers, X_targets, y_blockers, 
-                          y_attackers, defaults_not_attack, blockers_default_mask):
-        blocked_attacks = torch.mul(self.casebase_edge_weights_strict(X_attackers, X_blockers),
-                                    self.casebase_edge_weights_strict(X_blockers, X_targets))
+    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes):
 
-        if len(y_attackers.shape) == 2:
-            same_labels = torch.any(y_blockers == y_attackers, dim=-1)
+        if use_blockers:
+            i_indices = indexes.unsqueeze(1)  # Column vector (rows x 1)
+            j_indices = indexes.unsqueeze(0)  # Row vector (1 x cols)
+            if len(y_train.shape) == 2:
+                same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)
+            else:
+                same_labels = (y_train[i_indices] == y_train[j_indices])
+            
+
+            order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0)
+            blocked_attacks = torch.matmul(order_with_same_labels, attacks)
+            blocked_attacks = torch.clamp(blocked_attacks, min = 0, max = 1)
+            blocked_attacks = 1 - blocked_attacks 
         else:
-            same_labels = y_blockers == y_attackers
-
-        blocked_attacks = torch.where(same_labels, blocked_attacks, 0)
-
-        if defaults_not_attack:
-            blocked_attacks = torch.where(blockers_default_mask, 0, blocked_attacks)
+            blocked_attacks = torch.ones_like(edge_weights_strict)
         
-        return 1 - blocked_attacks
+        return blocked_attacks
 
 
     def __add_default_cases(self, X_train, y_train, X_default, y_default):
