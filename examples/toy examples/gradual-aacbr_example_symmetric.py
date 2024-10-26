@@ -45,7 +45,8 @@ no_features = X_train.shape[-1]
 # semantics = ms.MLPBasedSemantics(max_iters=5, epsilon=0)
 semantics = rs.ReluSemantics(max_iters=5, epsilon=0)
 
-edge_weights_test = lambda a, t: torch.where(torch.all(a >= t, axis=1), 1.0, 0.0) 
+# edge_weights_test = lambda a, t: torch.where(torch.all(a >= t, axis=1), 1.0, 0.0) 
+edge_weights_test = lambda a, t: torch.sigmoid(a[:, 0] - t[:, 0]) 
 
 
 model = deeparguing.GradualAACBR(semantics, 
@@ -55,7 +56,6 @@ model = deeparguing.GradualAACBR(semantics,
                                    )
 
 model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=True)
-
 new_case = torch.tensor([
     [2],
 ], dtype=torch.float32)
@@ -63,5 +63,19 @@ new_case = torch.tensor([
 strengths = model(new_case)
 print(strengths)
 
+
+new_fit = model.A
 model.show_matrix()
 model.show_graph_with_labels()
+
+model.slow_fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=True)
+slow_fit = model.A
+
+
+strengths = model(new_case)
+print(strengths)
+
+model.show_matrix()
+model.show_graph_with_labels()
+
+assert(torch.all(new_fit == slow_fit))

@@ -52,7 +52,6 @@ class GradualAACBR(torch.nn.Module):
         X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
         X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
         
-
         edge_weights_strict = self.casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
 
         if defaults_not_attack:
@@ -115,11 +114,9 @@ class GradualAACBR(torch.nn.Module):
             else:
                 same_labels = (y_train[i_indices] == y_train[j_indices])
             
-
-            order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0)
-            blocked_attacks = torch.matmul(order_with_same_labels, attacks)
-            blocked_attacks = torch.clamp(blocked_attacks, min = 0, max = 1)
-            blocked_attacks = 1 - blocked_attacks 
+            order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0).unsqueeze(1) # Shape (n, 1, n)
+            attacks_expanded = attacks.T.unsqueeze(0)  # Shape (1, n, n)
+            blocked_attacks = torch.prod(1 - (order_with_same_labels * attacks_expanded), dim=2)
         else:
             blocked_attacks = torch.ones_like(edge_weights_strict)
         
@@ -251,3 +248,78 @@ class GradualAACBR(torch.nn.Module):
 
     def plot_irrelevance_edge_weights_parameters(self):
         self.irrelevance_edge_weights.plot_parameters()
+    
+    ############################################################################
+    # The following contains an implementation of fit that makes limited use of 
+    #  broadcasting or vectorisation or matrix operations and is used for sanity
+    # checking results    
+    ############################################################################
+
+    def slow_fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
+
+        if (X_train is None or y_train is None or len(X_train) != len(y_train)):
+            raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
+
+        if (X_default is None or y_default is None or len(X_default) != len(y_default)):
+            raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
+
+        self.A = None
+        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+
+        train_size = len(X_train)
+        indexes = torch.arange(train_size)
+        
+        index_prod = torch.cartesian_prod(indexes, indexes)
+
+        idx_attackers = index_prod[:, 0]
+        idx_targets = index_prod[:, 1]
+
+
+        X_attackers = X_train[idx_attackers]
+        X_targets = X_train[idx_targets]
+        
+        edge_weights_strict = self.casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
+
+        if use_symmetric_attacks:
+            edge_weights_equal = self.casebase_edge_weights_equal(X_attackers, X_targets).reshape((train_size, train_size))
+        else:
+            edge_weights_equal = torch.zeros_like(edge_weights_strict)
+
+    
+        result = torch.zeros_like(edge_weights_strict)
+
+        for attacker_index in range(train_size):
+
+            if defaults_not_attack and attacker_index in default_indexes:
+                continue
+
+            for target_index in range(train_size):
+
+                if torch.all(y_train[attacker_index] == y_train[target_index], dim=-1):
+                    continue
+
+                blocker_value = 1
+                if use_blockers:
+
+                    for blocker_index in range(train_size):
+
+                        if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (defaults_not_attack and blocker_index in default_indexes):
+                            continue
+
+                        blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
+
+
+                result[attacker_index, target_index] = edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index]        
+
+
+            
+
+
+        self.A = -result
+        self.X_train = X_train
+        self.y_train = y_train
+        self.default_indexes = default_indexes
+
+
+    
