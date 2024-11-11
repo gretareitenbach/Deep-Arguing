@@ -28,7 +28,7 @@ class GradualAACBR(torch.nn.Module):
         return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, approximate_blockers = False):
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
@@ -59,7 +59,11 @@ class GradualAACBR(torch.nn.Module):
 
         attacks, differing_labels = self.__potential_attacks(edge_weights_strict, y_attackers, y_targets, train_size)
 
-        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
+        if approximate_blockers and use_blockers:
+            blocked_attacks = torch.ones_like(attacks)
+            attacks = self.masked_softmax(attacks, attacks != 0, dim=0)
+        else:
+            blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
 
 
         symmetric_attacks = self.__symmetric_attacks(use_symmetric_attacks, X_attackers,  X_targets, 
@@ -70,7 +74,16 @@ class GradualAACBR(torch.nn.Module):
         self.y_train = y_train
         self.default_indexes = default_indexes
 
-
+    def masked_softmax(self, vec, mask, dim=0):
+        # Masked softmax from https://discuss.pytorch.org/t/apply-mask-softmax/14212/12#:~:text=Jun%202018-,I,-had%20to%20implement
+        masked_vec = vec * mask.float()
+        max_vec = torch.max(masked_vec, dim=dim, keepdim=True)[0]
+        exps = torch.exp(masked_vec-max_vec)
+        masked_exps = exps * mask.float()
+        masked_sums = masked_exps.sum(dim, keepdim=True)
+        zeros=(masked_sums == 0)
+        masked_sums += zeros.float()
+        return masked_exps/masked_sums
 
 
     def __symmetric_attacks(self, use_symmetric_attacks, X_attackers,  X_targets, 
@@ -234,6 +247,21 @@ class GradualAACBR(torch.nn.Module):
         plt.figure(figsize=(10, 10))
         A = self.A.detach().cpu().numpy()
         plt.imshow(A, cmap='cividis', interpolation='nearest')
+        ax = plt.gca()
+        n = len(self.X_train)
+        # Major ticks
+        ax.set_xticks(np.arange(0, n, 1))
+        ax.set_yticks(np.arange(0, n, 1))
+
+        # Labels for major ticks
+        ax.set_xticklabels(np.arange(0, n, 1))
+        ax.set_yticklabels(np.arange(0, n, 1))
+
+        # Minor ticks
+        ax.set_xticks(np.arange(-.5, n, 1), minor=True)
+        ax.set_yticks(np.arange(-.5, n, 1), minor=True)
+
+        ax.grid(which='minor', color='black', linestyle='-', linewidth=0.2)
         plt.colorbar(label='Value')
         plt.xlabel('Nodes')
         plt.ylabel('Nodes')
