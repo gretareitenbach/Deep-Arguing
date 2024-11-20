@@ -39,7 +39,7 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
                                                      print_results=print_results, use_symmetric_attacks=config["use_symmetric_attacks"], 
                                                      use_blockers=config["use_blockers"])
 
-    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+    return {"f1": f1, "accuracy": accuracy, "precision": precision, "recall": recall}
 
 
 def tune_model(search_space, X_casebase, y_casebase, X_default, y_default, 
