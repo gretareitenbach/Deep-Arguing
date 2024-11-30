@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.cluster import KMeans
 import torch
-from typing import Callable
 
 
 def load_iris():
@@ -59,56 +57,6 @@ def split_data(X, y, seed, test_size=0.2):
 
 
 
-# fixed_size = lambda total_size: 15
 
-# proportion = lambda group_size: int(group_size * group_proportion)
-
-def cluster_data(X, y, cluster_size_func: Callable[[int], int]):
-
-    GROUP_PROPORTION = 0.25 
-    # GROUP_PROPORTION = 0.5
-
-    # Example data
-    # X = np.random.randn(132, 2)
-
-    original_shape = X.shape
-
-
-    X_all_centroids = []
-    y_all_centroids = []
-
-    all_y = np.unique(y, axis=0)
-
-    for selected_y in all_y:
-
-
-        group = X[np.all(selected_y == y, axis=1)]
-        group_size = len(group)
-
-        group = group.reshape(group_size, -1)
-
-        # Number of clusters
-        k = cluster_size_func(len(group))
-
-        print(f"{k} clusters for {selected_y}")
-
-        # Create a KMeans object
-        kmeans = KMeans(n_clusters=k, random_state=0)
-
-        # Fit the model to the data and predict cluster assignments
-        cluster_assignments = kmeans.fit_predict(group)
-
-        # Get the centroids
-        X_centroids_group = kmeans.cluster_centers_
-        y_centroids_group = np.tile(selected_y, (k, 1))
-
-        X_all_centroids.append(X_centroids_group)
-        y_all_centroids.append(y_centroids_group)
-
-    original_shape = list(original_shape)
-    original_shape[0] = -1
-    original_shape = tuple(original_shape)
-
-    X_centroids =  np.concatenate(X_all_centroids).reshape(original_shape)
-    y_centroids =  np.concatenate(y_all_centroids)
-    return X_centroids, y_centroids
+def normalise_input(X, mean, std):
+    return (X-mean)/std

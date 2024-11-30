@@ -5,6 +5,8 @@ import numpy as np
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
 from torchviz import make_dot
+from typing import Callable
+from sklearn.cluster import KMeans
 
 
 def train_step(model,
@@ -323,7 +325,6 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
                    use_symmetric_attacks=False, use_blockers=True):
     
     """
-
         Fits and executes the model, then evaluates it on accuracy, precision, 
         recall and f1
 
@@ -423,3 +424,74 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
                  ).render("gradual_aacbr", format="pdf")
 
     return results
+
+def cluster_data(X, y, cluster_size_func: Callable[[int], int]):
+
+    """
+        For each label in y, make clusters of X. The number of clusters is 
+        dependent on the cluster_size_func
+
+        Parameters
+        ----------
+
+        X : array_like 
+            The inputs to be clustered
+
+        y : array_like
+            The labels of the inputs
+
+        cluster_size_func : Callable[[int], int] 
+            A function that accepts the total number of items to be clustered
+            and returns the number of clusters to produce
+
+
+        Returns
+        -------
+        results : Tuple
+            returns a pair of array_likes, the first of which is the cluster 
+            centers and the second is the corresponding label for each cluster 
+            center
+        
+    """
+
+    original_shape = X.shape
+
+
+    X_all_centroids = []
+    y_all_centroids = []
+
+    all_y = np.unique(y, axis=0)
+
+    for selected_y in all_y:
+
+
+        group = X[np.all(selected_y == y, axis=1)]
+        group_size = len(group)
+
+        group = group.reshape(group_size, -1)
+
+        # Number of clusters
+        k = cluster_size_func(len(group))
+
+        print(f"{k} clusters for {selected_y}")
+
+        # Create a KMeans object
+        kmeans = KMeans(n_clusters=k, random_state=0)
+
+        # Fit the model to the data and predict cluster assignments
+        cluster_assignments = kmeans.fit_predict(group)
+
+        # Get the centroids
+        X_centroids_group = kmeans.cluster_centers_
+        y_centroids_group = np.tile(selected_y, (k, 1))
+
+        X_all_centroids.append(X_centroids_group)
+        y_all_centroids.append(y_centroids_group)
+
+    original_shape = list(original_shape)
+    original_shape[0] = -1
+    original_shape = tuple(original_shape)
+
+    X_centroids =  np.concatenate(X_all_centroids).reshape(original_shape)
+    y_centroids =  np.concatenate(y_all_centroids)
+    return X_centroids, y_centroids
