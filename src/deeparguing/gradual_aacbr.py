@@ -12,8 +12,24 @@ class GradualAACBR(torch.nn.Module):
 
     def __init__(self, gradual_semantics: GradualSemantics, compute_base_score: ComputeBaseScores, 
                        irrelevance_edge_weights: ComputeIrrelevance, casebase_edge_weights: ComputePartialOrder):
-        super().__init__() 
+        """
+            Gradual AACBR Model
 
+            Parameters
+            ----------
+            gradual_semantics : GradualSemantics
+                A gradual_semantics to evaluate the edge-weighted QBAF
+            compute_base_score : ComputeBaseScores
+                The function that computes the base score from the arguments.
+                This is the intrinsic strength of each argument.
+            irreleance_edge_weights : ComputeIrrelevance
+                The function that computes the degree of irrelevance 
+                between the new case and casebase arguments.
+            casebase_edge_weights : ComputePartialOrder
+                The function that computes the soft ordering between two 
+                arguments in the casebase. 
+        """
+        super().__init__() 
 
         self.gradual_semantics = gradual_semantics
         self.compute_base_scores = compute_base_score
@@ -21,14 +37,56 @@ class GradualAACBR(torch.nn.Module):
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
     
-    def casebase_edge_weights_strict(self, attacker, target):
+    def __casebase_edge_weights_strict(self, attacker, target):
         return self.casebase_edge_weights(attacker, target) * (1 - self.casebase_edge_weights(target, attacker))
 
-    def casebase_edge_weights_equal(self, attacker, target):
+    def __casebase_edge_weights_equal(self, attacker, target):
         return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
             use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, approximate_blockers = False):
+
+        """
+            Builds the Edge-Weighted Quantitative Bipolar Argumentation 
+            Framework for the casebase. 
+
+            Parameters
+            ----------
+            X_train : torch.Tensor
+                Input casebase argument characterisations as a tensor. 
+                Shape (N, x1, ..., xn) where N is the number of casebase 
+                arguments and (x1, ..., xn) is the shape of each argument.
+            y_train : torch.Tensor
+                Input casebase label as a tensor. Shape (N, Y) where N is the 
+                number of casebase arguments and Y is the number of labels
+            X_default : torch.Tensor
+                Default arguments characterisations as a tensor.
+                Shape (Y, x1, ..., xn) where Y is the number of labels 
+                and (x1, ..., xn) is the shape of each argument.
+            y_default : torch.Tensor
+                Input casebase label as a tensor. Shape (Y, Y) where Y is the
+                number of labels
+            use_symmetric_attack : bool, default True
+                When true, symmetric attacks between cases of the same 
+                characterisation are included
+            defaults_not_attack : bool, default True
+                When true, the default arguments will not be able to attack any
+                case in the casebase
+            use_blockers : bool, default True
+                When true, the model will optimise attacks of minimal between cases
+                of minimal difference
+            
+
+            Notes
+            -----
+            The fit algorithm uses torch vector and batching operations to
+            improve efficiency. See fit_slow for a direct implementation of the
+            definition.
+
+            Fit must be called before calling any subsequent function that uses
+            the adjacency matrix self.A
+
+        """
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
@@ -52,7 +110,7 @@ class GradualAACBR(torch.nn.Module):
         X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
         X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
         
-        edge_weights_strict = self.casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
+        edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
 
         if defaults_not_attack:
             edge_weights_strict = torch.where(attackers_default_mask, 0, edge_weights_strict)
@@ -90,7 +148,7 @@ class GradualAACBR(torch.nn.Module):
                                defaults_not_attack, attackers_default_mask, train_size, differing_labels):
 
         if use_symmetric_attacks: 
-            symmetric_attacks = self.casebase_edge_weights_equal(X_attackers, X_targets)
+            symmetric_attacks = self.__casebase_edge_weights_equal(X_attackers, X_targets)
             symmetric_attacks = torch.reshape(symmetric_attacks, (train_size, train_size))
             symmetric_attacks = torch.where(differing_labels, symmetric_attacks, 0)
             if defaults_not_attack:
@@ -172,6 +230,39 @@ class GradualAACBR(torch.nn.Module):
         return strengths
 
     def forward(self, new_cases: torch.Tensor, return_all_strenghts = False):
+        """
+            Computes the final strenghts of the EW-QAF for each new_case input
+
+            Parameters
+            ----------
+            new_cases : torch.Tensor
+                Input newcase argument characterisations as a tensor. 
+                Shape (N, x1, ..., xn) where N is the number of new cases 
+                arguments and (x1, ..., xn) is the shape of each argument.
+
+            return_all_strenghts : bool, default False
+                When false, the final strenghts of only the default cases are
+                returned.
+                When true, the final strenght for all casebase 
+                arguments will be returned.
+                
+
+            Returns
+            -------
+            final_strengths : torch.Tensor
+                The final strenghts of the arguments.
+                if return_all_strenghts then shape is (N, C), where N is the 
+                number of new cases and C is the number of cases in the 
+                casebase. Otherwise shape is (N, D) where D is the number of 
+                default cases.
+
+
+            Notes
+            -----
+            This function will raise an exception if the fit function has not
+            been previously called.
+
+        """
 
         if self.A is None:
             raise(Exception("Ensure the model has been fit first."))
@@ -194,15 +285,24 @@ class GradualAACBR(torch.nn.Module):
             return final_strengths[:, self.default_indexes]
 
     def show_graph_with_labels(self):
+        """
+
+            Outputs a networkx graph of the casebase
+
+            Notes
+            -----
+            This function will raise an exception if the fit function has not
+            been previously called.
+
+        """
+
+        if self.A is None:
+            raise(Exception("Ensure the model has been fit first."))
+
         A = self.A.detach().cpu().numpy()
         y_train = np.argmax(self.y_train.cpu().detach().numpy(), axis=1)
         default_indexes = self.default_indexes.cpu().detach().numpy()
 
-        # rows, cols = np.where(A != 0)
-        # edges = zip(rows.tolist(), cols.tolist())
-
-        # gr = nx.DiGraph()
-        # gr.add_edges_from(edges)
 
         gr = nx.from_numpy_array(A, create_using=nx.DiGraph)
         pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
@@ -244,6 +344,20 @@ class GradualAACBR(torch.nn.Module):
         plt.show()
 
     def show_matrix(self):
+        """
+
+            Outputs an image of the adjacency matrix of the casebase
+
+            Notes
+            -----
+            This function will raise an exception if the fit function has not
+            been previously called.
+
+        """
+
+        if self.A is None:
+            raise(Exception("Ensure the model has been fit first."))
+
         plt.figure(figsize=(10, 10))
         A = self.A.detach().cpu().numpy()
         plt.imshow(A, cmap='cividis', interpolation='nearest')
@@ -279,7 +393,7 @@ class GradualAACBR(torch.nn.Module):
     
     ############################################################################
     # The following contains an implementation of fit that makes limited use of 
-    #  broadcasting or vectorisation or matrix operations and is used for sanity
+    #  broadcasting, vectorisation or matrix operations and is used for sanity
     # checking results    
     ############################################################################
 
@@ -307,10 +421,10 @@ class GradualAACBR(torch.nn.Module):
         X_attackers = X_train[idx_attackers]
         X_targets = X_train[idx_targets]
         
-        edge_weights_strict = self.casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
+        edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
 
         if use_symmetric_attacks:
-            edge_weights_equal = self.casebase_edge_weights_equal(X_attackers, X_targets).reshape((train_size, train_size))
+            edge_weights_equal = self.__casebase_edge_weights_equal(X_attackers, X_targets).reshape((train_size, train_size))
         else:
             edge_weights_equal = torch.zeros_like(edge_weights_strict)
 

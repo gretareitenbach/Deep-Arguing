@@ -12,7 +12,52 @@ def train_step(model,
                optimizer, criterion,
                use_symmetric_attacks,
                use_blockers=True):
+    """
+        Execute a single step of training
 
+        Parameters
+        ----------
+        model : GradualAACBR
+            GradualAACBR model to train
+        X_casebase : torch.Tensor
+            Input casebase argument characterisations as a tensor. 
+            Shape (N, x1, ..., xn) where N is the number of casebase 
+            arguments and (x1, ..., xn) is the shape of each argument.
+        y_casebase : torch.Tensor
+            Input casebase label as a tensor. Shape (N, Y) where N is the 
+            number of casebase arguments and Y is the number of labels
+        X_new_cases : torch.Tensor
+            Input new_cases arguments characterisations as a tensor. 
+            Shape (M, x1, ..., xn) where M is the number of new cases 
+            and (x1, ..., xn) is the shape of each argument.
+        y_new_cases : torch.Tensor
+            Input casebase label as a tensor. Shape (M, Y) where M is the 
+            number of new cases and Y is the number of labels
+        X_default : torch.Tensor
+            Default arguments characterisations as a tensor.
+            Shape (Y, x1, ..., xn) where Y is the number of labels 
+            and (x1, ..., xn) is the shape of each argument.
+        y_default : torch.Tensor
+            Input casebase label as a tensor. Shape (Y, Y) where Y is the
+            number of labels
+        optimizer : torch.optim.Optimizer
+            The torch optimizer
+        criterion : [torch.tensor, torch.tensor] -> torch.tensor 
+            The loss function used to train the model
+        use_symmetric_attack : bool
+            When true, symmetric attacks between cases of the same 
+            characterisation are included
+        use_blockers : bool, default true
+            When true, the model will optimise attacks of minimal between cases
+            of minimal difference
+
+
+        Returns
+        -------
+        loss : torch.tensor
+            returns the loss of the model
+
+    """
     optimizer.zero_grad()
 
     # TODO: consider efficiency issues with having to rebuild each time
@@ -30,6 +75,66 @@ def train_step(model,
 
 def static_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None):
+    """
+        Executes a full training loop with a static casebase. 
+
+        Parameters
+        ----------
+        model : GradualAACBR
+            GradualAACBR model to train
+        X_casebase : torch.Tensor
+            Input casebase argument characterisations as a tensor. 
+            Shape (N, x1, ..., xn) where N is the number of casebase 
+            arguments and (x1, ..., xn) is the shape of each argument.
+        y_casebase : torch.Tensor
+            Input casebase label as a tensor. Shape (N, Y) where N is the 
+            number of casebase arguments and Y is the number of labels
+        X_default : torch.Tensor
+            Default arguments characterisations as a tensor.
+            Shape (Y, x1, ..., xn) where Y is the number of labels 
+            and (x1, ..., xn) is the shape of each argument.
+        y_default : torch.Tensor
+            Input casebase label as a tensor. Shape (Y, Y) where Y is the
+            number of labels
+        optimizer : torch.optim.Optimizer
+            The torch optimizer
+        criterion : [torch.tensor, torch.tensor] -> torch.tensor 
+            The loss function used to train the model
+        epochs : int
+            The number of epochs to run training for
+        use_symmetric_attack : bool
+            When true, symmetric attacks between cases of the same 
+            characterisation are included
+        X_new_cases : torch.Tensor, default None
+            Input new_cases arguments characterisations as a tensor. 
+            Shape (M, x1, ..., xn) where M is the number of new cases 
+            and (x1, ..., xn) is the shape of each argument.
+        y_new_cases : torch.Tensor, default None
+            Input casebase label as a tensor. Shape (M, Y) where M is the 
+            number of new cases and Y is the number of labels
+        n_splits : int, default None
+            The number of groups to split the data into for dynamic training
+        use_blockers : bool, default true
+            When true, the model will optimise attacks of minimal between cases
+            of minimal difference
+        plot_loss_curve : bool, default False
+            When true, a plot of the loss curve will be outputted
+        disable_tqdm : bool, default True
+            When true, tqdm will be disabled
+        random_split_state : int, default None
+            The seed used to split the data into groups
+
+        Returns
+        -------
+        loss : torch.tensor
+            returns the loss of the model
+        
+        Notes
+        -----
+        For static training, X_new_cases and y_new_cases must be initalised and
+        n_splits and random_split_state are ignored
+
+    """
 
     if X_new_cases is None or y_new_cases is None:
         raise Exception("X_new_cases and y_new_cases cannot be None")
@@ -65,6 +170,66 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
 
 def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None):
+    """
+        Executes a full training loop with a dynamic casebase. 
+
+        Parameters
+        ----------
+        model : GradualAACBR
+            GradualAACBR model to train
+        X_casebase : torch.Tensor
+            Input casebase argument characterisations as a tensor. 
+            Shape (N, x1, ..., xn) where N is the number of casebase 
+            arguments and (x1, ..., xn) is the shape of each argument.
+        y_casebase : torch.Tensor
+            Input casebase label as a tensor. Shape (N, Y) where N is the 
+            number of casebase arguments and Y is the number of labels
+        X_default : torch.Tensor
+            Default arguments characterisations as a tensor.
+            Shape (Y, x1, ..., xn) where Y is the number of labels 
+            and (x1, ..., xn) is the shape of each argument.
+        y_default : torch.Tensor
+            Input casebase label as a tensor. Shape (Y, Y) where Y is the
+            number of labels
+        optimizer : torch.optim.Optimizer
+            The torch optimizer
+        criterion : [torch.tensor, torch.tensor] -> torch.tensor 
+            The loss function used to train the model
+        epochs : int
+            The number of epochs to run training for
+        use_symmetric_attack : bool
+            When true, symmetric attacks between cases of the same 
+            characterisation are included
+        X_new_cases : torch.Tensor, default None
+            Input new_cases arguments characterisations as a tensor. 
+            Shape (M, x1, ..., xn) where M is the number of new cases 
+            and (x1, ..., xn) is the shape of each argument.
+        y_new_cases : torch.Tensor, default None
+            Input casebase label as a tensor. Shape (M, Y) where M is the 
+            number of new cases and Y is the number of labels
+        n_splits : int, default None
+            The number of groups to split the data into for dynamic training
+        use_blockers : bool, default true
+            When true, the model will optimise attacks of minimal between cases
+            of minimal difference
+        plot_loss_curve : bool, default False
+            When true, a plot of the loss curve will be outputted
+        disable_tqdm : bool, default True
+            When true, tqdm will be disabled
+        random_split_state : int, default None
+            The seed used to split the data into groups
+
+        Returns
+        -------
+        loss : torch.tensor
+            returns the loss of the model
+        
+        Notes
+        -----
+        For dynamic training, X_new_cases and y_new_cases are ignored and
+        n_splits and random_split_state must be initalised 
+
+    """
 
     if X_new_cases is not None or y_new_cases is not None:
         # TODO: Change to logging
@@ -105,7 +270,47 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
 
 def run_gradual_model(model, X_casebase, y_casebase,
                       X_default, y_default, X_new_cases, use_symmetric_attacks, use_blockers=True):
+    """
+        Fits the model with the provided casebase and executes it on the new_cases
 
+        Parameters
+        ----------
+        model : GradualAACBR
+            GradualAACBR model to train
+        X_casebase : torch.Tensor
+            Input casebase argument characterisations as a tensor. 
+            Shape (N, x1, ..., xn) where N is the number of casebase 
+            arguments and (x1, ..., xn) is the shape of each argument.
+        y_casebase : torch.Tensor
+            Input casebase label as a tensor. Shape (N, Y) where N is the 
+            number of casebase arguments and Y is the number of labels
+        X_default : torch.Tensor
+            Default arguments characterisations as a tensor.
+            Shape (Y, x1, ..., xn) where Y is the number of labels 
+            and (x1, ..., xn) is the shape of each argument.
+        y_default : torch.Tensor
+            Input casebase label as a tensor. Shape (Y, Y) where Y is the
+            number of labels
+        X_new_cases : torch.Tensor, default None
+            Input new_cases arguments characterisations as a tensor. 
+            Shape (M, x1, ..., xn) where M is the number of new cases 
+            and (x1, ..., xn) is the shape of each argument.
+        y_new_cases : torch.Tensor, default None
+            Input casebase label as a tensor. Shape (M, Y) where M is the 
+            number of new cases and Y is the number of labels
+        use_symmetric_attack : bool
+            When true, symmetric attacks between cases of the same 
+            characterisation are included
+        use_blockers : bool, default true
+            When true, the model will optimise attacks of minimal between cases
+            of minimal difference
+
+        Returns
+        -------
+        result : torch.tensor
+            returns the output strengths of the model when executed on new_cases 
+        
+    """
 
     model.fit(X_casebase, y_casebase, X_default, y_default,
               use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
@@ -116,6 +321,70 @@ def run_gradual_model(model, X_casebase, y_casebase,
 def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_cases, y_new_cases, print_results=True,
                    show_confusion=False, print_graph=False, print_matrix=False, print_compute_graph=False,
                    use_symmetric_attacks=False, use_blockers=True):
+    
+    """
+
+        Fits and executes the model, then evaluates it on accuracy, precision, 
+        recall and f1
+
+        Parameters
+        ----------
+        model : GradualAACBR
+            GradualAACBR model to train
+        X_casebase : torch.Tensor
+            Input casebase argument characterisations as a tensor. 
+            Shape (N, x1, ..., xn) where N is the number of casebase 
+            arguments and (x1, ..., xn) is the shape of each argument.
+        y_casebase : torch.Tensor
+            Input casebase label as a tensor. Shape (N, Y) where N is the 
+            number of casebase arguments and Y is the number of labels
+        X_default : torch.Tensor
+            Default arguments characterisations as a tensor.
+            Shape (Y, x1, ..., xn) where Y is the number of labels 
+            and (x1, ..., xn) is the shape of each argument.
+        y_default : torch.Tensor
+            Input casebase label as a tensor. Shape (Y, Y) where Y is the
+            number of labels
+        X_new_cases : torch.Tensor
+            Input new_cases arguments characterisations as a tensor. 
+            Shape (M, x1, ..., xn) where M is the number of new cases 
+            and (x1, ..., xn) is the shape of each argument.
+        y_new_cases : torch.Tensor
+            Input casebase label as a tensor. Shape (M, Y) where M is the 
+            number of new cases and Y is the number of labels
+
+        print_results : bool, default true
+            When true, the accuracy, precision, recall and f1 is printed to
+            console
+
+        show_confusion : bool, default false
+            When true, the confusion matrix graph is created
+        
+        print_graph : bool, default false
+            When true, the model adjacency matrix is visualised as a connected
+            graph
+        
+        print_matrix : bool, default false
+            When true, the model adjacency matrix is visualised as a heatmap
+        
+        print_compute_graph : bool, default false
+            When true, a pdf with the compute graph is outputted
+
+        use_symmetric_attack : bool, default false
+            When true, symmetric attacks between cases of the same 
+            characterisation are included
+        use_blockers : bool, default true
+            When true, the model will optimise attacks of minimal between cases
+            of minimal difference
+
+        Returns
+        -------
+        results : Tuple
+            returns a tuple containing the accuracy, precision, recall 
+            and f1 score
+        
+    """
+
 
     final_strengths = run_gradual_model(model, X_casebase, y_casebase, X_default, y_default,
                                         X_new_cases, use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
