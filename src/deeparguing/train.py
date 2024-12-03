@@ -13,7 +13,8 @@ def train_step(model,
                X_casebase, y_casebase, X_new_cases, y_new_cases, X_default, y_default,
                optimizer, criterion,
                use_symmetric_attacks,
-               use_blockers=True):
+               use_blockers=True,
+               regularise_graph = lambda model: 0):
     """
         Execute a single step of training
 
@@ -52,6 +53,9 @@ def train_step(model,
         use_blockers : bool, default true
             When true, the model will optimise attacks of minimal between cases
             of minimal difference
+        regularise_graph : [GradualAACBR] -> torch.tensor
+            The function used to regularise the graph. It accepts model and 
+            return a torch tensor to be minimised
 
 
         Returns
@@ -68,7 +72,7 @@ def train_step(model,
               use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
 
     predictions = model(X_new_cases).squeeze()
-    loss = criterion(predictions, y_new_cases)
+    loss = criterion(predictions, y_new_cases) + regularise_graph(model)
     loss.backward()
 
     optimizer.step()
@@ -76,7 +80,8 @@ def train_step(model,
 
 
 def static_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
-            n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None):
+            n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
+               regularise_graph = lambda model: 0):
     """
         Executes a full training loop with a static casebase. 
 
@@ -125,6 +130,9 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
             When true, tqdm will be disabled
         random_split_state : int, default None
             The seed used to split the data into groups
+        regularise_graph : [GradualAACBR] -> torch.tensor
+            The function used to regularise the graph. It accepts model and 
+            return a torch tensor to be minimised
 
         Returns
         -------
@@ -156,7 +164,8 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
                           X_casebase, y_casebase, X_new_cases, y_new_cases, X_default, y_default,
                           optimizer, criterion,
                           use_symmetric_attacks,
-                          use_blockers=use_blockers)
+                          use_blockers=use_blockers,
+                          regularise_graph=regularise_graph)
 
         losses.append(loss.item())
 
@@ -171,7 +180,8 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
 
 
 def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
-            n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None):
+            n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
+            regularise_graph = lambda model: 0):
     """
         Executes a full training loop with a dynamic casebase. 
 
@@ -220,6 +230,9 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
             When true, tqdm will be disabled
         random_split_state : int, default None
             The seed used to split the data into groups
+        regularise_graph : [GradualAACBR] -> torch.tensor
+            The function used to regularise the graph. It accepts model and 
+            return a torch tensor to be minimised
 
         Returns
         -------
@@ -258,7 +271,8 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
                               X_sub_casebase, y_sub_casebase, X_new_cases, y_new_cases, X_default, y_default,
                               optimizer, criterion,
                               use_symmetric_attacks,
-                              use_blockers=use_blockers)
+                              use_blockers=use_blockers,
+                              regularise_graph=regularise_graph)
 
             losses.append(loss.item()/len(X_new_cases))
 

@@ -30,7 +30,8 @@ def objective(config, X_casebase, y_casebase, X_default, y_default, X_train_new_
 
     config["train"](model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, config["epochs"], config["use_symmetric_attacks"], 
                     X_new_cases=X_train_new_cases, y_new_cases=y_train_new_cases, n_splits = config.get("n_splits", None), use_blockers=config["use_blockers"], 
-                    plot_loss_curve=plot_loss_curve, disable_tqdm=disable_tqdm, random_split_state=config.get("random_split_state", None))
+                    plot_loss_curve=plot_loss_curve, disable_tqdm=disable_tqdm, random_split_state=config.get("random_split_state", None),
+                    regularise_graph = config["regulariser"])
 
     accuracy, precision, recall, f1 = evaluate_model(model, X_casebase, y_casebase, X_default, y_default, 
                                                      X_eval_new_cases, y_eval_new_cases,
