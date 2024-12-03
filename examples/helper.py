@@ -44,6 +44,20 @@ def load_mnist(device="cpu"):
 
     return X, y
 
+def load_glioma():
+    # TODO: Check if data is there/add error handling
+    data = pd.read_csv('../../data/glioma/TCGA_InfoWithGrade.csv')
+    data = data.values
+
+    X = np.array(data[:, 1:], dtype=np.float32)
+    y = np.array(data[:, 0])
+
+    y = y.reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(y)
+    y = encoder.transform(y)
+
+    return X, y
 
 
 def split_data(X, y, seed, test_size=0.2):
