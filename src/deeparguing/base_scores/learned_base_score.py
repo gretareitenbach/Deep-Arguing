@@ -3,37 +3,26 @@ import torch.nn.functional as F
 from deeparguing.base_scores.compute_base_scores import ComputeBaseScores
 import matplotlib.pyplot as plt
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+from typing import List
 
 
 class LearnedBaseScore(ComputeBaseScores):
 
-    def __init__(self,  feature_extractor: FeatureExtractor):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=torch.sigmoid):
         super(LearnedBaseScore, self).__init__()
 
-        self.feature_extractor = feature_extractor
-        self.W = torch.nn.Parameter(torch.Tensor(feature_extractor.get_output_features()))
-        torch.nn.init.normal_(self.W)
+        self.feature_extractors = torch.nn.ModuleList(feature_extractors)
+        self.activation = activation
 
 
-    def forward(self, nodes: torch.Tensor) -> torch.Tensor:
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
 
-        features = self.feature_extractor(nodes)
-        result = torch.sigmoid(torch.matmul(features, self.W)) 
-        return result
+        for feature_extractor in self.feature_extractors:
+            features = feature_extractor(features)
+        return self.activation(features) 
 
 
     def plot_parameters(self):
-        weights = self.W.detach().cpu().numpy()
-        plt.figure(figsize=(20, 5))
-        plt.bar(range(len(weights)), weights)
-        for i, value in enumerate(weights):
-            plt.text(i, value + (0.1 * (-1 if value <= 0 else 1)),
-                     str(round(value, 3)), ha='center', fontsize=6)
-        plt.xlabel('Features')
-        plt.ylabel('Weights')
-        plt.title('Feature Attribution Weights')
-        plt.show()
-
-        print("FEATURE EXTRACTOR PARAMETERS:")
-        self.feature_extractor.plot_parameters()
+        for feature_extractor in self.feature_extractors:
+            feature_extractor.plot_parameters()
 

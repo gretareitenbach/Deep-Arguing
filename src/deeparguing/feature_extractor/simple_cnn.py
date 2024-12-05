@@ -37,4 +37,5 @@ class SimpleCNN(FeatureExtractor):
         return self.fc2.out_features
 
     def plot_parameters(self):
+        print("CNN PARAMETERS ARE NOT PRINTED")
         pass

@@ -3,17 +3,17 @@ import torch.nn.functional as F
 from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 import matplotlib.pyplot as plt
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+from typing import List
 
 
 class LearnedPartialOrder(ComputePartialOrder):
 
-    def __init__(self,  feature_extractor: FeatureExtractor, sharpness = 1):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], sharpness = 1, activation = torch.sigmoid):
         super(LearnedPartialOrder, self).__init__()
 
         self.sharpness = sharpness
-        self.feature_extractor = feature_extractor
-        self.W = torch.nn.Parameter(torch.Tensor(feature_extractor.get_output_features()))
-        torch.nn.init.normal_(self.W)
+        self.feature_extractors = torch.nn.ModuleList(feature_extractors)
+        self.activation = activation
 
 
     def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -34,33 +34,22 @@ class LearnedPartialOrder(ComputePartialOrder):
             attacker = attacker.squeeze()
             target = target.squeeze()
             reshape = True
+        
+        for feature_extractor in self.feature_extractors:
 
-        attacker = self.feature_extractor(attacker)
-        target = self.feature_extractor(target)
+            attacker = feature_extractor(attacker)
+            target = feature_extractor(target)
 
         if reshape:
             attacker = attacker.unsqueeze(1)
             target = target.unsqueeze(0)
 
-        attacker_score = torch.matmul(attacker, self.W)
-        target_score = torch.matmul(target, self.W)
 
-        result = torch.sigmoid((attacker_score - target_score) * self.sharpness) 
+        result = self.activation((attacker - target) * self.sharpness) 
         return result
 
 
     def plot_parameters(self):
-        weights = self.W.detach().cpu().numpy()
-        plt.figure(figsize=(20, 5))
-        plt.bar(range(len(weights)), weights)
-        for i, value in enumerate(weights):
-            plt.text(i, value + (0.1 * (-1 if value <= 0 else 1)),
-                     str(round(value, 3)), ha='center', fontsize=6)
-        plt.xlabel('Features')
-        plt.ylabel('Weights')
-        plt.title('Feature Attribution Weights')
-        plt.show()
-
-        print("FEATURE EXTRACTOR PARAMETERS:")
-        self.feature_extractor.plot_parameters()
+        for feature_extractor in self.feature_extractors:
+            feature_extractor.plot_parameters()
 

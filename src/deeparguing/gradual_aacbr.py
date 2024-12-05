@@ -88,6 +88,8 @@ class GradualAACBR(torch.nn.Module):
 
         """
 
+        device = X_train.device
+
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
 
@@ -105,7 +107,7 @@ class GradualAACBR(torch.nn.Module):
         idx_attackers = index_prod[:, 0]
         idx_targets = index_prod[:, 1]
 
-        attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size))
+        attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size)).to(device)
 
         X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
         X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
@@ -155,7 +157,7 @@ class GradualAACBR(torch.nn.Module):
                 symmetric_attacks = torch.where(attackers_default_mask, 0, symmetric_attacks)
             
         else:
-            symmetric_attacks = torch.zeros((train_size, train_size))
+            symmetric_attacks = torch.zeros((train_size, train_size)).to(X_attackers.device)
         
         return symmetric_attacks 
 
