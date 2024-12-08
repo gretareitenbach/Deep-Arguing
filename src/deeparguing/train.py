@@ -170,7 +170,7 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
         losses.append(loss.item())
 
         pbar.set_description(
-            f'Epoch {epoch + 1}, Loss: {round(loss.item()/len(X_new_cases), 4)}')
+            f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
     
 
     if plot_loss_curve:
@@ -277,7 +277,7 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
             losses.append(loss.item()/len(X_new_cases))
 
         pbar.set_description(
-            f'Epoch {epoch + 1}, Loss: {round(loss.item()/len(X_new_cases), 4)}')
+            f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
 
     if plot_loss_curve:
 
