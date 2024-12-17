@@ -4,3 +4,4 @@ data/
 *.egg-info/
 build/
 temp/
+wandb/

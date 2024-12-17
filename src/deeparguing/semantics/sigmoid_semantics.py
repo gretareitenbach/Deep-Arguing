@@ -2,10 +2,11 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 import torch
 
 
-class MLPBasedSemantics(GradualSemantics):
+class SigmoidSemantics(GradualSemantics):
 
     def __init__(self, max_iters, epsilon) -> None:
         super().__init__(max_iters, epsilon)    
+        self.test = "BHHH"
 
     def aggregation_func(self, A, strengths):
         return torch.matmul(torch.transpose(A, -2, -1), strengths)

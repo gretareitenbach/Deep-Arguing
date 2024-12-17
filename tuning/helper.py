@@ -3,11 +3,15 @@ import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
 import torch
+import sys
+import os
+
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 
 def load_iris():
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/iris/iris.data')
+    data = pd.read_csv(parent_dir + '/data/iris/iris.data')
 
     data = data.values
 
@@ -46,7 +50,7 @@ def load_mnist(device="cpu"):
 
 def load_glioma():
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/glioma/TCGA_InfoWithGrade.csv')
+    data = pd.read_csv(parent_dir + '/data/glioma/TCGA_InfoWithGrade.csv')
     data = data.values
 
     X = np.array(data[:, 1:], dtype=np.float32)
@@ -61,7 +65,7 @@ def load_glioma():
 
 def load_covertype():
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/covertype/covtype.data')
+    data = pd.read_csv(parent_dir + '/data/covertype/covtype.data')
     data = data.values
 
     X = np.array(data[:, :-1], dtype=np.float32)
@@ -84,23 +88,16 @@ def split_data(X, y, seed, test_size=0.2):
 
     return {"X": X_train_full, "y": y_train_full}, {"X": X_train, "y": y_train}, {"X": X_val, "y": y_val}, {"X": X_test, "y": y_test}
 
+
+
+loaders = {
+    "iris": load_iris,
+    "mnist": load_mnist,
+    "glioma": load_glioma,
+    "covertype": load_covertype
+}
+
 def load_dataset(dataset):
-    """
-    Load the specified dataset.
-
-    Parameters:
-    - dataset (str): The name of the dataset ("iris", "mnist", "glioma", "covertype").
-
-    Returns:
-    - X: Features of the dataset.
-    - y: One-hot encoded labels of the dataset.
-    """
-    loaders = {
-        "iris": load_iris,
-        "mnist": load_mnist(),
-        "glioma": load_glioma,
-        "covertype": load_covertype
-    }
 
     if dataset not in loaders:
         raise ValueError(f"Unsupported dataset: {dataset}. Supported datasets are: {list(loaders.keys())}")
@@ -111,3 +108,15 @@ def load_dataset(dataset):
 
 def normalise_input(X, mean, std):
     return (X-mean)/std
+
+
+
+
+def to_torch(data, device="cpu"):
+    X = data["X"]
+    y = data["y"]
+
+    X = torch.tensor(X, device=device, dtype=torch.float32)
+    y = torch.tensor(y, device=device, dtype=torch.float32)
+
+    return {"X": X, "y": y}

@@ -81,7 +81,7 @@ def train_step(model,
 
 def static_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-               regularise_graph = lambda model: 0):
+               regularise_graph = lambda model: 0, logger = lambda x: None):
     """
         Executes a full training loop with a static casebase. 
 
@@ -168,6 +168,7 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
                           regularise_graph=regularise_graph)
 
         losses.append(loss.item())
+        logger(loss)
 
         pbar.set_description(
             f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
@@ -177,11 +178,13 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
 
         plt.plot(losses)
         plt.show()
+    
+    return losses
 
 
 def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-            regularise_graph = lambda model: 0):
+               regularise_graph = lambda model: 0, logger = lambda x: None):
     """
         Executes a full training loop with a dynamic casebase. 
 
@@ -283,6 +286,8 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
 
         plt.plot(losses)
         plt.show()
+
+    return losses
 
 def run_gradual_model(model, X_casebase, y_casebase,
                       X_default, y_default, X_new_cases, use_symmetric_attacks, use_blockers=True):

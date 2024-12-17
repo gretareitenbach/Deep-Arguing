@@ -6,12 +6,11 @@ class FeatureWeightedExtractor(FeatureExtractor):
 
 
     def __init__(self, no_features):
-        super(FeatureWeightedExtractor, self).__init__()
-        self.no_features = no_features
+        super(FeatureWeightedExtractor, self).__init__(no_features)
         self.W = torch.nn.Parameter(torch.Tensor(no_features))
         torch.nn.init.normal_(self.W)
 
-    def forward(self, case: torch.tensor) -> torch.tensor:
+    def forward(self, case: torch.Tensor) -> torch.Tensor:
         return torch.matmul(case, self.W)
 
 

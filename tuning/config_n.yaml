@@ -1,0 +1,136 @@
+program: tuning/run-tuning.py
+name: iris-sweep
+method: random
+metric:
+  goal: minimize
+  name: train_loss
+parameters:
+
+
+  # Gradual AA-CBR Parameters
+
+  use_symmetric_attacks:
+    value: False
+  use_blockers:
+    value: False
+  default:
+    value: "average"
+  normalise:
+    value: True
+
+
+  semantics:
+    parameters:
+      type:
+        value: "relu"
+      relu:
+        parameters:
+          max_iters:
+            value: 20 
+          epsilon: 
+            value: 0
+      
+  # # TODO: This setup does not allow non-shared extractor modules to have different
+  # # hyperparameters, e.g. base_scores with a threshold extractor and po with a feature weighted extractor
+  # # or both with a threshold extractor but one signed and the other not signed.
+  # # May have to come up with a better solution
+  feature_extractor:
+    parameters:
+      type:
+        value: fe1
+    
+      fe1:
+        parameters:
+          extractor_list:
+           value: [FeatureWeightedExtractor]
+          FeatureWeightedExtractor:
+            parameters:
+              shared:
+                value: False
+
+  
+  
+
+  partial_order:
+    parameters:
+      type:
+        value: LearnedPartialOrder
+      LearnedPartialOrder:
+        parameters:
+          comparison_func:
+            value: Subtractor
+          Subtractor:
+            parameters:
+              temperature: 
+                value: 1.6522246
+              activation:
+                value: sigmoid
+
+  base_score:
+    parameters:
+      type:
+        value: "LearnedBaseScore"
+      LearnedBaseScore:
+        parameters:
+          activation:
+            value: "sigmoid"
+
+    
+  irrelevance:
+    parameters:
+      type:
+        value: RegularIrrelevance
+      RegularIrrelevance:
+        value: partial_order
+
+
+  # Training Parameters
+  lr:
+    distribution: log_uniform_values
+    max: 1e-1
+    min: 1e-5
+  epochs:
+    values: [500, 1500, 2500, 3500]
+  optimizer:
+    parameters:
+      type:
+        values: [Adam, SGD]
+      SGD:
+        parameters:
+          momentum:
+            max: 0.9
+            min: 0
+  
+  
+  # Regularisers
+  sparsity_weight:
+    distribution: log_uniform_values
+    max: 1e-3
+    min: 1e-8
+  connectivity_weight:
+    distribution: log_uniform_values
+    max: 1e-3
+    min: 1e-8
+  community_preservation_weight:
+    distribution: log_uniform_values
+    max: 1e-3
+    min: 1e-8
+  feature_smoothness_weight:
+    value: 0
+    # distribution: log_uniform_values
+    # max: 1e-3
+    # min: 1e-8
+
+  # data preparation
+  cluster_size:
+    value: 7
+  # casebase_size:
+  #   values: [5, 10, 20]
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --dataset=iris
+- --cluster=True
+- --training_method=static

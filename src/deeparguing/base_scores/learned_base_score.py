@@ -8,7 +8,7 @@ from typing import List
 
 class LearnedBaseScore(ComputeBaseScores):
 
-    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=torch.sigmoid):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=lambda x: x):
         super(LearnedBaseScore, self).__init__()
 
         self.feature_extractors = torch.nn.ModuleList(feature_extractors)

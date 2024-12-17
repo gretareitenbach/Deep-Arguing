@@ -285,6 +285,27 @@ class GradualAACBR(torch.nn.Module):
             return final_strengths
         else:
             return final_strengths[:, self.default_indexes]
+    
+    def post_process(self, post_process_func):
+        """
+        Updates the adjacency matrix with a post processing operation 
+
+        Parameters
+        ----------
+        post_process_func : [torch.Tensor] -> torch.Tensor
+            Accepts an adjacency matrix as input and returns
+            an updated adjacency matrix
+
+        Notes
+        -----
+            This function will raise an exception if the fit function has not
+            been previously called.
+
+        """
+
+        if self.A is None:
+            raise(Exception("Ensure the model has been fit first."))
+        self.A = post_process_func(self.A)
 
     def show_graph_with_labels(self):
         """

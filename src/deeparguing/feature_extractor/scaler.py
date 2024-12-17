@@ -5,8 +5,8 @@ from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 class Scaler(FeatureExtractor):
 
 
-    def __init__(self):
-        super(Scaler, self).__init__()
+    def __init__(self, no_features):
+        super(Scaler, self).__init__(no_features)
         self.W = torch.nn.Parameter(torch.Tensor(1))
         torch.nn.init.normal_(self.W, mean=0, std=3)
 
@@ -15,7 +15,7 @@ class Scaler(FeatureExtractor):
 
 
     def get_output_features(self) -> int:
-        return None 
+        return self.no_features 
 
     def plot_parameters(self):
         print("SCALE FACTOR", self.W)

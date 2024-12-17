@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
+from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder, CompareCases
 import matplotlib.pyplot as plt
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 from typing import List
@@ -8,12 +8,11 @@ from typing import List
 
 class LearnedPartialOrder(ComputePartialOrder):
 
-    def __init__(self,  feature_extractors: List[FeatureExtractor], sharpness = 1, activation = torch.sigmoid):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], comparison_func: CompareCases):
         super(LearnedPartialOrder, self).__init__()
 
-        self.sharpness = sharpness
         self.feature_extractors = torch.nn.ModuleList(feature_extractors)
-        self.activation = activation
+        self.comparison_func = comparison_func
 
 
     def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -45,7 +44,7 @@ class LearnedPartialOrder(ComputePartialOrder):
             target = target.unsqueeze(0)
 
 
-        result = self.activation((attacker - target) * self.sharpness) 
+        result = self.comparison_func(attacker, target)
         return result
 
 
