@@ -86,35 +86,59 @@ parameters:
 
   # Training Parameters
   lr:
-    distribution: log_uniform_values
-    max: 1e-1
-    min: 1e-5
+    values: [5e-3, 1e-2, 5e-2] 
+    # values: [5e-3, 1e-2, 5e-2, 1e-1, 5e-1] 
+    # values: [1e-5, 1e-4, 1e-3, 1e-2, 1e-1] 
+    # distribution: q_log_uniform_values
+    # max: 1e-1
+    # min: 1e-5
+    # q: 1e-6
   epochs:
-    values: [500, 1500, 2500, 3500]
+    distribution: q_log_uniform_values
+    max: 1500
+    min: 500
+    q: 250
+    # values: [500, 1500, 2500]
+    # values: [500, 1500, 2500, 3500]
   optimizer:
     parameters:
       type:
-        values: [Adam, SGD]
-      SGD:
-        parameters:
-          momentum:
-            max: 0.9
-            min: 0
+        value: Adam
+      #   values: [Adam, SGD]
+      # SGD:
+      #   parameters:
+      #     momentum:
+      #       max: 0.9
+      #       min: 0
+  tau:
+    distribution: q_log_uniform_values
+    max:  0.15
+    min: 0.05
+    q: 0.05
+
   
   
   # Regularisers
   sparsity_weight:
-    distribution: log_uniform_values
-    max: 1e-3
-    min: 1e-8
+    values: [1e-8, 1e-7, 1e-6, 1e-5] 
+    # values: [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1] 
+    # distribution: q_log_uniform_values
+    # max: 5e-1
+    # min: 5e-8
+    # q: 1e-9
   connectivity_weight:
-    distribution: log_uniform_values
-    max: 1e-3
-    min: 1e-8
+    values: [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3] 
+    # values: [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1] 
+    # distribution: q_log_uniform_values
+    # max: 1e-1
+    # min: 1e-8
+    # q: 1e-9
   community_preservation_weight:
-    distribution: log_uniform_values
-    max: 1e-3
-    min: 1e-8
+    values: [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1] 
+    # distribution: q_log_uniform_values
+    # max: 1e-1
+    # min: 1e-8
+    # q: 1e-9
   feature_smoothness_weight:
     value: 0
     # distribution: log_uniform_values
@@ -134,3 +158,4 @@ command:
 - --dataset=iris
 - --cluster=True
 - --training_method=static
+- --trials=5
