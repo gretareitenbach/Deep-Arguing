@@ -13,7 +13,7 @@ def community_preservation_regulariser(model):
 def connectivity_regulariser(model, eps=1e-6):
     A = torch.abs(model.A) # This regulariser expects values between 0 and 1
     A = torch.sum(A, dim =1) + eps
-    return torch.sum(torch.log(A))
+    return -torch.sum(torch.log(A))
 
 def feature_smoothness_regulariser(model):
     A = torch.abs(model.A) # This regulariser expects values between 0 and 1

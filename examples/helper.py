@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 import torch
 
 
-def load_iris():
+def load_iris(labels=[]):
     # TODO: Check if data is there/add error handling
     data = pd.read_csv('../../data/iris/iris.data')
 
@@ -13,6 +13,12 @@ def load_iris():
 
     X = np.array(data[:, :-1], dtype=np.float32)
     y = np.array(data[:, -1])
+
+    if len(labels) != 0:
+        mask = np.isin(y, labels)
+        y = y[mask]
+        X = X[mask]
+
 
     y = y.reshape(-1, 1)
     encoder = OneHotEncoder(sparse_output=False)
@@ -23,15 +29,17 @@ def load_iris():
 
 
 
-def load_mnist(device="cpu"):
+def load_mnist(device="cpu", as_vector = False, size=1000):
 
     from torchvision.datasets import MNIST
     mnist_trainset = MNIST("./temp/", train=True, download=True)
     # mnist_testset = MNIST("./temp/", train=False, download=True)
 
 
-    X = mnist_trainset.data[:1000].float().to(device)
-    y = mnist_trainset.targets[:1000].to(device)
+    X = mnist_trainset.data[:size].float().to(device)
+    if as_vector:
+        X = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
+    y = mnist_trainset.targets[:size].to(device)
 
 
     y = y.reshape(-1, 1)

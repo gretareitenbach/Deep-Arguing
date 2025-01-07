@@ -37,14 +37,18 @@ class GradualAACBR(torch.nn.Module):
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
     
-    def __casebase_edge_weights_strict(self, attacker, target):
-        return self.casebase_edge_weights(attacker, target) * (1 - self.casebase_edge_weights(target, attacker))
+    def __casebase_edge_weights_strict(self, attacker, target, train_size):
+        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
+        return edge_weights * (1 - (edge_weights.T))
 
-    def __casebase_edge_weights_equal(self, attacker, target):
-        return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
+    def __casebase_edge_weights_equal(self, attacker, target, train_size):
+        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
+        return edge_weights * edge_weights.T
+
+
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, approximate_blockers = False):
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, approximate_blockers = False, tau=None):
 
         """
             Builds the Edge-Weighted Quantitative Bipolar Argumentation 
@@ -111,8 +115,8 @@ class GradualAACBR(torch.nn.Module):
 
         X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
         X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
-        
-        edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
+
+        edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets, train_size)
 
         if defaults_not_attack:
             edge_weights_strict = torch.where(attackers_default_mask, 0, edge_weights_strict)
@@ -129,7 +133,10 @@ class GradualAACBR(torch.nn.Module):
         symmetric_attacks = self.__symmetric_attacks(use_symmetric_attacks, X_attackers,  X_targets, 
                                defaults_not_attack, attackers_default_mask, train_size, differing_labels)
 
-        self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
+        self.A = (torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
+        if tau:
+            self.A = self.masked_softmax(self.A/tau, self.A != 0, dim=0)
+        self.A = -self.A
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
@@ -150,8 +157,7 @@ class GradualAACBR(torch.nn.Module):
                                defaults_not_attack, attackers_default_mask, train_size, differing_labels):
 
         if use_symmetric_attacks: 
-            symmetric_attacks = self.__casebase_edge_weights_equal(X_attackers, X_targets)
-            symmetric_attacks = torch.reshape(symmetric_attacks, (train_size, train_size))
+            symmetric_attacks = self.__casebase_edge_weights_equal(X_attackers, X_targets, train_size)
             symmetric_attacks = torch.where(differing_labels, symmetric_attacks, 0)
             if defaults_not_attack:
                 symmetric_attacks = torch.where(attackers_default_mask, 0, symmetric_attacks)
@@ -218,6 +224,7 @@ class GradualAACBR(torch.nn.Module):
             new_cases).unsqueeze(-1).unsqueeze(-1)  # (B x 1)
 
         new_cases_attacks_adjacency = self.irrelevance_edge_weights(new_cases, X_train) # B x n
+        new_cases_attacks_adjacency = -new_cases_attacks_adjacency
 
         # B x 1 x n
         new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(-2)
@@ -231,7 +238,7 @@ class GradualAACBR(torch.nn.Module):
 
         return strengths
 
-    def forward(self, new_cases: torch.Tensor, return_all_strenghts = False):
+    def forward(self, new_cases: torch.Tensor, return_all_strenghts = False, post_process_func = lambda x: x):
         """
             Computes the final strenghts of the EW-QAF for each new_case input
 
@@ -268,13 +275,14 @@ class GradualAACBR(torch.nn.Module):
 
         if self.A is None:
             raise(Exception("Ensure the model has been fit first."))
-
         batch_size = new_cases.shape[0]
 
         base_scores = self.compute_base_scores(self.X_train)  # (n)
         base_scores = self.__batch_base_scores(base_scores, batch_size)
         base_scores = self.__new_case_influence(self.X_train, base_scores, new_cases)
-        strengths = self.gradual_semantics(self.A, base_scores)
+        A = post_process_func(self.A)
+        assert(A.shape == self.A.shape)
+        strengths = self.gradual_semantics(A, base_scores)
 
         # TODO: Check if this is necessary:
         final_strengths = strengths[-1].squeeze()
@@ -286,28 +294,7 @@ class GradualAACBR(torch.nn.Module):
         else:
             return final_strengths[:, self.default_indexes]
     
-    def post_process(self, post_process_func):
-        """
-        Updates the adjacency matrix with a post processing operation 
-
-        Parameters
-        ----------
-        post_process_func : [torch.Tensor] -> torch.Tensor
-            Accepts an adjacency matrix as input and returns
-            an updated adjacency matrix
-
-        Notes
-        -----
-            This function will raise an exception if the fit function has not
-            been previously called.
-
-        """
-
-        if self.A is None:
-            raise(Exception("Ensure the model has been fit first."))
-        self.A = post_process_func(self.A)
-
-    def show_graph_with_labels(self):
+    def show_graph_with_labels(self, post_process_func = lambda x: x):
         """
 
             Outputs a networkx graph of the casebase
@@ -322,7 +309,7 @@ class GradualAACBR(torch.nn.Module):
         if self.A is None:
             raise(Exception("Ensure the model has been fit first."))
 
-        A = self.A.detach().cpu().numpy()
+        A = post_process_func(self.A).detach().cpu().numpy()
         y_train = np.argmax(self.y_train.cpu().detach().numpy(), axis=1)
         default_indexes = self.default_indexes.cpu().detach().numpy()
 
@@ -366,7 +353,7 @@ class GradualAACBR(torch.nn.Module):
         plt.legend()
         plt.show()
 
-    def show_matrix(self):
+    def show_matrix(self, post_process_func = lambda x: x):
         """
 
             Outputs an image of the adjacency matrix of the casebase
@@ -382,7 +369,7 @@ class GradualAACBR(torch.nn.Module):
             raise(Exception("Ensure the model has been fit first."))
 
         plt.figure(figsize=(10, 10))
-        A = self.A.detach().cpu().numpy()
+        A = post_process_func(self.A).detach().cpu().numpy()
         plt.imshow(A, cmap='cividis', interpolation='nearest')
         ax = plt.gca()
         n = len(self.X_train)
@@ -419,6 +406,13 @@ class GradualAACBR(torch.nn.Module):
     #  broadcasting, vectorisation or matrix operations and is used for sanity
     # checking results    
     ############################################################################
+    def __casebase_edge_weights_strict_old(self, attacker, target):
+        #This is ineffecient because of repeated calls to casebase_edge_weights
+        return self.casebase_edge_weights(attacker, target) * (1 - self.casebase_edge_weights(target, attacker))
+
+    def __casebase_edge_weights_equal_old(self, attacker, target):
+        #This is ineffecient because of repeated calls to casebase_edge_weights
+        return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
 
     def slow_fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
             use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
@@ -444,10 +438,10 @@ class GradualAACBR(torch.nn.Module):
         X_attackers = X_train[idx_attackers]
         X_targets = X_train[idx_targets]
         
-        edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
+        edge_weights_strict = self.__casebase_edge_weights_strict_old(X_attackers, X_targets).reshape((train_size, train_size))
 
         if use_symmetric_attacks:
-            edge_weights_equal = self.__casebase_edge_weights_equal(X_attackers, X_targets).reshape((train_size, train_size))
+            edge_weights_equal = self.__casebase_edge_weights_equal_old(X_attackers, X_targets).reshape((train_size, train_size))
         else:
             edge_weights_equal = torch.zeros_like(edge_weights_strict)
 

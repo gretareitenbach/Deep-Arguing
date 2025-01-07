@@ -5,20 +5,25 @@ from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 class FeatureWeightedExtractor(FeatureExtractor):
 
 
-    def __init__(self, no_features):
+    def __init__(self, no_features, inital_weights=None):
         super(FeatureWeightedExtractor, self).__init__(no_features)
-        self.W = torch.nn.Parameter(torch.Tensor(no_features))
-        torch.nn.init.normal_(self.W)
+        if inital_weights == None:
+            self.W = torch.nn.Parameter(torch.Tensor(no_features))
+            torch.nn.init.normal_(self.W)
+        else:
+            self.W = torch.nn.Parameter(inital_weights) 
+        
 
     def forward(self, case: torch.Tensor) -> torch.Tensor:
-        return torch.matmul(case, self.W)
+        W = self.W.squeeze()
+        return torch.matmul(case, W)
 
 
     def get_output_features(self) -> int:
         return self.no_features
 
     def plot_parameters(self):
-        weights = self.W.detach().cpu().numpy()
+        weights = self.W.squeeze().detach().cpu().numpy()
         plt.figure(figsize=(20, 5))
         plt.bar(range(len(weights)), weights)
         for i, value in enumerate(weights):

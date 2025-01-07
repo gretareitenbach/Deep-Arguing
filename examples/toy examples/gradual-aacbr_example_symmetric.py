@@ -1,7 +1,7 @@
 import torch
 import deeparguing
 import deeparguing.semantics.relu_semantics as rs
-import deeparguing.base_scores.feature_weighted_base_score as fwbs
+import deeparguing.base_scores.constant_base_score as cbs 
 import deeparguing.irrelevance_edge_weights.feature_weighted_irrelevance as fwi
 
 
@@ -50,7 +50,7 @@ edge_weights_test = lambda a, t: torch.sigmoid(a[:, 0] - t[:, 0])
 
 
 model = deeparguing.GradualAACBR(semantics, 
-                                   fwbs.FeatureWeightedBaseScore(no_features), 
+                                   cbs.ConstantBaseScore(1), 
                                    fwi.FeatureWeightedIrrelevance(no_features), 
                                    edge_weights_test
                                    )

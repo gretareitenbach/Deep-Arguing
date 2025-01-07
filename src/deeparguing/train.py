@@ -14,7 +14,8 @@ def train_step(model,
                optimizer, criterion,
                use_symmetric_attacks,
                use_blockers=True,
-               regularise_graph = lambda model: 0):
+               regularise_graph = lambda model: 0, tau=None,
+               post_process_func = lambda x: x):
     """
         Execute a single step of training
 
@@ -69,9 +70,9 @@ def train_step(model,
     # TODO: consider efficiency issues with having to rebuild each time
     # Find a way to accumulate gradients update only when necessary?
     model.fit(X_casebase, y_casebase, X_default, y_default,
-              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
+              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, tau=tau)
 
-    predictions = model(X_new_cases).squeeze()
+    predictions = model(X_new_cases, post_process_func=post_process_func).squeeze()
     loss = criterion(predictions, y_new_cases) + regularise_graph(model)
     loss.backward()
 
@@ -81,7 +82,8 @@ def train_step(model,
 
 def static_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-               regularise_graph = lambda model: 0, logger = lambda x: None):
+               regularise_graph = lambda model: 0, logger = lambda x: None, tau=None,
+               post_process_func = lambda x: x):
     """
         Executes a full training loop with a static casebase. 
 
@@ -165,7 +167,7 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
                           optimizer, criterion,
                           use_symmetric_attacks,
                           use_blockers=use_blockers,
-                          regularise_graph=regularise_graph)
+                          regularise_graph=regularise_graph, tau=tau, post_process_func=post_process_func)
 
         losses.append(loss.item())
         logger(loss)
@@ -184,7 +186,8 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
 
 def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-               regularise_graph = lambda model: 0, logger = lambda x: None):
+               regularise_graph = lambda model: 0, logger = lambda x: None, tau=None,
+               post_process_func = lambda x: x):
     """
         Executes a full training loop with a dynamic casebase. 
 
@@ -275,12 +278,13 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
                               optimizer, criterion,
                               use_symmetric_attacks,
                               use_blockers=use_blockers,
-                              regularise_graph=regularise_graph)
+                              regularise_graph=regularise_graph, tau=tau, post_process_func=post_process_func)
 
-            losses.append(loss.item()/len(X_new_cases))
+            losses.append(loss.item())
+            logger(loss)
 
-        pbar.set_description(
-            f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
+            pbar.set_description(
+                f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
 
     if plot_loss_curve:
 
@@ -290,7 +294,8 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
     return losses
 
 def run_gradual_model(model, X_casebase, y_casebase,
-                      X_default, y_default, X_new_cases, use_symmetric_attacks, use_blockers=True):
+                      X_default, y_default, X_new_cases, use_symmetric_attacks, use_blockers=True, 
+                      tau=None, post_process_func = lambda x: x):
     """
         Fits the model with the provided casebase and executes it on the new_cases
 
@@ -334,14 +339,15 @@ def run_gradual_model(model, X_casebase, y_casebase,
     """
 
     model.fit(X_casebase, y_casebase, X_default, y_default,
-              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
+              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, tau=tau)
 
-    return model(X_new_cases)
+    return model(X_new_cases, post_process_func=post_process_func)
 
 
 def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_cases, y_new_cases, print_results=True,
                    show_confusion=False, print_graph=False, print_matrix=False, print_compute_graph=False,
-                   use_symmetric_attacks=False, use_blockers=True):
+                   use_symmetric_attacks=False, use_blockers=True, tau=None, return_predictions = False,
+                   post_process_func = lambda x: x):
     
     """
         Fits and executes the model, then evaluates it on accuracy, precision, 
@@ -407,9 +413,11 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
 
 
     final_strengths = run_gradual_model(model, X_casebase, y_casebase, X_default, y_default,
-                                        X_new_cases, use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers)
-    y_predicted = final_strengths.cpu().detach().numpy()
+                                        X_new_cases, use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, 
+                                        tau=tau, post_process_func=post_process_func)
 
+    y_predicted = final_strengths.cpu().detach().numpy() 
+    # print(y_predicted)
     y_predicted = np.argmax(y_predicted, axis=1)
     y_new_cases_orig = np.argmax(y_new_cases.cpu().detach().numpy(), axis=1)
 
@@ -431,16 +439,19 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
         plt.show()
 
     if print_graph:
-        model.show_graph_with_labels()
+        model.show_graph_with_labels(post_process_func=post_process_func)
 
     if print_matrix:
-        model.show_matrix()
+        model.show_matrix(post_process_func=post_process_func)
 
     if print_compute_graph:
         criterion = torch.nn.CrossEntropyLoss()
         loss = criterion(final_strengths.squeeze(), y_new_cases)
         make_dot(loss, params=dict(model.named_parameters())
                  ).render("gradual_aacbr", format="pdf")
+    
+    if return_predictions:
+        return tuple(list(results) + [y_new_cases_orig, y_predicted])
 
     return results
 

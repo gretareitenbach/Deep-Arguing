@@ -59,8 +59,7 @@ class AACBR:
                 target = self.X_train[j] 
                 if self.y_train[i] == self.y_train[j]:
                     continue
-
-                if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i]):
+                if self.comparison_func(attacker, target)[0] and self.is_concise(attacker, target, self.y_train[i], i):
                     A[i, j] = -1
                 elif self.use_symmetric_attacks and all(attacker == target):
                     A[i, j] = -1
@@ -116,17 +115,28 @@ class AACBR:
 
         attacks = attacks.reshape((train_size, train_size, train_size))
         attacks = np.all(attacks, axis=-1)
-        # TODO: CONSIDER PREVENT DEFAULTS FROM ATTACKING IN BLOCKED ATTACKS OTHERWISE THEY MAY BLOCK SOMETHING THEYS SHOULDN'T?
+        # TODO: CONSIDER PREVENT DEFAULTS FROM ATTACKING IN BLOCKED ATTACKS OTHERWISE THEY MAY BLOCK SOMETHING THEY SHOULDN'T?
         attacks[self.default_indexes, :] = False
         self.A = np.where(attacks, -1, 0)
 
-    def is_concise(self, attacker, target, attacker_outcome):
+    def is_concise(self, attacker, target, attacker_outcome, attacker_index):
         return not any([
             self.y_train[k] == attacker_outcome and
+            k != attacker_index and
             self.comparison_func(attacker, self.X_train[k])[0] and self.comparison_func(self.X_train[k], target)[0] for k in self.get_indices()])
 
-    def show_graph_with_labels(self):
-        rows, cols = np.where(self.A != 0)
+    def show_graph_with_labels(self, new_case=None, label_func=None):
+
+        if new_case is not None:
+            new_case_attacks = np.where(self.get_new_case_attacks_mask(new_case), -1, 0)
+            A = np.zeros((self.A.shape[0] + 1, self.A.shape[1]))
+            A[:-1] = self.A
+            A[-1] = new_case_attacks
+            labels = np.concat((self.y_train, [-1]))
+        else:
+            A = self.A
+            labels = self.y_train
+        rows, cols = np.where(A != 0)
         edges = zip(rows.tolist(), cols.tolist())
 
         gr = nx.DiGraph()
@@ -134,25 +144,36 @@ class AACBR:
         pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
                                            args='-Gsplines=true -Gnodesep=2')
 
-        unique_labels = np.unique(self.y_train)
+        unique_labels = np.unique(labels)
         colormap = plt.get_cmap('gist_rainbow', len(unique_labels))
         label_to_color = {label: colormap(i)
                           for i, label in enumerate(unique_labels)}
-        node_colors = [label_to_color[self.y_train[node]]
+        node_colors = [label_to_color[labels[node]]
                        for node in list(gr.nodes)]
 
         assert (all([default_index in list(gr.nodes)
                 for default_index in self.default_indexes]))
+            
+        if label_func == None:
+            label_func = lambda x, value: f"{x}"
 
-        labels = {x: x for x in list(gr.nodes)}
+        if new_case is None:
+            nodes_list = list(gr.nodes)
+        else:
+            nodes_list = list(gr.nodes)[:-1]
+
+
+        labels = {x: label_func(x, self.X_train[x]) for x in nodes_list}
         for i, default_index in enumerate(self.default_indexes):
             labels.update({default_index: "Default"})
             # pos.update({default_index: (0 + i * 100, 0)})
+        if new_case is not None:
+            labels.update({len(A) - 1: "New Case" + label_func("", new_case)})
 
         # for k, v in pos.items():
         #     pos.update({k: (v[0] * random.randint(-100, 100), v[1])})
 
-        f = plt.figure(figsize=(20, 20))
+        f = plt.figure(figsize=(20, 20), dpi=100)
         ax = f.add_subplot(1, 1, 1)
         for i, label in enumerate(unique_labels):
             ax.plot([0], [0], color=colormap(i), label=f'Class: {label}')
@@ -165,10 +186,25 @@ class AACBR:
         plt.show()
 
     def show_matrix(self):
-        plt.figure(figsize=(10, 10))
 
-        B = self.A.copy()
-        plt.imshow(B, cmap='viridis', interpolation='nearest')
+        plt.figure(figsize=(10, 10))
+        A = self.A
+        plt.imshow(A, cmap='cividis', interpolation='nearest')
+        ax = plt.gca()
+        n = len(self.X_train)
+        # Major ticks
+        ax.set_xticks(np.arange(0, n, 1))
+        ax.set_yticks(np.arange(0, n, 1))
+
+        # Labels for major ticks
+        ax.set_xticklabels(np.arange(0, n, 1))
+        ax.set_yticklabels(np.arange(0, n, 1))
+
+        # Minor ticks
+        ax.set_xticks(np.arange(-.5, n, 1), minor=True)
+        ax.set_yticks(np.arange(-.5, n, 1), minor=True)
+
+        ax.grid(which='minor', color='black', linestyle='-', linewidth=0.2)
         plt.colorbar(label='Value')
         plt.xlabel('Nodes')
         plt.ylabel('Nodes')
