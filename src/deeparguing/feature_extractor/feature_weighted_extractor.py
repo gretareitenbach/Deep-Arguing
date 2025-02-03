@@ -1,22 +1,16 @@
 import torch
+import torch.nn.init as init
 import matplotlib.pyplot as plt
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 
 class FeatureWeightedExtractor(FeatureExtractor):
 
 
-    def __init__(self, no_features, inital_weights=None):
+    def __init__(self, no_features, inital_weights=None, initialisation_method=lambda x: init.xavier_uniform_(x.unsqueeze(1))):
         super(FeatureWeightedExtractor, self).__init__(no_features)
         if inital_weights is None:
             self.W = torch.nn.Parameter(torch.Tensor(no_features))
-            # torch.nn.init.normal_(self.W)
-            torch.nn.init.kaiming_uniform_(self.W.unsqueeze(1), mode="fan_in", nonlinearity="relu")
-            # torch.nn.init.kaiming_normal_(self.W.unsqueeze(1), mode="fan_in", nonlinearity="relu")
-            # torch.nn.init.kaiming_normal_(self.W.unsqueeze(1), mode='fan_in', nonlinearity='sigmoid')
-            # torch.nn.init.xavier_uniform_(self.W.unsqueeze(1))  # Unsqueeze if weights are 1D
-            # torch.nn.init.xavier_normal_(self.W.unsqueeze(1))  # Unsqueeze if weights are 1D
-
-
+            initialisation_method(self.W)
         else:
             self.W = torch.nn.Parameter(inital_weights) 
         

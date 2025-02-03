@@ -347,7 +347,8 @@ def run_gradual_model(model, X_casebase, y_casebase,
 def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_cases, y_new_cases, print_results=True,
                    show_confusion=False, print_graph=False, print_matrix=False, print_compute_graph=False,
                    use_symmetric_attacks=False, use_blockers=True, tau=None, return_predictions = False,
-                   post_process_func = lambda x: x):
+                   post_process_func = lambda x: x,
+                   cm_logger=lambda x: x, matrix_logger = lambda x: x, graph_logger = lambda x: x, prevent_show=False):
     
     """
         Fits and executes the model, then evaluates it on accuracy, precision, 
@@ -433,16 +434,19 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
         print(results)
 
     if show_confusion:
+
         cm = confusion_matrix(y_new_cases_orig, y_predicted)
         disp = ConfusionMatrixDisplay(confusion_matrix=cm)
         disp.plot()
-        plt.show()
+        cm_logger(disp.figure_)
+        if not prevent_show:
+            plt.show()
 
     if print_graph:
-        model.show_graph_with_labels(post_process_func=post_process_func)
+        model.show_graph_with_labels(post_process_func=post_process_func, logger=graph_logger, prevent_show=prevent_show)
 
     if print_matrix:
-        model.show_matrix(post_process_func=post_process_func)
+        model.show_matrix(post_process_func=post_process_func, logger=matrix_logger, prevent_show=prevent_show)
 
     if print_compute_graph:
         criterion = torch.nn.CrossEntropyLoss()

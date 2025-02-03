@@ -294,7 +294,7 @@ class GradualAACBR(torch.nn.Module):
         else:
             return final_strengths[:, self.default_indexes]
     
-    def show_graph_with_labels(self, post_process_func = lambda x: x):
+    def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, prevent_show = False):
         """
 
             Outputs a networkx graph of the casebase
@@ -351,9 +351,11 @@ class GradualAACBR(torch.nn.Module):
         nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels, font_size=5)
 
         plt.legend()
-        plt.show()
+        logger(f)
+        if not prevent_show:
+            plt.show()
 
-    def show_matrix(self, post_process_func = lambda x: x):
+    def show_matrix(self, post_process_func = lambda x: x, logger = lambda x: x, prevent_show = False):
         """
 
             Outputs an image of the adjacency matrix of the casebase
@@ -368,7 +370,7 @@ class GradualAACBR(torch.nn.Module):
         if self.A is None:
             raise(Exception("Ensure the model has been fit first."))
 
-        plt.figure(figsize=(10, 10))
+        f = plt.figure(figsize=(10, 10))
         A = post_process_func(self.A).detach().cpu().numpy()
         plt.imshow(A, cmap='cividis', interpolation='nearest')
         ax = plt.gca()
@@ -390,7 +392,9 @@ class GradualAACBR(torch.nn.Module):
         plt.xlabel('Nodes')
         plt.ylabel('Nodes')
         plt.title('Edges')
-        plt.show()
+        logger(f)
+        if not prevent_show:
+            plt.show()
     
     def plot_base_score_parameters(self):
         self.compute_base_scores.plot_parameters()

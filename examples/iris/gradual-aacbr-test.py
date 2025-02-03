@@ -92,7 +92,7 @@ TEMPERATURE = 0.1
 USE_BLOCKERS = True
 
 totalf1 = 0
-N = 100
+N = 10
 
 for torch_seed in range(0, N):
 
@@ -173,26 +173,48 @@ print("="*40)
 print(f'Total with F1 > 0.7: {totalf1}/{N}: {(totalf1/N) * 100}%')
 print("="*40)
 
-# BASELINE Normal Initialisation in 10 runs:
-#  4/10
-# 27/100
-# 136/500
 
-# Changing to He Uniform initalisation:
-#   5/10
-#  24/100
+"""
 
-# Changing to He Normal initalisation:
-#   1/10
+BASELINE Normal Initialisation in 10 runs:
+     4/10 = 40%
+    27/100 = 27%
+    136/500 = 27%
 
-# Changing to LeCun initalisation:
-#   4/10
+Changing to He Uniform initalisation:
+     5/10
+    24/100
 
-# Changing to Xavier Uniform initalisation:
-#   7/10
-#  40/100
+Changing to He Normal initalisation:
+    1/10
 
-# Changing to Xavier Normal initalisation:
-#  2/10
+Changing to LeCun initalisation:
+    4/10
+
+Changing to Xavier Uniform initalisation:
+     7/10
+    40/100
+
+Changing to Xavier Normal initalisation:
+    2/10
+"""
+
+"""
+With Xavier Uniform:
+    LR: 5e-1
+        1/10
+         /100
+
+    LR: 5e-2
+        7/10
+         /100
+
+    LR: 5e-3
+        4/10
+         /100
 
 
+    LR: 5e-4
+        2/10
+         /100
+"""

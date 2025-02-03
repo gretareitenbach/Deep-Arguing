@@ -6,8 +6,8 @@ def sparsity_regulariser(model):
     return torch.sum(torch.abs(model.A))
 
 def community_preservation_regulariser(model): 
-    # A = torch.abs(model.A) # This regulariser expects values between 0 and 1
-    A = model.A
+    A = torch.abs(model.A) # This regulariser expects values between 0 and 1
+    # A = model.A
     return torch.sum(torch.svd(A).S)
 
 def connectivity_regulariser(model, eps=1e-6):
