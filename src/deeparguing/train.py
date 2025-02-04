@@ -14,8 +14,9 @@ def train_step(model,
                optimizer, criterion,
                use_symmetric_attacks,
                use_blockers=True,
-               regularise_graph = lambda model: 0, tau=None,
-               post_process_func = lambda x: x):
+               regularise_graph = lambda model: 0,
+               post_process_func = lambda x: x,
+               use_supports=False):
     """
         Execute a single step of training
 
@@ -70,7 +71,7 @@ def train_step(model,
     # TODO: consider efficiency issues with having to rebuild each time
     # Find a way to accumulate gradients update only when necessary?
     model.fit(X_casebase, y_casebase, X_default, y_default,
-              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, tau=tau)
+              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, use_supports=use_supports)
 
     predictions = model(X_new_cases, post_process_func=post_process_func).squeeze()
     loss = criterion(predictions, y_new_cases) + regularise_graph(model)
@@ -82,8 +83,8 @@ def train_step(model,
 
 def static_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-               regularise_graph = lambda model: 0, logger = lambda x: None, tau=None,
-               post_process_func = lambda x: x):
+               regularise_graph = lambda model: 0, logger = lambda x: None, 
+               post_process_func = lambda x: x, use_supports=False):
     """
         Executes a full training loop with a static casebase. 
 
@@ -167,7 +168,8 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
                           optimizer, criterion,
                           use_symmetric_attacks,
                           use_blockers=use_blockers,
-                          regularise_graph=regularise_graph, tau=tau, post_process_func=post_process_func)
+                          regularise_graph=regularise_graph, post_process_func=post_process_func,
+                          use_supports=use_supports)
 
         losses.append(loss.item())
         logger(loss)
@@ -186,8 +188,9 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
 
 def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, optimizer, criterion, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
             n_splits = None, use_blockers=True, plot_loss_curve=False, disable_tqdm=False, random_split_state=None,
-               regularise_graph = lambda model: 0, logger = lambda x: None, tau=None,
-               post_process_func = lambda x: x):
+               regularise_graph = lambda model: 0, logger = lambda x: None, 
+               post_process_func = lambda x: x,
+               use_supports=False):
     """
         Executes a full training loop with a dynamic casebase. 
 
@@ -278,7 +281,8 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
                               optimizer, criterion,
                               use_symmetric_attacks,
                               use_blockers=use_blockers,
-                              regularise_graph=regularise_graph, tau=tau, post_process_func=post_process_func)
+                              regularise_graph=regularise_graph, post_process_func=post_process_func,
+                              use_supports=use_supports)
 
             losses.append(loss.item())
             logger(loss)
@@ -295,7 +299,7 @@ def dynamic_train_model(model, X_casebase, y_casebase, X_default, y_default, opt
 
 def run_gradual_model(model, X_casebase, y_casebase,
                       X_default, y_default, X_new_cases, use_symmetric_attacks, use_blockers=True, 
-                      tau=None, post_process_func = lambda x: x):
+                       post_process_func = lambda x: x, use_supports=False):
     """
         Fits the model with the provided casebase and executes it on the new_cases
 
@@ -339,16 +343,16 @@ def run_gradual_model(model, X_casebase, y_casebase,
     """
 
     model.fit(X_casebase, y_casebase, X_default, y_default,
-              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, tau=tau)
-
+              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, use_supports=use_supports) 
     return model(X_new_cases, post_process_func=post_process_func)
 
 
 def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_cases, y_new_cases, print_results=True,
                    show_confusion=False, print_graph=False, print_matrix=False, print_compute_graph=False,
-                   use_symmetric_attacks=False, use_blockers=True, tau=None, return_predictions = False,
+                   use_symmetric_attacks=False, use_blockers=True,  return_predictions = False,
                    post_process_func = lambda x: x,
-                   cm_logger=lambda x: x, matrix_logger = lambda x: x, graph_logger = lambda x: x, prevent_show=False):
+                   cm_logger=lambda x: x, matrix_logger = lambda x: x, graph_logger = lambda x: x, prevent_show=False,
+                   use_supports=False):
     
     """
         Fits and executes the model, then evaluates it on accuracy, precision, 
@@ -415,7 +419,7 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
 
     final_strengths = run_gradual_model(model, X_casebase, y_casebase, X_default, y_default,
                                         X_new_cases, use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, 
-                                        tau=tau, post_process_func=post_process_func)
+                                        post_process_func=post_process_func, use_supports=use_supports)
 
     y_predicted = final_strengths.cpu().detach().numpy() 
     # print(y_predicted)

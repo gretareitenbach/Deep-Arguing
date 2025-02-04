@@ -48,7 +48,7 @@ class GradualAACBR(torch.nn.Module):
 
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, approximate_blockers = False, tau=None):
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports=False):
 
         """
             Builds the Edge-Weighted Quantitative Bipolar Argumentation 
@@ -123,26 +123,27 @@ class GradualAACBR(torch.nn.Module):
 
         attacks, differing_labels = self.__potential_attacks(edge_weights_strict, y_attackers, y_targets, train_size)
 
-        if approximate_blockers and use_blockers:
-            blocked_attacks = torch.ones_like(attacks)
-            attacks = self.masked_softmax(attacks, attacks != 0, dim=0)
-        else:
-            blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
+        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
 
+        if use_supports:
+            supports, _ = self.__potential_supports(edge_weights_strict, y_attackers, y_targets, train_size)
+            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict, supports)
+            self.B = (torch.mul(supports, blocked_supports))
+        else:
+            self.B = torch.zeros_like(edge_weights_strict)
 
         symmetric_attacks = self.__symmetric_attacks(use_symmetric_attacks, X_attackers,  X_targets, 
                                defaults_not_attack, attackers_default_mask, train_size, differing_labels)
 
-        self.A = (torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
-        if tau:
-            self.A = self.masked_softmax(self.A/tau, self.A != 0, dim=0)
-        self.A = -self.A
+        self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
+        self.A = self.A + self.B
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
 
     def masked_softmax(self, vec, mask, dim=0):
-        # Masked softmax from https://discuss.pytorch.org/t/apply-mask-softmax/14212/12#:~:text=Jun%202018-,I,-had%20to%20implement
+        # Masked softmax from 
+        # https://discuss.pytorch.org/t/apply-mask-softmax/14212/12#:~:text=Jun%202018-,I,-had%20to%20implement
         masked_vec = vec * mask.float()
         max_vec = torch.max(masked_vec, dim=dim, keepdim=True)[0]
         exps = torch.exp(masked_vec-max_vec)
@@ -151,6 +152,36 @@ class GradualAACBR(torch.nn.Module):
         zeros=(masked_sums == 0)
         masked_sums += zeros.float()
         return masked_exps/masked_sums
+
+
+    def __potential_supports(self, edge_weights_strict,  y_attackers, y_targets,  train_size):
+
+        #TODO: Combine potential attacks and supports
+
+
+        if len(y_attackers.shape) == 2:
+            same_labels = torch.any(y_attackers == y_targets, dim=-1)
+        else:
+            same_labels = y_attackers == y_targets
+        
+        same_labels = torch.reshape(same_labels, (train_size, train_size))
+
+        supports = torch.where(same_labels, edge_weights_strict, 0)
+
+        return supports, same_labels
+
+    
+    def __minimal_supports(self, use_blockers, edge_weights_strict, supports):
+
+        if use_blockers:
+            
+            edge_weights_strict = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
+            supports_expanded = supports.T.unsqueeze(0)  # Shape (1, n, n)
+            blocked_supports = torch.prod(1 - (edge_weights_strict * supports_expanded), dim=2)
+        else:
+            blocked_supports = torch.ones_like(edge_weights_strict)
+        
+        return blocked_supports
 
 
     def __symmetric_attacks(self, use_symmetric_attacks, X_attackers,  X_targets, 

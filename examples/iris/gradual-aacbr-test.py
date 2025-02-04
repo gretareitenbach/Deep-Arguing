@@ -87,12 +87,17 @@ Y_DEFAULTS = torch.tensor(all_y, device=device).flip([0])
 MAX_ITERS = len(X_train)
 EPOCHS = 3000
 USE_SYMMETRIC_ATTACKS = False
-LR = 3e-2
-TEMPERATURE = 0.1
+LR = 2e-2
+TEMPERATURE = 0.05
 USE_BLOCKERS = True
+USE_SUPPORTS = True
+
+ALPHA = 0
+BETA = 0
+GAMMA = 0.005
 
 totalf1 = 0
-N = 10
+N = 100
 
 for torch_seed in range(0, N):
 
@@ -115,12 +120,11 @@ for torch_seed in range(0, N):
     irrelevance = ri.RegularIrrelevance(partial_order)
     base_score = lbs.LearnedBaseScore([bsfe, bs_scaler], activation=torch.sigmoid)
 
-    alpha = 5e-4
 
     regulariser = lambda model: regularise(model, [
-        # [sparsity_regulariser, alpha], 
-        # [connectivity_regulariser, alpha], 
-        # [community_preservation_regulariser, alpha],
+        [sparsity_regulariser, ALPHA], 
+        [connectivity_regulariser, BETA], 
+        [community_preservation_regulariser, GAMMA],
         # [feature_smoothness_regulariser, alpha]
         ])
 
@@ -142,7 +146,8 @@ for torch_seed in range(0, N):
     #     accuracy, precision, recall, f1 = evaluate_model(model, X_train, y_train, X_DEFAULTS, Y_DEFAULTS, 
     #                                                      X_val, y_val, show_confusion=True, use_blockers=USE_BLOCKERS,  
     #                                                      print_matrix=True, print_compute_graph=False, 
-    #                                                      print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC)
+    #                                                      print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC,
+    #                                                      use_supports=USE_SUPPORTS)
 
 
     losses = static_train_model(model, X_train, y_train, 
@@ -150,7 +155,8 @@ for torch_seed in range(0, N):
                     criterion, EPOCHS, X_new_cases=X_train, y_new_cases=y_train, 
                     use_symmetric_attacks=False, use_blockers=USE_BLOCKERS, 
                     plot_loss_curve=False,
-                    disable_tqdm=False, post_process_func=POST_PROCESS_FUNC, regularise_graph=regulariser)
+                    disable_tqdm=False, post_process_func=POST_PROCESS_FUNC, regularise_graph=regulariser,
+                    use_supports=USE_SUPPORTS)
 
     losses = np.array(losses)
 
@@ -159,7 +165,8 @@ for torch_seed in range(0, N):
         accuracy, precision, recall, f1 = evaluate_model(model, X_train, y_train, X_DEFAULTS, Y_DEFAULTS, 
                                                         X_val, y_val, show_confusion=False, use_blockers=USE_BLOCKERS,  
                                                         print_matrix=False, print_compute_graph=False, 
-                                                        print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC)
+                                                        print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC,
+                                                        use_supports=USE_SUPPORTS)
 
         print("VAL DATA RESULTS:")
         print("Accuracy, Precision, Recall, F1")
@@ -173,48 +180,3 @@ print("="*40)
 print(f'Total with F1 > 0.7: {totalf1}/{N}: {(totalf1/N) * 100}%')
 print("="*40)
 
-
-"""
-
-BASELINE Normal Initialisation in 10 runs:
-     4/10 = 40%
-    27/100 = 27%
-    136/500 = 27%
-
-Changing to He Uniform initalisation:
-     5/10
-    24/100
-
-Changing to He Normal initalisation:
-    1/10
-
-Changing to LeCun initalisation:
-    4/10
-
-Changing to Xavier Uniform initalisation:
-     7/10
-    40/100
-
-Changing to Xavier Normal initalisation:
-    2/10
-"""
-
-"""
-With Xavier Uniform:
-    LR: 5e-1
-        1/10
-         /100
-
-    LR: 5e-2
-        7/10
-         /100
-
-    LR: 5e-3
-        4/10
-         /100
-
-
-    LR: 5e-4
-        2/10
-         /100
-"""
