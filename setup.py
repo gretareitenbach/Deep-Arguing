@@ -25,7 +25,14 @@ setup(
         "matplotlib==3.9.2",
         "networkx==3.2.1",
         "numpy==2.1.1",
-        "torch==2.3.0+cu118",
+        "torch==2.3.0",
+        "tqdm",
+        "scikit-learn",
+        "torchviz",
+        "pandas",
+    ],
+    dependency_links=[
+        'https://download.pytorch.org/whl/cu118'
     ],
     python_requires=">=3.10",
     package_dir={"": "src"},
