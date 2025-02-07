@@ -2,16 +2,19 @@ import torch
 
 
 
-def sparsity_regulariser(model): 
-    return torch.sum(torch.abs(model.A))
+def sparsity_regulariser(model, filter_func = lambda A: A): 
+    A = filter_func(model.A)
+    return torch.sum(torch.abs(A))
 
-def community_preservation_regulariser(model): 
-    A = torch.abs(model.A) # This regulariser expects values between 0 and 1
+def community_preservation_regulariser(model, filter_func = lambda A: A): 
+    A = filter_func(model.A)
+    A = torch.abs(A) # This regulariser expects values between 0 and 1
     # A = model.A
     return torch.sum(torch.svd(A).S)
 
-def connectivity_regulariser(model, eps=1e-6):
-    A = torch.abs(model.A) # This regulariser expects values between 0 and 1
+def connectivity_regulariser(model, eps=1e-6, filter_func = lambda A: A):
+    A = filter_func(model.A)
+    A = torch.abs(A) # This regulariser expects values between 0 and 1
     A = torch.sum(A, dim =1) + eps
     return -torch.sum(torch.log(A))
 
@@ -39,3 +42,12 @@ def regularise(model, regularisers):
         total += weight * reg_func(model)
     
     return total
+
+filter_to_attacks =  = lambda A: torch.where(A < 0, A, 0)
+filter_to_supports =  = lambda A: torch.where(A > 0, A, 0)
+
+def community_prev_reg_attacks(model): 
+    return community_preservation_regulariser(model, filter_func = filter_to_attakcs)
+
+def community_prev_reg_supports(model): 
+    return community_preservation_regulariser(model, filter_func = filter_supports)

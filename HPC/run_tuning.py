@@ -17,7 +17,7 @@ import deeparguing.casebase_edge_weights.compute_partial_order as cpo
 import deeparguing.feature_extractor.scaler as scaler
 
 from deeparguing.train import evaluate_model, static_train_model
-from deeparguing.regulariser import sparsity_regulariser, community_preservation_regulariser, connectivity_regulariser, feature_smoothness_regulariser, regularise
+from deeparguing.regulariser import sparsity_regulariser, community_preservation_regulariser, connectivity_regulariser, feature_smoothness_regulariser, regularise, community_prev_reg_attacks, community_prev_reg_supports
 import argparse
 
 
@@ -105,6 +105,7 @@ def main():
     ALPHA = wandb.config["alpha"]
     BETA = wandb.config["beta"]
     GAMMA = wandb.config["gamma"]
+    GAMMA_PRIME = wandb.config["gamma_prime"]
     POST_PROCESS_FUNC = post_process_funcs[wandb.config["post_process_func"]]
     USE_SUPPORTS = wandb.config["use_supports"]
 
@@ -130,12 +131,14 @@ def main():
         partial_order = lpo.LearnedPartialOrder([pofe], comparison_func=comp_func)
         irrelevance = ri.RegularIrrelevance(partial_order)
         base_score = lbs.LearnedBaseScore([bsfe, bs_scaler], activation=torch.sigmoid)
+        
 
 
         regulariser = lambda model: regularise(model, [
             [sparsity_regulariser, ALPHA], 
             [connectivity_regulariser, BETA], 
-            [community_preservation_regulariser, GAMMA],
+            [community_prev_reg_attacks, GAMMA],
+            [community_prev_reg_supports, GAMMA_PRIME],
             # [feature_smoothness_regulariser, alpha]
             ])
 

@@ -17,8 +17,9 @@ sweep_config = {
         "initialisation_method": {"values": ["Xavier_uniform"]},
         "alpha": {"values": [0]},
         "beta": {"values": [0]},
-        "gamma": {"values": [5e-3]},
-        "post_process_func": {"values": ["id"]},
+        "gamma": {"values": [5e-2, 5e-3, 5e-4, 5e-8]},
+        "gamma_prime": {"values": [5e-2, 5e-3, 5e-4, 5e-8]},
+        "post_process_func": {"values": ["uni_directional"]},
         "use_supports": {"values": [True]},
     }
 }

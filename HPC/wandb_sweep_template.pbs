@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -N wandb_sweep
-#PBS -l select=1:ncpus=16:mem=32gb:ngpus=1:gpu_type=L40S
+#PBS -l select=1:ncpus=16:mem=32gb
 #PBS -l walltime=72:00:00
 
 cd ${PBS_O_WORKDIR}
@@ -14,3 +14,5 @@ conda activate gradual-aacbr
 
 # Run the wandb agent with dynamic sweep ID
 python HPC/run_tuning.py --sweep_id $SWEEP_ID
+
+####PBS -l select=1:ncpus=16:mem=32gb:ngpus=1:gpu_type=L40S
