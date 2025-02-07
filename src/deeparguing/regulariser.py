@@ -43,11 +43,11 @@ def regularise(model, regularisers):
     
     return total
 
-filter_to_attacks =  = lambda A: torch.where(A < 0, A, 0)
-filter_to_supports =  = lambda A: torch.where(A > 0, A, 0)
+filter_to_attacks = lambda A: torch.where(A < 0, A, 0)
+filter_to_supports = lambda A: torch.where(A > 0, A, 0)
 
 def community_prev_reg_attacks(model): 
-    return community_preservation_regulariser(model, filter_func = filter_to_attakcs)
+    return community_preservation_regulariser(model, filter_func = filter_to_attacks)
 
 def community_prev_reg_supports(model): 
-    return community_preservation_regulariser(model, filter_func = filter_supports)
+    return community_preservation_regulariser(model, filter_func = filter_to_supports)
