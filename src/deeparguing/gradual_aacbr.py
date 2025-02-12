@@ -127,7 +127,7 @@ class GradualAACBR(torch.nn.Module):
 
         if use_supports:
             supports, _ = self.__potential_supports(edge_weights_strict, y_attackers, y_targets, train_size)
-            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict, supports)
+            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict)
             self.B = (torch.mul(supports, blocked_supports))
         else:
             self.B = torch.zeros_like(edge_weights_strict)
@@ -167,17 +167,21 @@ class GradualAACBR(torch.nn.Module):
         same_labels = torch.reshape(same_labels, (train_size, train_size))
 
         supports = torch.where(same_labels, edge_weights_strict, 0)
+        # Prevent argument from supporting itself
+        mask_self = 1 - torch.diag(torch.ones((len(edge_weights_strict)), device=supports.device))
+        supports = torch.mul(supports, mask_self)
 
         return supports, same_labels
 
     
-    def __minimal_supports(self, use_blockers, edge_weights_strict, supports):
+    def __minimal_supports(self, use_blockers, edge_weights_strict):
 
         if use_blockers:
-            
-            edge_weights_strict = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
-            supports_expanded = supports.T.unsqueeze(0)  # Shape (1, n, n)
-            blocked_supports = torch.prod(1 - (edge_weights_strict * supports_expanded), dim=2)
+            # As supports are defined with a minimal condition that does not consider outcomes
+            # We use edge weights strict only to compute the value of blocked supports 
+            edge_weights_strict_unsqueezed = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
+            edge_weights_strict_expanded = edge_weights_strict.T.unsqueeze(0)  # Shape (1, n, n)
+            blocked_supports = torch.prod(1 - (edge_weights_strict_unsqueezed * edge_weights_strict_expanded), dim=2)
         else:
             blocked_supports = torch.ones_like(edge_weights_strict)
         
@@ -450,7 +454,7 @@ class GradualAACBR(torch.nn.Module):
         return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
 
     def slow_fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True):
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports = False):
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
@@ -490,27 +494,48 @@ class GradualAACBR(torch.nn.Module):
 
             for target_index in range(train_size):
 
-                if torch.all(y_train[attacker_index] == y_train[target_index], dim=-1):
+                if attacker_index == target_index:
                     continue
 
-                blocker_value = 1
-                if use_blockers:
+                # Could refactor to remove repeats between supports and attacks 
+                # but the code here is supposed to be a direct translation of the fuzzy logic 
+                # (and is only used for testing) so have left it as is
 
-                    for blocker_index in range(train_size):
+                if torch.all(y_train[attacker_index] == y_train[target_index], dim=-1):
+                    if not use_supports:
+                        continue
+                    # Supports
+                    blocker_value = 1
+                    if use_blockers:
 
-                        if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (defaults_not_attack and blocker_index in default_indexes):
-                            continue
+                        for blocker_index in range(train_size):
 
-                        blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
+                            if (defaults_not_attack and blocker_index in default_indexes):
+                                continue
+
+                            blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
+
+                    result[attacker_index, target_index] = edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index]        
+                else:
+                    # Attacks
+                    blocker_value = 1
+                    if use_blockers:
+
+                        for blocker_index in range(train_size):
+
+                            if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (defaults_not_attack and blocker_index in default_indexes):
+                                continue
+
+                            blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
 
 
-                result[attacker_index, target_index] = edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index]        
+                    result[attacker_index, target_index] = -(edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index])
 
 
             
 
 
-        self.A = -result
+        self.A = result
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes

@@ -139,7 +139,8 @@ for torch_seed in range(0, N):
     optimizer = optim.AdamW(model.parameters(), lr=LR)
 
 
-    POST_PROCESS_FUNC = lambda x: x
+    POST_PROCESS_FUNC = lambda A: torch.where(torch.abs(A) > torch.abs(A.T), A, 0)
+    # POST_PROCESS_FUNC = lambda x: x
 
 
     # with torch.no_grad():

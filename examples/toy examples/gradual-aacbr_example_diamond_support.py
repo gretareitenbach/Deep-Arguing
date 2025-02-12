@@ -20,7 +20,7 @@ y_train = torch.tensor([
 ], dtype=torch.float32)
 
 X_default = torch.tensor([
-        [3]
+        [3] # (d
 ], dtype=torch.float32)
 y_default = torch.tensor([[0]], dtype=torch.float32)
 
@@ -52,7 +52,7 @@ model = deeparguing.GradualAACBR(semantics,
 
 print("MODEL FIT")
 start_time = time.time()
-model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False)
+model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False, use_supports = True)
 new_fit = model.A
 print("--- %s seconds ---" % (time.time() - start_time))
 model.show_matrix()
@@ -60,10 +60,14 @@ model.show_matrix()
 
 print("MODEL SLOW_FIT")
 start_time = time.time()
-model.slow_fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False)
+model.slow_fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False, use_supports = True)
 slow_fit = model.A
 print("--- %s seconds ---" % (time.time() - start_time))
 model.show_matrix()
+
+print(new_fit)
+
+print(slow_fit)
 
 print(new_fit == slow_fit)
 
