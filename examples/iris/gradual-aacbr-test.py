@@ -27,7 +27,7 @@ import deeparguing.casebase_edge_weights.compute_partial_order as cpo
 import deeparguing.feature_extractor.scaler as scaler
 
 from deeparguing.train import evaluate_model, static_train_model
-from deeparguing.regulariser import sparsity_regulariser, community_preservation_regulariser, connectivity_regulariser, feature_smoothness_regulariser, regularise
+from deeparguing.regulariser import sparsity_regulariser, community_preservation_regulariser, connectivity_regulariser, feature_smoothness_regulariser, regularise, community_prev_reg_attacks, community_prev_reg_supports
 
 
 from helper import load_iris, split_data, normalise_input
@@ -74,110 +74,134 @@ X_val = normalise_input(X_val, train_mean, train_std)
 X_test = normalise_input(X_test, train_mean, train_std)
 
 
-
-# ### Train Model
-
-
 DEFAULT_CASE = X_train.mean(axis=0)
 
 X_DEFAULTS = DEFAULT_CASE.tile(len(all_y), 1)
 Y_DEFAULTS = torch.tensor(all_y, device=device).flip([0])
 
 
-MAX_ITERS = len(X_train)
-EPOCHS = 3000
-USE_SYMMETRIC_ATTACKS = False
-LR = 2e-2
-TEMPERATURE = 0.05
-USE_BLOCKERS = True
-USE_SUPPORTS = True
 
-ALPHA = 0
-BETA = 0
-GAMMA = 0.005
-
-totalf1 = 0
-N = 100
-
-for torch_seed in range(0, N):
-
-    # torch_seed = 1
-
-    print("="*40)
-    print("Seed:", torch_seed)
-
-    torch.manual_seed(torch_seed) # TRY DIFFERENT INITIAL WEIGHTS 
-
-    no_features = X_train.shape[-1]
-    semantics = rs.ReluSemantics(max_iters=MAX_ITERS, epsilon=0)
-
-    pofe = fwe.FeatureWeightedExtractor(no_features)
-    bsfe = pofe
-    bs_scaler = scaler.Scaler(bsfe.get_output_features(), weight=1.0)
-    comp_func = cpo.Subtractor(temperature=TEMPERATURE, activation=torch.sigmoid)
-
-    partial_order = lpo.LearnedPartialOrder([pofe], comparison_func=comp_func)
-    irrelevance = ri.RegularIrrelevance(partial_order)
-    base_score = lbs.LearnedBaseScore([bsfe, bs_scaler], activation=torch.sigmoid)
+initalisation_methods = {
+  "normal": lambda x: torch.nn.init.normal_(x),
+  "He_uniform": lambda x: torch.nn.init.kaiming_uniform_(x.unsqueeze(1), mode="fan_in", nonlinearity="relu"),
+  "He_normal": lambda x: torch.nn.init.kaiming_normal_(x.unsqueeze(1), mode="fan_in", nonlinearity="relu"),
+  "LeCun": lambda x: torch.nn.init.kaiming_normal_(x.unsqueeze(1), mode='fan_in', nonlinearity='sigmoid'),
+  "Xavier_uniform": lambda x: torch.nn.init.xavier_uniform_(x.unsqueeze(1)),  
+  "Xavier_normal": lambda x: torch.nn.init.xavier_normal_(x.unsqueeze(1)),  
+}
 
 
-    regulariser = lambda model: regularise(model, [
-        [sparsity_regulariser, ALPHA], 
-        [connectivity_regulariser, BETA], 
-        [community_preservation_regulariser, GAMMA],
-        # [feature_smoothness_regulariser, alpha]
-        ])
+post_process_funcs = {
+    "id": lambda A: A,
+    "uni_directional": lambda A: torch.where(torch.abs(A) > torch.abs(A.T), A, 0)
+}
+
+config = {
+            "epochs": 3000,
+            "max_iters": 95, # 95 = len of iris casebase
+            "use_symmetric_attacks": False,
+            "lr": 2e-2,
+            "temperature": 5e-2,
+            "use_blockers": True,
+            "initialisation_method": "Xavier_uniform",
+            "alpha": 0,
+            "beta": 0,
+            "gamma": 5e-3,
+            "gamma_prime": 5e-3,
+            "post_process_func": "uni_directional",
+            "use_supports": True,
+    }
 
 
+def main():
 
-    model = gradual_aacbr.GradualAACBR(semantics, 
-                                    base_score,
-                                    irrelevance,
-                                    partial_order).to(device)
+    N = 100
 
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=LR)
+    MAX_ITERS = config["max_iters"]
+    EPOCHS = config["epochs"]
+    USE_SYMMETRIC_ATTACKS = config["use_symmetric_attacks"]
+    LR = config["lr"]
+    TEMPERATURE = config["temperature"]
+    USE_BLOCKERS = config["use_blockers"] 
+    INITIALISATION_METHOD = initalisation_methods[config["initialisation_method"]]
+    ALPHA = config["alpha"]
+    BETA = config["beta"]
+    GAMMA = config["gamma"]
+    GAMMA_PRIME = config["gamma_prime"]
+    POST_PROCESS_FUNC = post_process_funcs[config["post_process_func"]]
+    USE_SUPPORTS = config["use_supports"]
 
+    totalf1 = 0
 
-    POST_PROCESS_FUNC = lambda A: torch.where(torch.abs(A) > torch.abs(A.T), A, 0)
-    # POST_PROCESS_FUNC = lambda x: x
-
-
-    # with torch.no_grad():
-    #     accuracy, precision, recall, f1 = evaluate_model(model, X_train, y_train, X_DEFAULTS, Y_DEFAULTS, 
-    #                                                      X_val, y_val, show_confusion=True, use_blockers=USE_BLOCKERS,  
-    #                                                      print_matrix=True, print_compute_graph=False, 
-    #                                                      print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC,
-    #                                                      use_supports=USE_SUPPORTS)
-
-
-    losses = static_train_model(model, X_train, y_train, 
-                    X_DEFAULTS, Y_DEFAULTS, optimizer, 
-                    criterion, EPOCHS, X_new_cases=X_train, y_new_cases=y_train, 
-                    use_symmetric_attacks=False, use_blockers=USE_BLOCKERS, 
-                    plot_loss_curve=False,
-                    disable_tqdm=False, post_process_func=POST_PROCESS_FUNC, regularise_graph=regulariser,
-                    use_supports=USE_SUPPORTS)
-
-    losses = np.array(losses)
+    for torch_seed in range(0, N):
+    # torch_seed = 15
 
 
-    with torch.no_grad():
-        accuracy, precision, recall, f1 = evaluate_model(model, X_train, y_train, X_DEFAULTS, Y_DEFAULTS, 
-                                                        X_val, y_val, show_confusion=False, use_blockers=USE_BLOCKERS,  
-                                                        print_matrix=False, print_compute_graph=False, 
-                                                        print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC,
-                                                        use_supports=USE_SUPPORTS)
-
-        print("VAL DATA RESULTS:")
-        print("Accuracy, Precision, Recall, F1")
-        print(accuracy, precision, recall, f1)
         print("="*40)
-        if f1 > 0.7:
-            totalf1 += 1
-        print(f'Total with F1 > 0.7: {totalf1}/{torch_seed + 1}: {(totalf1/(torch_seed + 1)) * 100}%')
+        print("Seed:", torch_seed)
 
-print("="*40)
-print(f'Total with F1 > 0.7: {totalf1}/{N}: {(totalf1/N) * 100}%')
-print("="*40)
+        torch.manual_seed(torch_seed) # TRY DIFFERENT INITIAL WEIGHTS 
 
+        no_features = X_train.shape[-1]
+        semantics = rs.ReluSemantics(max_iters=MAX_ITERS, epsilon=0)
+
+        pofe = fwe.FeatureWeightedExtractor(no_features, initialisation_method=INITIALISATION_METHOD)
+        bsfe = pofe
+        bs_scaler = scaler.Scaler(bsfe.get_output_features(), weight=1.0)
+        comp_func = cpo.Subtractor(temperature=TEMPERATURE, activation=torch.sigmoid)
+
+        partial_order = lpo.LearnedPartialOrder([pofe], comparison_func=comp_func)
+        irrelevance = ri.RegularIrrelevance(partial_order)
+        base_score = lbs.LearnedBaseScore([bsfe, bs_scaler], activation=torch.sigmoid)
+        
+
+
+        regulariser = lambda model: regularise(model, [
+            [sparsity_regulariser, ALPHA], 
+            [connectivity_regulariser, BETA], 
+            [community_prev_reg_attacks, GAMMA],
+            [community_prev_reg_supports, GAMMA_PRIME],
+            # [feature_smoothness_regulariser, alpha]
+            ])
+
+
+
+        model = gradual_aacbr.GradualAACBR(semantics, 
+                                        base_score,
+                                        irrelevance,
+                                        partial_order).to(device)
+
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = optim.AdamW(model.parameters(), lr=LR)
+
+
+        # POST_PROCESS_FUNC = lambda x: x
+
+
+        print(f"RUNNING TRAINING FOR SEED: {torch_seed}")
+        losses = static_train_model(model, X_train, y_train, 
+                        X_DEFAULTS, Y_DEFAULTS, optimizer, 
+                        criterion, EPOCHS, X_new_cases=X_train, y_new_cases=y_train, 
+                        use_symmetric_attacks=USE_SYMMETRIC_ATTACKS, use_blockers=USE_BLOCKERS, 
+                        plot_loss_curve=False,
+                        disable_tqdm=False, post_process_func=POST_PROCESS_FUNC, 
+                        regularise_graph=regulariser, use_supports=USE_SUPPORTS)
+
+        losses = np.array(losses)
+
+        with torch.no_grad():
+            accuracy, precision, recall, f1 = evaluate_model(model, X_train, y_train, X_DEFAULTS, Y_DEFAULTS, 
+                                                            X_val, y_val, show_confusion=False, use_blockers=USE_BLOCKERS, use_symmetric_attacks=USE_SYMMETRIC_ATTACKS,  
+                                                            print_matrix=False, print_compute_graph=False, 
+                                                            print_graph=False, print_results=False, post_process_func=POST_PROCESS_FUNC,
+                                                            use_supports=USE_SUPPORTS)
+
+            print("VAL DATA RESULTS:")
+            print("Accuracy, Precision, Recall, F1")
+            print(accuracy, precision, recall, f1)
+            print("="*40)
+            if f1 > 0.7:
+                totalf1 += 1
+            print(f'Total with F1 > 0.7: {totalf1}/{torch_seed + 1}: {(totalf1/(torch_seed + 1)) * 100}%')
+
+main()
