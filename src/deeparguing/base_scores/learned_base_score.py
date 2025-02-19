@@ -8,18 +8,19 @@ from typing import List
 
 class LearnedBaseScore(ComputeBaseScores):
 
-    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=lambda x: x):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=lambda x: x, temperature = 1):
         super(LearnedBaseScore, self).__init__()
 
         self.feature_extractors = torch.nn.ModuleList(feature_extractors)
         self.activation = activation
+        self.temperature = temperature
 
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
 
         for feature_extractor in self.feature_extractors:
             features = feature_extractor(features)
-        return self.activation(features) 
+        return self.activation(features/temperature) 
 
 
     def plot_parameters(self):
