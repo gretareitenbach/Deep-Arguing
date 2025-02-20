@@ -20,7 +20,7 @@ class LearnedBaseScore(ComputeBaseScores):
 
         for feature_extractor in self.feature_extractors:
             features = feature_extractor(features)
-        return self.activation(features/temperature) 
+        return self.activation(features/self.temperature) 
 
 
     def plot_parameters(self):
