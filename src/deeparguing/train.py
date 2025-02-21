@@ -74,7 +74,10 @@ def train_step(model,
               use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, use_supports=use_supports)
 
     predictions = model(X_new_cases, post_process_func=post_process_func).squeeze()
-    loss = criterion(predictions, y_new_cases) + regularise_graph(model)
+
+    y_target = torch.argmax(y_new_cases, axis=1)
+
+    loss = criterion(predictions, y_target) + regularise_graph(model)
     loss.backward()
 
     optimizer.step()
