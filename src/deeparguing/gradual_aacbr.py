@@ -273,7 +273,7 @@ class GradualAACBR(torch.nn.Module):
 
         return strengths
 
-    def forward(self, new_cases: torch.Tensor, return_all_strenghts = False, post_process_func = lambda x: x):
+    def forward(self, new_cases: torch.Tensor, return_all_strengths = False, post_process_func = lambda x: x):
         """
             Computes the final strenghts of the EW-QAF for each new_case input
 
@@ -284,7 +284,7 @@ class GradualAACBR(torch.nn.Module):
                 Shape (N, x1, ..., xn) where N is the number of new cases 
                 arguments and (x1, ..., xn) is the shape of each argument.
 
-            return_all_strenghts : bool, default False
+            return_all_strengths : bool, default False
                 When false, the final strenghts of only the default cases are
                 returned.
                 When true, the final strenght for all casebase 
@@ -324,10 +324,21 @@ class GradualAACBR(torch.nn.Module):
         if final_strengths.dim() == 1:
             final_strengths = final_strengths.unsqueeze(0)
 
-        if return_all_strenghts:
+        if return_all_strengths:
             return final_strengths
         else:
             return final_strengths[:, self.default_indexes]
+    
+    def show_base_scores(self):
+        base_scores = self.compute_base_scores(self.X_train)  # (n)
+        base_scores_max = base_scores.max()
+        base_scores_min = base_scores.min()
+        base_scores = base_scores.detach().cpu().numpy()
+        print("MAX:", base_scores_max)
+        print("MIN:", base_scores_min)
+        print("BASE SCORES")
+        print(base_scores)
+
     
     def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, prevent_show = False):
         """

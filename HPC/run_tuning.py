@@ -100,7 +100,6 @@ def main():
     USE_SYMMETRIC_ATTACKS = wandb.config["use_symmetric_attacks"]
     LR = wandb.config["lr"]
     PO_TEMPERATURE = wandb.config["temperature"]
-    BS_TEMPERATURE = wandb.config["bs_temperature"]
     USE_BLOCKERS = wandb.config["use_blockers"] 
     INITIALISATION_METHOD = initalisation_methods[wandb.config["initialisation_method"]]
     ALPHA = wandb.config["alpha"]
@@ -126,12 +125,12 @@ def main():
 
         pofe = fwe.FeatureWeightedExtractor(no_features, initialisation_method=INITIALISATION_METHOD)
         bsfe = pofe
-        # bs_scaler = scaler.Scaler(bsfe.get_output_features(), weight=1.0)
+        bs_scaler = scaler.Scaler(bsfe.get_output_features(), weight=1.0)
         comp_func = cpo.Subtractor(temperature=PO_TEMPERATURE, activation=torch.sigmoid)
 
         partial_order = lpo.LearnedPartialOrder([pofe], comparison_func=comp_func)
         irrelevance = ri.RegularIrrelevance(partial_order)
-        base_score = lbs.LearnedBaseScore([bsfe], activation=torch.sigmoid, temperature=BS_TEMPERATURE)
+        base_score = lbs.LearnedBaseScore([bsfe, bs_scaler], activation=torch.sigmoid)
         
 
 
