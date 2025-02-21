@@ -1,4 +1,5 @@
 import wandb
+import argparse
 
 # ### Train Model
 
@@ -24,6 +25,20 @@ sweep_config = {
     }
 }
 
-sweep_id = wandb.sweep(sweep=sweep_config, project="gradual-aa-cbr-iris")
+if __name__ == "__main__":
 
-print(f"Sweep ID: {sweep_id}")
+    parser = argparse.ArgumentParser(description="Argument parser for project configuration.")
+
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="iris",
+        help="dataset name"
+    )
+
+
+    args = parser.parse_args()
+
+    sweep_id = wandb.sweep(sweep=sweep_config,  project=f"gradual-aa-cbr-{args.dataset}")
+
+    print(f"Sweep ID: {sweep_id}")

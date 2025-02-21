@@ -82,6 +82,28 @@ def load_covertype():
 
     return X, y
 
+def load_wdbc(labels=[]):
+    # TODO: Check if data is there/add error handling
+    data = pd.read_csv('../../data/wdbc/wdbc.data')
+
+    data = data.values
+
+    X = np.array(data[:, 2:], dtype=np.float32)
+    y = np.array(data[:, 1])
+
+    if len(labels) != 0:
+        mask = np.isin(y, labels)
+        y = y[mask]
+        X = X[mask]
+
+
+    y = y.reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(y)
+    y = encoder.transform(y)
+
+    return X, y
+
 
 def split_data(X, y, seed, test_size=0.2):
 
@@ -107,7 +129,8 @@ def load_dataset(dataset):
         "iris": load_iris,
         "mnist": load_mnist(),
         "glioma": load_glioma,
-        "covertype": load_covertype
+        "covertype": load_covertype,
+        "wdbc": load_wdbc.
     }
 
     if dataset not in loaders:

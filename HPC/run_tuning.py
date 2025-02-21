@@ -21,7 +21,7 @@ from deeparguing.regulariser import sparsity_regulariser, community_preservation
 import argparse
 
 
-from helper import load_iris, split_data, normalise_input
+from helper import load_dataset, split_data, normalise_input
 
 
 
@@ -30,47 +30,50 @@ print(device)
 
 SEED = 42
 
+def data_pre_process(dataset):
 
-X, y = load_iris(labels=["Iris-setosa", "Iris-versicolor", "Iris-virginica"])
+    X, y = load_dataset(dataset)
 
-all_y = np.unique(y, axis=0)
-print(all_y)
-
-
-train_full, train, val, test = split_data(X, y, SEED)
-
-print(f"Test Size:  {len(test['X'])}")
-print(f"Train Size:  {len(train['X'])}")
-print(f"Validation Size:  {len(val['X'])}")
+    all_y = np.unique(y, axis=0)
+    print(all_y)
 
 
+    train_full, train, val, test = split_data(X, y, SEED)
+
+    print(f"Test Size:  {len(test['X'])}")
+    print(f"Train Size:  {len(train['X'])}")
+    print(f"Validation Size:  {len(val['X'])}")
 
 
-# ### Convert to Torch
 
 
-X_train_full, y_train_full = torch.tensor(train_full["X"], device=device),      torch.tensor(train_full["y"], dtype=torch.float32, device=device)
-X_train, y_train           = torch.tensor(train["X"]     , device=device),      torch.tensor(train["y"],      dtype=torch.float32, device=device)
-X_val, y_val               = torch.tensor(val["X"]       , device=device),      torch.tensor(val["y"],        dtype=torch.float32, device=device)
-X_test, y_test             = torch.tensor(test["X"]      , device=device),      torch.tensor(test["y"],       dtype=torch.float32, device=device)
+    # ### Convert to Torch
 
 
-# ### Normalize dataset
+    X_train_full, y_train_full = torch.tensor(train_full["X"], device=device),      torch.tensor(train_full["y"], dtype=torch.float32, device=device)
+    X_train, y_train           = torch.tensor(train["X"]     , device=device),      torch.tensor(train["y"],      dtype=torch.float32, device=device)
+    X_val, y_val               = torch.tensor(val["X"]       , device=device),      torch.tensor(val["y"],        dtype=torch.float32, device=device)
+    X_test, y_test             = torch.tensor(test["X"]      , device=device),      torch.tensor(test["y"],       dtype=torch.float32, device=device)
 
 
-train_mean = X_train.mean(dim=0)
-train_std = X_train.std(dim=0)
+    # ### Normalize dataset
 
 
-X_train = normalise_input(X_train, train_mean, train_std)
-X_val = normalise_input(X_val, train_mean, train_std)
-X_test = normalise_input(X_test, train_mean, train_std)
+    train_mean = X_train.mean(dim=0)
+    train_std = X_train.std(dim=0)
 
 
-DEFAULT_CASE = X_train.mean(axis=0)
+    X_train = normalise_input(X_train, train_mean, train_std)
+    X_val = normalise_input(X_val, train_mean, train_std)
+    X_test = normalise_input(X_test, train_mean, train_std)
 
-X_DEFAULTS = DEFAULT_CASE.tile(len(all_y), 1)
-Y_DEFAULTS = torch.tensor(all_y, device=device).flip([0])
+
+    DEFAULT_CASE = X_train.mean(axis=0)
+
+    X_DEFAULTS = DEFAULT_CASE.tile(len(all_y), 1)
+    Y_DEFAULTS = torch.tensor(all_y, device=device).flip([0])
+
+    return X_train, y_train, X_val, y_val, X_DEFAULTS, Y_DEFAULTS
 
 
 
@@ -108,6 +111,9 @@ def main():
     GAMMA_PRIME = wandb.config["gamma_prime"]
     POST_PROCESS_FUNC = post_process_funcs[wandb.config["post_process_func"]]
     USE_SUPPORTS = wandb.config["use_supports"]
+
+
+    X_train, y_train, X_val, y_val, X_DEFAULTS, Y_DEFAULTS = data_pre_process(dataset)
 
     totalf1 = 0
 
@@ -217,8 +223,19 @@ if __name__ == "__main__":
         help="Sweep ID"
     )
 
+
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="iris",
+        help="dataset name"
+    )
+
+
     args = parser.parse_args()
 
     print("RUNNING SWEEP ID", args.sweep_id)
 
-    wandb.agent(args.sweep_id, function=main, project="gradual-aa-cbr-iris")
+    dataset = args.dataset
+
+    wandb.agent(args.sweep_id, function=main, project=f"gradual-aa-cbr-{dataset}")
