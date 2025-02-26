@@ -8,18 +8,24 @@ from typing import List
 
 class LearnedBaseScore(ComputeBaseScores):
 
-    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=lambda x: x, temperature = 1):
+    def __init__(self,  feature_extractors: List[FeatureExtractor], activation=lambda x: x, temperature = 1., batch_size = None):
         super(LearnedBaseScore, self).__init__()
 
         self.feature_extractors = torch.nn.ModuleList(feature_extractors)
         self.activation = activation
         self.temperature = temperature
+        self.batch_size = batch_size
 
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
 
         for feature_extractor in self.feature_extractors:
-            features = feature_extractor(features)
+            if self.batch_size == None:
+                features = feature_extractor(features)
+            else:
+                features_ = feature_extractor(features)
+                features = self.split_apply_fe(features, feature_extractor, self.batch_size)
+                assert(torch.allclose(features_, features, atol=1e-6))
         return self.activation(features/self.temperature) 
 
 
@@ -27,3 +33,9 @@ class LearnedBaseScore(ComputeBaseScores):
         for feature_extractor in self.feature_extractors:
             feature_extractor.plot_parameters()
 
+
+    def split_apply_fe(self, cases, feature_extractor, batch_size):
+        split_cases = torch.split(cases, batch_size)
+        result = [feature_extractor(cases_i) for cases_i in split_cases]
+        result = torch.hstack(result)
+        return result
