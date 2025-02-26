@@ -130,7 +130,7 @@ def load_dataset(dataset):
         "mnist": load_mnist(),
         "glioma": load_glioma,
         "covertype": load_covertype,
-        "wdbc": load_wdbc.
+        "wdbc": load_wdbc,
     }
 
     if dataset not in loaders:

@@ -26,7 +26,7 @@ class CompareCases(torch.nn.Module, metaclass=ABCMeta):
 
 
 class Subtractor(CompareCases):
-    def __init__(self, temperature=1, activation=lambda x: x):
+    def __init__(self, temperature=1., activation=lambda x: x):
         super(Subtractor, self).__init__()
         self.temperature = temperature
         self.activation = activation
