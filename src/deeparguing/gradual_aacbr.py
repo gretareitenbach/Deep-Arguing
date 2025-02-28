@@ -11,7 +11,8 @@ from deeparguing.base_scores.compute_base_scores import ComputeBaseScores
 class GradualAACBR(torch.nn.Module):
 
     def __init__(self, gradual_semantics: GradualSemantics, compute_base_score: ComputeBaseScores, 
-                       irrelevance_edge_weights: ComputeIrrelevance, casebase_edge_weights: ComputePartialOrder):
+                       irrelevance_edge_weights: ComputeIrrelevance, casebase_edge_weights: ComputePartialOrder,
+                       batch_size = None):
         """
             Gradual AACBR Model
 
@@ -36,6 +37,7 @@ class GradualAACBR(torch.nn.Module):
         self.casebase_edge_weights = casebase_edge_weights
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
+        self.batch_size = batch_size
     
     def __casebase_edge_weights_strict(self, attacker, target, train_size):
         edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
@@ -106,15 +108,23 @@ class GradualAACBR(torch.nn.Module):
         train_size = len(X_train)
         indexes = torch.arange(train_size)
         
-        index_prod = torch.cartesian_prod(indexes, indexes)
 
-        idx_attackers = index_prod[:, 0]
-        idx_targets = index_prod[:, 1]
+        idx_attackers = indexes.unsqueeze(1).expand(-1, len(indexes)).reshape(-1) 
+        idx_targets = indexes.repeat(len(indexes))  
+
+
 
         attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size)).to(device)
 
-        X_attackers, y_attackers = X_train[idx_attackers], y_train[idx_attackers]
-        X_targets, y_targets = X_train[idx_targets], y_train[idx_targets]
+
+        X_attackers = X_train.unsqueeze(1).expand(-1, len(X_train), -1)
+        X_targets = X_train.unsqueeze(0).expand(len(X_train), -1, -1)
+
+        y_attackers = y_train.unsqueeze(1).expand(-1, len(y_train), -1)
+        y_targets = y_train.unsqueeze(0).expand(len(y_train), -1, -1)
+
+
+
 
         edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets, train_size)
 
@@ -159,10 +169,10 @@ class GradualAACBR(torch.nn.Module):
         #TODO: Combine potential attacks and supports
 
 
-        if len(y_attackers.shape) == 2:
-            same_labels = torch.any(y_attackers == y_targets, dim=-1)
-        else:
-            same_labels = y_attackers == y_targets
+        # if len(y_attackers.shape) == 2:
+        same_labels = torch.any(y_attackers == y_targets, dim=-1)
+        # else:
+            # same_labels = y_attackers == y_targets
         
         same_labels = torch.reshape(same_labels, (train_size, train_size))
 
@@ -179,9 +189,23 @@ class GradualAACBR(torch.nn.Module):
         if use_blockers:
             # As supports are defined with a minimal condition that does not consider outcomes
             # We use edge weights strict only to compute the value of blocked supports 
-            edge_weights_strict_unsqueezed = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
-            edge_weights_strict_expanded = edge_weights_strict.T.unsqueeze(0)  # Shape (1, n, n)
-            blocked_supports = torch.prod(1 - (edge_weights_strict_unsqueezed * edge_weights_strict_expanded), dim=2)
+            # edge_weights_strict_unsqueezed = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
+            # edge_weights_strict_expanded = edge_weights_strict.T.unsqueeze(0)  # Shape (1, n, n)
+            # blocked_supports_ = torch.prod(1 - (edge_weights_strict_unsqueezed * edge_weights_strict_expanded), dim=2)
+
+            A = edge_weights_strict
+            B = edge_weights_strict.T
+            batch_size = self.batch_size if self.batch_size else len(A)            
+
+            r = []
+            for i in range(len(A)//batch_size + 1):
+                A_row = A[i * batch_size : (i+1) * batch_size]
+                B_ = B.unsqueeze(0)
+                A_ = A_row.unsqueeze(1)
+                r.append(torch.prod(1 - A_ * B_, dim=-1))
+
+            blocked_supports = torch.vstack(r)
+            # assert(torch.all(blocked_supports == blocked_supports_))
         else:
             blocked_supports = torch.ones_like(edge_weights_strict)
         
@@ -206,10 +230,10 @@ class GradualAACBR(torch.nn.Module):
 
 
 
-        if len(y_attackers.shape) == 2:
-            differing_labels = torch.any(y_attackers != y_targets, dim=-1)
-        else:
-            differing_labels = y_attackers != y_targets
+        # if len(y_attackers.shape) == 2:
+        differing_labels = torch.any(y_attackers != y_targets, dim=-1)
+        # else:
+            # differing_labels = y_attackers != y_targets
         
         differing_labels = torch.reshape(differing_labels, (train_size, train_size))
 
@@ -220,17 +244,37 @@ class GradualAACBR(torch.nn.Module):
     
     def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes):
 
+        # print("ATTACKS SHAPE")
+        # print(attacks.shape)
+
         if use_blockers:
             i_indices = indexes.unsqueeze(1)  # Column vector (rows x 1)
             j_indices = indexes.unsqueeze(0)  # Row vector (1 x cols)
-            if len(y_train.shape) == 2:
-                same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)
-            else:
-                same_labels = (y_train[i_indices] == y_train[j_indices])
-            
-            order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0).unsqueeze(1) # Shape (n, 1, n)
-            attacks_expanded = attacks.T.unsqueeze(0)  # Shape (1, n, n)
-            blocked_attacks = torch.prod(1 - (order_with_same_labels * attacks_expanded), dim=2)
+            # if len(y_train.shape) == 2:
+            same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)
+            # else:
+                # same_labels = (y_train[i_indices] == y_train[j_indices])
+
+            # order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0).unsqueeze(1) # Shape (n, 1, n)
+            # attacks_expanded = attacks.T.unsqueeze(0)  # Shape (1, n, n)
+            # intermediate_result = 1 - (order_with_same_labels * attacks_expanded)
+            # blocked_attacks_ = torch.prod(intermediate_result, dim=2)
+
+            A = torch.where(same_labels, edge_weights_strict, 0)
+            B = attacks.T
+
+            batch_size = self.batch_size if self.batch_size else len(A)            
+
+            r = []
+            for i in range(len(A)//batch_size + 1):
+                A_row = A[i * batch_size : (i+1) * batch_size]
+                B_ = B.unsqueeze(0)
+                A_ = A_row.unsqueeze(1)
+                r.append(torch.prod(1 - A_ * B_, dim=-1))
+
+            blocked_attacks = torch.vstack(r)
+            # assert(torch.allclose(blocked_attacks, blocked_attacks_, atol=1e-6))
+            # print(blocked_attacks)
         else:
             blocked_attacks = torch.ones_like(edge_weights_strict)
         
@@ -320,7 +364,8 @@ class GradualAACBR(torch.nn.Module):
         strengths = self.gradual_semantics(A, base_scores)
 
         # TODO: Check if this is necessary:
-        final_strengths = strengths[-1].squeeze()
+        # final_strengths = strengths[-1].squeeze()
+        final_strengths = strengths.squeeze()
         if final_strengths.dim() == 1:
             final_strengths = final_strengths.unsqueeze(0)
 

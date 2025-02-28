@@ -62,5 +62,5 @@ class LearnedPartialOrder(ComputePartialOrder):
     def split_apply_fe(self, cases, feature_extractor, batch_size):
         split_cases = torch.split(cases, batch_size)
         result = [feature_extractor(cases_i) for cases_i in split_cases]
-        result = torch.hstack(result)
+        result = torch.cat(result, dim=0)
         return result

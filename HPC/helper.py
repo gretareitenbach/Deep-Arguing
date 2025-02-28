@@ -84,6 +84,40 @@ def load_covertype():
 
     return X, y
 
+def load_glass():
+    # TODO: Check if data is there/add error handling
+    data = pd.read_csv('./data/glass/glass.data')
+    data = data.values
+
+    X = np.array(data[:, 1:-1], dtype=np.float32)
+    y = np.array(data[:, -1])
+
+    y = y.reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(y)
+    y = encoder.transform(y)
+
+    return X, y
+
+def load_mushroom():
+    # TODO: Check if data is there/add error handling
+    data = pd.read_csv('./data/mushroom/agaricus-lepiota.data')
+    data = data.values
+
+    X = np.array(data[:, 1:])
+    y = np.array(data[:, 0])
+
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(X)
+    X = encoder.transform(X)
+
+    y = y.reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(y)
+    y = encoder.transform(y)
+
+    return X, y
+
 def load_wdbc(labels=[]):
     # TODO: Check if data is there/add error handling
     data = pd.read_csv('./data/wdbc/wdbc.data')
@@ -133,6 +167,7 @@ def load_dataset(dataset):
         "glioma": load_glioma,
         "covertype": load_covertype,
         "wdbc": load_wdbc,
+        "glass": load_glass,
     }
 
     if dataset not in loaders:

@@ -29,7 +29,7 @@ def load_iris(labels=[]):
 
 
 
-def load_mnist(device="cpu", as_vector = False, size=1000):
+def load_mnist(device="cpu", as_vector = False, size=-1):
 
     from torchvision.datasets import MNIST
     mnist_trainset = MNIST("./temp/", train=True, download=True)
@@ -105,6 +105,26 @@ def load_wdbc(labels=[]):
     return X, y
 
 
+def load_mushroom():
+    # TODO: Check if data is there/add error handling
+    data = pd.read_csv('../../data/mushroom/agaricus-lepiota.data')
+    data = data.values
+
+    X = np.array(data[:, 1:])
+    y = np.array(data[:, 0])
+
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(X)
+    X = encoder.transform(X)
+
+    y = y.reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False)
+    encoder.fit(y)
+    y = encoder.transform(y)
+
+    return X, y
+
+
 def split_data(X, y, seed, test_size=0.2):
 
     X_train_full, X_test, y_train_full, y_test = train_test_split(
@@ -118,7 +138,7 @@ def load_dataset(dataset):
     """
     Load the specified dataset.
 
-    Parameters:
+    eters:
     - dataset (str): The name of the dataset ("iris", "mnist", "glioma", "covertype").
 
     Returns:
@@ -131,6 +151,7 @@ def load_dataset(dataset):
         "glioma": load_glioma,
         "covertype": load_covertype,
         "wdbc": load_wdbc,
+        "mushroom": load_mushroom,
     }
 
     if dataset not in loaders:

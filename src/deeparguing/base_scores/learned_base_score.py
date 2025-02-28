@@ -23,9 +23,7 @@ class LearnedBaseScore(ComputeBaseScores):
             if self.batch_size == None:
                 features = feature_extractor(features)
             else:
-                features_ = feature_extractor(features)
                 features = self.split_apply_fe(features, feature_extractor, self.batch_size)
-                assert(torch.allclose(features_, features, atol=1e-6))
         return self.activation(features/self.temperature) 
 
 
@@ -37,5 +35,5 @@ class LearnedBaseScore(ComputeBaseScores):
     def split_apply_fe(self, cases, feature_extractor, batch_size):
         split_cases = torch.split(cases, batch_size)
         result = [feature_extractor(cases_i) for cases_i in split_cases]
-        result = torch.hstack(result)
+        result = torch.cat(result, dim=0)
         return result

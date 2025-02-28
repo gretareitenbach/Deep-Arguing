@@ -12,6 +12,10 @@ class ReluSemantics(GradualSemantics):
         return torch.matmul(torch.transpose(A, -2, -1), strengths)
 
     def influence_func(self, base_scores, aggregations):
+        # available_memory = torch.cuda.memory_allocated()
+        # total_memory = torch.cuda.memory_reserved()
+        # print(f"Available Memory: {available_memory / 1024 ** 2} MB")
+        # print(f"Total Memory Reserved: {total_memory / 1024 ** 2} MB")
         return torch.relu(
             torch.relu(base_scores) + aggregations
         )
