@@ -45,8 +45,7 @@ no_features = X_train.shape[-1]
 # semantics = ms.MLPBasedSemantics(max_iters=5, epsilon=0)
 semantics = rs.ReluSemantics(max_iters=5, epsilon=0)
 
-# edge_weights_test = lambda a, t: torch.where(torch.all(a >= t, axis=1), 1.0, 0.0) 
-edge_weights_test = lambda a, t: torch.sigmoid(a[:, 0] - t[:, 0]) 
+edge_weights_test = lambda a, t: torch.sigmoid(a[:] - t[:]) 
 
 
 model = deeparguing.GradualAACBR(semantics, 

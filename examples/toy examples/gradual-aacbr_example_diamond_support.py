@@ -38,9 +38,9 @@ edge_weights = torch.tensor([
 
 
 def edge_weights_test(attacker, target):
-    result = (torch.cat((attacker, target), dim=1)).to(dtype=torch.int)
-    # print(result)
-    return edge_weights[result[:, 0], result[:, 1]]
+    attacker = attacker.to(dtype = torch.int)
+    target = target.to(dtype = torch.int)
+    return edge_weights[attacker, target]
 
 
 no_features = X_train.shape[-1]

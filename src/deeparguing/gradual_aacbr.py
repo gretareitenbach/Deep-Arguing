@@ -184,32 +184,6 @@ class GradualAACBR(torch.nn.Module):
         return supports, same_labels
 
     
-    def __minimal_supports(self, use_blockers, edge_weights_strict):
-
-        if use_blockers:
-            # As supports are defined with a minimal condition that does not consider outcomes
-            # We use edge weights strict only to compute the value of blocked supports 
-            # edge_weights_strict_unsqueezed = edge_weights_strict.unsqueeze(1) # Shape (n, 1, n)
-            # edge_weights_strict_expanded = edge_weights_strict.T.unsqueeze(0)  # Shape (1, n, n)
-            # blocked_supports_ = torch.prod(1 - (edge_weights_strict_unsqueezed * edge_weights_strict_expanded), dim=2)
-
-            A = edge_weights_strict
-            B = edge_weights_strict.T
-            batch_size = self.batch_size if self.batch_size else len(A)            
-
-            r = []
-            for i in range(len(A)//batch_size + 1):
-                A_row = A[i * batch_size : (i+1) * batch_size]
-                B_ = B.unsqueeze(0)
-                A_ = A_row.unsqueeze(1)
-                r.append(torch.prod(1 - A_ * B_, dim=-1))
-
-            blocked_supports = torch.vstack(r)
-            # assert(torch.all(blocked_supports == blocked_supports_))
-        else:
-            blocked_supports = torch.ones_like(edge_weights_strict)
-        
-        return blocked_supports
 
 
     def __symmetric_attacks(self, use_symmetric_attacks, X_attackers,  X_targets, 
@@ -242,43 +216,83 @@ class GradualAACBR(torch.nn.Module):
         return attacks, differing_labels
 
     
-    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes):
 
-        # print("ATTACKS SHAPE")
-        # print(attacks.shape)
+    def _compute_blocked_product(self, A, B, chunk_size):
+        """
+        Compute elementwise:
+            result[i, j] = ∏ₖ (1 - A[i, k] * B[j, k])
+    
+        Parameters:
+        A: Tensor of shape (n_rows, n)
+        B: Tensor of shape (m, n)
+        chunk_size: Number of k indices to process at once.
+    
+        Returns:
+        result: Tensor of shape (n_rows, m)
+        """
+        n_rows, n = A.shape
+        m = B.shape[0]
+        result = torch.ones(n_rows, m, device=A.device, dtype=A.dtype)
+        for k in range(0, n, chunk_size):
+            # Process a chunk of the k-dimension.
+            A_chunk = A[:, k:k+chunk_size]    # Shape: (n_rows, chunk_size)
+            B_chunk = B[:, k:k+chunk_size]      # Shape: (m, chunk_size)
+            # Expand dimensions to broadcast:
+            # A_chunk -> (n_rows, 1, chunk_size)
+            # B_chunk -> (1, m, chunk_size)
+            # Then compute the product over the chunk dimension.
+            term = torch.prod(1 - A_chunk.unsqueeze(1) * B_chunk.unsqueeze(0), dim=-1)
+            result = result * term
+        return result
 
+
+    def __minimal_supports(self, use_blockers, edge_weights_strict):
+        """
+        Compute minimal supports.
+    
+        When use_blockers is True, compute:
+        blocked_supports[i,j] = ∏ₖ (1 - edge_weights_strict[i, k] * edge_weights_strict[j, k])
+        Otherwise, return a tensor of ones.
+        """
         if use_blockers:
-            i_indices = indexes.unsqueeze(1)  # Column vector (rows x 1)
-            j_indices = indexes.unsqueeze(0)  # Row vector (1 x cols)
-            # if len(y_train.shape) == 2:
+            # For supports, we use A = edge_weights_strict and B = edge_weights_strict.T.
+            A = edge_weights_strict             # Shape: (n, n)
+            B = edge_weights_strict.T           # Shape: (n, n)
+            chunk_size = self.batch_size if self.batch_size else len(A)
+            blocked_supports = self._compute_blocked_product(A, B, chunk_size)
+        else:
+            blocked_supports = torch.ones_like(edge_weights_strict)
+        return blocked_supports
+
+
+    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes):
+        """
+        Compute minimal attacks.
+    
+        When use_blockers is True, first determine which pairs share the same label,
+        then compute:
+        blocked_attacks[i,j] = ∏ₖ (1 - A[i, k] * B[j, k])
+        where
+        A = torch.where(same_labels, edge_weights_strict, 0)
+        B = attacks.T
+        Otherwise, return a tensor of ones.
+        """
+        if use_blockers:
+            # Create index matrices to compare corresponding y_train entries.
+            i_indices = indexes.unsqueeze(1)  # (n, 1)
+            j_indices = indexes.unsqueeze(0)  # (1, n)
             same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)
-            # else:
-                # same_labels = (y_train[i_indices] == y_train[j_indices])
-
-            # order_with_same_labels = torch.where(same_labels, edge_weights_strict, 0).unsqueeze(1) # Shape (n, 1, n)
-            # attacks_expanded = attacks.T.unsqueeze(0)  # Shape (1, n, n)
-            # intermediate_result = 1 - (order_with_same_labels * attacks_expanded)
-            # blocked_attacks_ = torch.prod(intermediate_result, dim=2)
-
+        
+            # Only include edge weights for pairs with the same label.
             A = torch.where(same_labels, edge_weights_strict, 0)
+            # Use attacks.T so that the product is over the appropriate dimension.
             B = attacks.T
-
-            batch_size = self.batch_size if self.batch_size else len(A)            
-
-            r = []
-            for i in range(len(A)//batch_size + 1):
-                A_row = A[i * batch_size : (i+1) * batch_size]
-                B_ = B.unsqueeze(0)
-                A_ = A_row.unsqueeze(1)
-                r.append(torch.prod(1 - A_ * B_, dim=-1))
-
-            blocked_attacks = torch.vstack(r)
-            # assert(torch.allclose(blocked_attacks, blocked_attacks_, atol=1e-6))
-            # print(blocked_attacks)
+            chunk_size = self.batch_size if self.batch_size else len(A)
+            blocked_attacks = self._compute_blocked_product(A, B, chunk_size)
         else:
             blocked_attacks = torch.ones_like(edge_weights_strict)
-        
         return blocked_attacks
+
 
 
     def __add_default_cases(self, X_train, y_train, X_default, y_default):

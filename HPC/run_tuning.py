@@ -118,7 +118,6 @@ def main():
     totalf1 = 0
 
     for torch_seed in range(0, N):
-    # torch_seed = 15
 
 
         print("="*40)

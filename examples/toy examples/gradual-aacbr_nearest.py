@@ -60,15 +60,16 @@ edge_weights = torch.tensor([
 
 
 def edge_weights_test(attacker, target):
-    result = (torch.cat((attacker, target), dim=1)).to(dtype=torch.int)
-    return edge_weights[result[:, 0], result[:, 1]] 
+    attacker = attacker.to(dtype = torch.int)
+    target = target.to(dtype = torch.int)
+    return edge_weights[attacker, target]
 
 def irrelevance(attacker, target):
 
     condition_a = (attacker == -2) 
     condition_b = torch.logical_or(target == 2,  target == 3)
     mask = condition_a * condition_b.T
-    print(mask)
+    # print(mask)
     return torch.where(mask, 1., 0.) 
 
 
@@ -89,8 +90,6 @@ dummy_n = torch.tensor([
     [-2] # Attacks c and d
   ])
 
-result = model(dummy_n, return_all_strengths = True) # Expected [[1, 0], [0, 1]]
+result = model(dummy_n, return_all_strengths = False) # Expected [[1, 0], [0, 1]]
 print(result)
-
-# print(torch.argmax(result, axis=1))
 

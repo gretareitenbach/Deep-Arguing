@@ -4,7 +4,9 @@ import torch
 
 def sparsity_regulariser(model, filter_func = lambda A: A): 
     A = filter_func(model.A)
-    return torch.sum(torch.abs(A))
+    result = torch.sum(torch.abs(A))
+    result = result / len(model.A)
+    return result
 
 def community_preservation_regulariser(model, filter_func = lambda A: A): 
     A = filter_func(model.A)
@@ -16,7 +18,9 @@ def connectivity_regulariser(model, eps=1e-6, filter_func = lambda A: A):
     A = filter_func(model.A)
     A = torch.abs(A) # This regulariser expects values between 0 and 1
     A = torch.sum(A, dim =1) + eps
-    return -torch.sum(torch.log(A))
+    result = -torch.sum(torch.log(A))
+    result = result / len(model.A)
+    return result
 
 def feature_smoothness_regulariser(model):
     A = torch.abs(model.A) # This regulariser expects values between 0 and 1

@@ -7,7 +7,7 @@ import torch
 
 def load_iris(labels=[]):
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/iris/iris.data')
+    data = pd.read_csv('../../data/iris/iris.data', header=None)
 
     data = data.values
 
@@ -29,26 +29,28 @@ def load_iris(labels=[]):
 
 
 
-def load_mnist(device="cpu", as_vector = False, size=-1):
+def load_mnist(as_vector = False, size=-1, labels = []):
 
     from torchvision.datasets import MNIST
     mnist_trainset = MNIST("./temp/", train=True, download=True)
     # mnist_testset = MNIST("./temp/", train=False, download=True)
 
 
-    X = mnist_trainset.data[:size].float().to(device)
+    X = mnist_trainset.data[:size].float().numpy()
     if as_vector:
         X = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
-    y = mnist_trainset.targets[:size].to(device)
+    y = mnist_trainset.targets[:size].numpy()
 
+    if len(labels) != 0:
+        mask = np.isin(y, labels)
+        y = y[mask]
+        X = X[mask]
 
     y = y.reshape(-1, 1)
     encoder = OneHotEncoder(sparse_output=False)
     # encoder = LabelEncoder()
-    encoder.fit(y.cpu())
-    y = encoder.transform(y.cpu())
-
-    y = torch.tensor(y, dtype=torch.float32).to(device)
+    encoder.fit(y)
+    y = encoder.transform(y)
 
     return X, y
 
@@ -84,7 +86,7 @@ def load_covertype():
 
 def load_wdbc(labels=[]):
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/wdbc/wdbc.data')
+    data = pd.read_csv('../../data/wdbc/wdbc.data', header=None)
 
     data = data.values
 
@@ -107,7 +109,7 @@ def load_wdbc(labels=[]):
 
 def load_mushroom():
     # TODO: Check if data is there/add error handling
-    data = pd.read_csv('../../data/mushroom/agaricus-lepiota.data')
+    data = pd.read_csv('../../data/mushroom/agaricus-lepiota.data', header=None)
     data = data.values
 
     X = np.array(data[:, 1:])
