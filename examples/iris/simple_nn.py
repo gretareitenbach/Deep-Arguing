@@ -76,13 +76,6 @@ X_test = normalise_input(X_test, train_mean, train_std)
 # ### Train Model
 
 
-DEFAULT_CASE = X_train.mean(axis=0)
-
-X_DEFAULTS = DEFAULT_CASE.tile(len(all_y), 1)
-Y_DEFAULTS = torch.tensor(all_y, device=device)
-
-
-
 EPOCHS = 10000
 LR = 3e-4
 
@@ -90,15 +83,14 @@ LR = 3e-4
 torch_seed = 0
 
 
-torch.manual_seed(torch_seed) # TRY DIFFERENT INITIAL WEIGHTS 
+torch.manual_seed(torch_seed) 
 
 no_features = X_train.shape[-1]
 
-model = mlpe.MLPExtractor(no_features, [2], 3).to(device)
+model = mlpe.MLPExtractor(no_features, [], 3).to(device)
 
-weights = torch.tensor([1.0, 1.0, 1.0], device=device)
 
-criterion = torch.nn.CrossEntropyLoss(weight=(weights/weights.sum()))
+criterion = torch.nn.CrossEntropyLoss()
 optimizer = optim.AdamW(model.parameters(), lr=LR)
 
 
@@ -150,10 +142,13 @@ eval_model(model, X_train, y_train)
 print("VALIDATION SET")
 eval_model(model, X_val, y_val)
 
-print("Loss", losses[np.arange(0, EPOCHS, int(EPOCHS/100))])
+print("TEST SET")
+eval_model(model, X_test, y_test)
 
-plt.plot(losses)
-plt.show()
+# print("Loss", losses[np.arange(0, EPOCHS, int(EPOCHS/100))])
+
+# plt.plot(losses)
+# plt.show()
 
 
 
