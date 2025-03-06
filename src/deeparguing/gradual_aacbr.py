@@ -2,6 +2,8 @@ import torch
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import cm
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from deeparguing.semantics.gradual_semantics import GradualSemantics
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
 from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
@@ -405,7 +407,8 @@ class GradualAACBR(torch.nn.Module):
         print(base_scores)
 
     
-    def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, prevent_show = False):
+    def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, 
+                               prevent_show = False, positions = None):
         """
 
             Outputs a networkx graph of the casebase
@@ -426,11 +429,16 @@ class GradualAACBR(torch.nn.Module):
 
 
         gr = nx.from_numpy_array(A, create_using=nx.DiGraph)
-        pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
-                                           args='-Gsplines=true -Gnodesep=2')
+        if not positions:
+            pos = nx.nx_agraph.graphviz_layout(gr, prog='dot',
+                                        args='-Gsplines=true -Gnodesep=2')
+        else:
+            default_pos = lambda idx: (idx-default_indexes[0] + 1) * (1/(len(default_indexes) + 2)) * len(gr.nodes)
+            positions.update({idx: (default_pos(idx), -1) for idx in default_indexes})
+            pos = positions
 
         unique_labels = np.unique(y_train)
-        colormap = plt.get_cmap('gist_rainbow', len(unique_labels))
+        colormap = plt.get_cmap('rainbow', len(unique_labels))
         label_to_color = {label: colormap(i)
                           for i, label in enumerate(unique_labels)}
         node_colors = [label_to_color[y_train[node]] for node in list(gr.nodes)]
@@ -450,16 +458,25 @@ class GradualAACBR(torch.nn.Module):
         ax = f.add_subplot(1, 1, 1)
         for i, label in enumerate(unique_labels):
             ax.plot([0], [0], color=colormap(i), label=f'Class: {label}')
+        top = cm.get_cmap('Greens', 128)
+        bottom = cm.get_cmap('Reds', 128)
+
+        newcolors = np.vstack((top(np.linspace(0, 1, 128)),
+                               bottom(np.linspace(0, 1, 128))))
+        ew_colormap = ListedColormap(newcolors, name='GreenRed')
+        edges,weights = zip(*nx.get_edge_attributes(gr,'weight').items())
+
+
 
         nx.draw(gr, pos, labels=labels,
                 arrowstyle='-|>', arrows=True, node_color=node_colors,
-                node_size=100, font_size=5, width=0.4)
+                node_size=100, font_size=5, width=0.4, edge_color=weights, edge_cmap=ew_colormap)
                 
-        labels = nx.get_edge_attributes(gr, 'weight')
-        rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
+        # labels = nx.get_edge_attributes(gr, 'weight')
+        # rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
 
         # Draw the edge labels with rounded weights
-        nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels, font_size=5)
+        # nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels, font_size=5)
 
         plt.legend()
         logger(f)
