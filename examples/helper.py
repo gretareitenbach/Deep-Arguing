@@ -54,13 +54,20 @@ def load_mnist(as_vector = False, size=-1, labels = []):
 
     return X, y
 
-def load_glioma():
+def load_glioma(exclude_non_binary_features = False):
     # TODO: Check if data is there/add error handling
     data = pd.read_csv('../../data/glioma/TCGA_InfoWithGrade.csv')
     data = data.values
 
-    X = np.array(data[:, 1:], dtype=np.float32)
+    if exclude_non_binary_features:
+        X1 = np.array(data[:, 1:2], dtype=np.float32)
+        X2 = np.array(data[:, 4:], dtype=np.float32)
+        X = np.hstack((X1, X2))
+    else:
+        X = np.array(data[:, 1:], dtype=np.float32)
+
     y = np.array(data[:, 0])
+
 
     y = y.reshape(-1, 1)
     encoder = OneHotEncoder(sparse_output=False)

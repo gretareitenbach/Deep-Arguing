@@ -50,22 +50,22 @@ def data_pre_process(dataset):
     # ### Convert to Torch
 
 
-    X_train_full, y_train_full = torch.tensor(train_full["X"], device=device),      torch.tensor(train_full["y"], dtype=torch.float32, device=device)
+    # X_train_full, y_train_full = torch.tensor(train_full["X"], device=device),      torch.tensor(train_full["y"], dtype=torch.float32, device=device)
     X_train, y_train           = torch.tensor(train["X"]     , device=device),      torch.tensor(train["y"],      dtype=torch.float32, device=device)
     X_val, y_val               = torch.tensor(val["X"]       , device=device),      torch.tensor(val["y"],        dtype=torch.float32, device=device)
-    X_test, y_test             = torch.tensor(test["X"]      , device=device),      torch.tensor(test["y"],       dtype=torch.float32, device=device)
+    # X_test, y_test             = torch.tensor(test["X"]      , device=device),      torch.tensor(test["y"],       dtype=torch.float32, device=device)
 
 
     # ### Normalize dataset
 
 
-    train_mean = X_train.mean(dim=0)
-    train_std = X_train.std(dim=0)
+    # train_mean = X_train.mean(dim=0)
+    # train_std = X_train.std(dim=0)
 
 
-    X_train = normalise_input(X_train, train_mean, train_std)
-    X_val = normalise_input(X_val, train_mean, train_std)
-    X_test = normalise_input(X_test, train_mean, train_std)
+    # X_train = normalise_input(X_train, train_mean, train_std)
+    # X_val = normalise_input(X_val, train_mean, train_std)
+    # X_test = normalise_input(X_test, train_mean, train_std)
 
 
     DEFAULT_CASE = X_train.mean(axis=0)
@@ -140,8 +140,8 @@ def main():
 
 
         regulariser = lambda model: regularise(model, [
-            [sparsity_regulariser, ALPHA], 
-            [connectivity_regulariser, BETA], 
+            # [sparsity_regulariser, ALPHA], 
+            # [connectivity_regulariser, BETA], 
             [community_prev_reg_attacks, GAMMA],
             [community_prev_reg_supports, GAMMA_PRIME],
             # [feature_smoothness_regulariser, alpha]
