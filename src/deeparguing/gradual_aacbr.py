@@ -3,7 +3,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib.colors import ListedColormap, Normalize
 from deeparguing.semantics.gradual_semantics import GradualSemantics
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
 from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
@@ -408,7 +408,7 @@ class GradualAACBR(torch.nn.Module):
 
     
     def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, 
-                               prevent_show = False, positions = None):
+                               prevent_show = False, positions = None, threshold = 0.):
         """
 
             Outputs a networkx graph of the casebase
@@ -426,7 +426,8 @@ class GradualAACBR(torch.nn.Module):
         A = post_process_func(self.A).detach().cpu().numpy()
         y_train = np.argmax(self.y_train.cpu().detach().numpy(), axis=1)
         default_indexes = self.default_indexes.cpu().detach().numpy()
-
+        
+        A = np.where(np.abs(A) > threshold, A , 0)
 
         gr = nx.from_numpy_array(A, create_using=nx.DiGraph)
         if not positions:
@@ -458,19 +459,30 @@ class GradualAACBR(torch.nn.Module):
         ax = f.add_subplot(1, 1, 1)
         for i, label in enumerate(unique_labels):
             ax.plot([0], [0], color=colormap(i), label=f'Class: {label}')
-        top = cm.get_cmap('Greens', 128)
-        bottom = cm.get_cmap('Reds', 128)
 
-        newcolors = np.vstack((top(np.linspace(0, 1, 128)),
-                               bottom(np.linspace(0, 1, 128))))
-        ew_colormap = ListedColormap(newcolors, name='GreenRed')
+
+        # For positive weights (0 to 1): white to green.
+        top = cm.get_cmap('Greens', 128)(np.linspace(0, 1, 128))
+        # For negative weights (–1 to 0): red to white.
+        bottom = cm.get_cmap('Reds_r', 128)(np.linspace(0, 1, 128))
+        white = np.array([[1, 1, 1, 1]])  # pure white
+
+        # Build a colormap array: first half for negatives, white at midpoint, then positives.
+        newcolors = np.vstack((bottom, white, top))
+        ew_colormap = ListedColormap(newcolors, name='WhiteRedGreen')
+
         edges,weights = zip(*nx.get_edge_attributes(gr,'weight').items())
+        norm = Normalize(vmin=-1, vmax=1)
+
+        # Compute edge colors using the norm and the custom colormap.
+        edge_colors = [ew_colormap(norm(w)) for w in weights]
+
 
 
 
         nx.draw(gr, pos, labels=labels,
-                arrowstyle='-|>', arrows=True, node_color=node_colors,
-                node_size=100, font_size=5, width=0.4, edge_color=weights, edge_cmap=ew_colormap)
+                arrowstyle='-|>', arrows=True, node_color=node_colors,  arrowsize=20,
+                node_size=100, font_size=5, width=0.4, edge_color=edge_colors, edge_cmap=ew_colormap)
                 
         # labels = nx.get_edge_attributes(gr, 'weight')
         # rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
