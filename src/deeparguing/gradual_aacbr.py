@@ -5,16 +5,18 @@ import numpy as np
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, Normalize
 from deeparguing.semantics.gradual_semantics import GradualSemantics
-from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
-from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
-from deeparguing.base_scores.compute_base_scores import ComputeBaseScores 
+from deeparguing.irrelevance_edge_weights.compute_irrelevance import IrrelevanceType
+from deeparguing.casebase_edge_weights.compute_partial_order import PartialOrderType
+from deeparguing.base_scores.compute_base_scores import BaseScoreType 
 
 
 class GradualAACBR(torch.nn.Module):
 
-    def __init__(self, gradual_semantics: GradualSemantics, compute_base_score: ComputeBaseScores, 
-                       irrelevance_edge_weights: ComputeIrrelevance, casebase_edge_weights: ComputePartialOrder,
-                       batch_size = None):
+    def __init__(self, 
+                 gradual_semantics: GradualSemantics, 
+                 compute_base_score: BaseScoreType, 
+                 irrelevance_edge_weights: IrrelevanceType, 
+                 casebase_edge_weights: PartialOrderType):
         """
             Gradual AACBR Model
 
@@ -39,7 +41,6 @@ class GradualAACBR(torch.nn.Module):
         self.casebase_edge_weights = casebase_edge_weights
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
-        self.batch_size = batch_size
     
     def __casebase_edge_weights_strict(self, attacker, target, train_size):
         edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
@@ -52,7 +53,8 @@ class GradualAACBR(torch.nn.Module):
 
     
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports=False):
+            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports=False, 
+            batch_size=None):
 
         """
             Builds the Edge-Weighted Quantitative Bipolar Argumentation 
@@ -83,7 +85,9 @@ class GradualAACBR(torch.nn.Module):
             use_blockers : bool, default True
                 When true, the model will optimise attacks of minimal between cases
                 of minimal difference
-            
+            use_supports : bool, default False
+                When true, the model will also consider supports between cases
+                with the same outcome
 
             Notes
             -----
@@ -96,7 +100,6 @@ class GradualAACBR(torch.nn.Module):
 
         """
 
-        device = X_train.device
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
@@ -105,29 +108,11 @@ class GradualAACBR(torch.nn.Module):
             raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
 
         self.A = None
-        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+        
+        X_train, y_train, default_indexes, indexes, attackers_default_mask = self.__prepare_default(X_train, y_train, X_default, y_default)
+        X_attackers, X_targets, y_attackers, y_targets = self.__prepare_casebase(X_train, y_train)
 
         train_size = len(X_train)
-        indexes = torch.arange(train_size)
-        
-
-        idx_attackers = indexes.unsqueeze(1).expand(-1, len(indexes)).reshape(-1) 
-        idx_targets = indexes.repeat(len(indexes))  
-
-
-
-        attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size)).to(device)
-
-
-        X_attackers = X_train.unsqueeze(1).expand(-1, len(X_train), -1)
-        X_targets = X_train.unsqueeze(0).expand(len(X_train), -1, -1)
-
-        y_attackers = y_train.unsqueeze(1).expand(-1, len(y_train), -1)
-        y_targets = y_train.unsqueeze(0).expand(len(y_train), -1, -1)
-
-
-
-
         edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets, train_size)
 
         if defaults_not_attack:
@@ -135,11 +120,11 @@ class GradualAACBR(torch.nn.Module):
 
         attacks, differing_labels = self.__potential_attacks(edge_weights_strict, y_attackers, y_targets, train_size)
 
-        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes)
+        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes, batch_size)
 
         if use_supports:
             supports, _ = self.__potential_supports(edge_weights_strict, y_attackers, y_targets, train_size)
-            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict)
+            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict, batch_size)
             self.B = (torch.mul(supports, blocked_supports))
         else:
             self.B = torch.zeros_like(edge_weights_strict)
@@ -153,29 +138,30 @@ class GradualAACBR(torch.nn.Module):
         self.y_train = y_train
         self.default_indexes = default_indexes
 
-    def masked_softmax(self, vec, mask, dim=0):
-        # Masked softmax from 
-        # https://discuss.pytorch.org/t/apply-mask-softmax/14212/12#:~:text=Jun%202018-,I,-had%20to%20implement
-        masked_vec = vec * mask.float()
-        max_vec = torch.max(masked_vec, dim=dim, keepdim=True)[0]
-        exps = torch.exp(masked_vec-max_vec)
-        masked_exps = exps * mask.float()
-        masked_sums = masked_exps.sum(dim, keepdim=True)
-        zeros=(masked_sums == 0)
-        masked_sums += zeros.float()
-        return masked_exps/masked_sums
+    def __prepare_default(self, X_train, y_train, X_default, y_default):
+        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+        train_size = len(X_train)
+        device = X_train.device
+
+        indexes = torch.arange(train_size)
+        idx_attackers = indexes.unsqueeze(1).expand(-1, len(indexes)).reshape(-1) 
+        attackers_default_mask = torch.isin(idx_attackers, default_indexes).reshape((train_size, train_size)).to(device)
+        return X_train, y_train, default_indexes, indexes, attackers_default_mask
+
+    def __prepare_casebase(self, X_train, y_train):
+
+        X_attackers = X_train.unsqueeze(1).expand(-1, len(X_train), -1)
+        X_targets = X_train.unsqueeze(0).expand(len(X_train), -1, -1)
+
+        y_attackers = y_train.unsqueeze(1).expand(-1, len(y_train), -1)
+        y_targets = y_train.unsqueeze(0).expand(len(y_train), -1, -1)
+
+        return X_attackers, X_targets, y_attackers, y_targets
 
 
     def __potential_supports(self, edge_weights_strict,  y_attackers, y_targets,  train_size):
 
-        #TODO: Combine potential attacks and supports
-
-
-        # if len(y_attackers.shape) == 2:
         same_labels = torch.any(y_attackers == y_targets, dim=-1)
-        # else:
-            # same_labels = y_attackers == y_targets
-        
         same_labels = torch.reshape(same_labels, (train_size, train_size))
 
         supports = torch.where(same_labels, edge_weights_strict, 0)
@@ -185,6 +171,14 @@ class GradualAACBR(torch.nn.Module):
 
         return supports, same_labels
 
+    def __potential_attacks(self, edge_weights_strict,  y_attackers, y_targets,  train_size):
+
+        differing_labels = torch.any(y_attackers != y_targets, dim=-1)
+        differing_labels = torch.reshape(differing_labels, (train_size, train_size))
+
+        attacks = torch.where(differing_labels, edge_weights_strict, 0)
+
+        return attacks, differing_labels
     
 
 
@@ -202,24 +196,10 @@ class GradualAACBR(torch.nn.Module):
         
         return symmetric_attacks 
 
-    def __potential_attacks(self, edge_weights_strict,  y_attackers, y_targets,  train_size):
-
-
-
-        # if len(y_attackers.shape) == 2:
-        differing_labels = torch.any(y_attackers != y_targets, dim=-1)
-        # else:
-            # differing_labels = y_attackers != y_targets
-        
-        differing_labels = torch.reshape(differing_labels, (train_size, train_size))
-
-        attacks = torch.where(differing_labels, edge_weights_strict, 0)
-
-        return attacks, differing_labels
 
     
 
-    def _compute_blocked_product(self, A, B, chunk_size):
+    def _compute_blocked_product_batched(self, A, B, batch_size):
         """
         Compute elementwise:
             result[i, j] = ∏ₖ (1 - A[i, k] * B[j, k])
@@ -227,7 +207,7 @@ class GradualAACBR(torch.nn.Module):
         Parameters:
         A: Tensor of shape (n_rows, n)
         B: Tensor of shape (m, n)
-        chunk_size: Number of k indices to process at once.
+        batch_size: Number of k indices to process at once.
     
         Returns:
         result: Tensor of shape (n_rows, m)
@@ -235,13 +215,13 @@ class GradualAACBR(torch.nn.Module):
         n_rows, n = A.shape
         m = B.shape[0]
         result = torch.ones(n_rows, m, device=A.device, dtype=A.dtype)
-        for k in range(0, n, chunk_size):
+        for k in range(0, n, batch_size):
             # Process a chunk of the k-dimension.
-            A_chunk = A[:, k:k+chunk_size]    # Shape: (n_rows, chunk_size)
-            B_chunk = B[:, k:k+chunk_size]      # Shape: (m, chunk_size)
+            A_chunk = A[:, k:k+batch_size]    # Shape: (n_rows, batch_size)
+            B_chunk = B[:, k:k+batch_size]      # Shape: (m, batch_size)
             # Expand dimensions to broadcast:
-            # A_chunk -> (n_rows, 1, chunk_size)
-            # B_chunk -> (1, m, chunk_size)
+            # A_chunk -> (n_rows, 1, batch_size)
+            # B_chunk -> (1, m, batch_size)
             # Then compute the product over the chunk dimension.
             term = torch.prod(1 - A_chunk.unsqueeze(1) * B_chunk.unsqueeze(0), dim=-1)
             result = result * term
@@ -254,7 +234,7 @@ class GradualAACBR(torch.nn.Module):
         return result
 
 
-    def __minimal_supports(self, use_blockers, edge_weights_strict):
+    def __minimal_supports(self, use_blockers, edge_weights_strict, batch_size):
         """
         Compute minimal supports.
     
@@ -265,8 +245,8 @@ class GradualAACBR(torch.nn.Module):
         if use_blockers:
             A = edge_weights_strict             
             B = edge_weights_strict.T           
-            if self.batch_size:
-                blocked_supports = self._compute_blocked_product(A, B, self.batch_size)
+            if batch_size is not None:
+                blocked_supports = self._compute_blocked_product_batched(A, B, batch_size)
             else:
                 blocked_supports = self._compute_blocked_product(A, B)
         else:
@@ -274,7 +254,7 @@ class GradualAACBR(torch.nn.Module):
         return blocked_supports
 
 
-    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes):
+    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes, batch_size):
         """
         Compute minimal attacks.
     
@@ -293,8 +273,9 @@ class GradualAACBR(torch.nn.Module):
         
             A = torch.where(same_labels, edge_weights_strict, 0)
             B = attacks.T
-            if self.batch_size:
-                blocked_attacks = self._compute_blocked_product(A, B, self.batch_size)
+            assert batch_size is not None
+            if batch_size is not None:
+                blocked_attacks = self._compute_blocked_product_batched(A, B, batch_size)
             else:
                 blocked_attacks = self._compute_blocked_product(A, B)
         else:
@@ -339,7 +320,7 @@ class GradualAACBR(torch.nn.Module):
 
         return strengths
 
-    def forward(self, new_cases: torch.Tensor, return_all_strengths = False, post_process_func = lambda x: x):
+    def forward(self, new_cases: torch.Tensor, post_process_func = lambda x: x):
         """
             Computes the final strenghts of the EW-QAF for each new_case input
 
@@ -350,12 +331,9 @@ class GradualAACBR(torch.nn.Module):
                 Shape (N, x1, ..., xn) where N is the number of new cases 
                 arguments and (x1, ..., xn) is the shape of each argument.
 
-            return_all_strengths : bool, default False
-                When false, the final strenghts of only the default cases are
-                returned.
-                When true, the final strenght for all casebase 
-                arguments will be returned.
-                
+           post_process_func: Callable
+                Optionally apply a post process function to the adjacency matrix
+                before computing the gradual semantics
 
             Returns
             -------
@@ -391,10 +369,7 @@ class GradualAACBR(torch.nn.Module):
         if final_strengths.dim() == 1:
             final_strengths = final_strengths.unsqueeze(0)
 
-        if return_all_strengths:
-            return final_strengths
-        else:
-            return final_strengths[:, self.default_indexes]
+        return final_strengths[:, self.default_indexes]
     
     def show_base_scores(self):
         base_scores = self.compute_base_scores(self.X_train)  # (n)
@@ -450,10 +425,7 @@ class GradualAACBR(torch.nn.Module):
         labels = {x: x for x in list(gr.nodes)}
         for i, default_index in enumerate(default_indexes):
             labels.update({default_index: "Default"})
-            # pos.update({default_index: (0 + i * 100, 0)})
 
-        # for k, v in pos.items():
-        #     pos.update({k: (v[0] * random.randint(-100, 100), v[1])})
 
         f = plt.figure(figsize=(10, 10))
         ax = f.add_subplot(1, 1, 1)
@@ -467,28 +439,17 @@ class GradualAACBR(torch.nn.Module):
         bottom = cm.get_cmap('Reds_r', 128)(np.linspace(0, 1, 128))
         white = np.array([[1, 1, 1, 1]])  # pure white
 
-        # Build a colormap array: first half for negatives, white at midpoint, then positives.
         newcolors = np.vstack((bottom, white, top))
         ew_colormap = ListedColormap(newcolors, name='WhiteRedGreen')
 
         edges,weights = zip(*nx.get_edge_attributes(gr,'weight').items())
         norm = Normalize(vmin=-1, vmax=1)
 
-        # Compute edge colors using the norm and the custom colormap.
         edge_colors = [ew_colormap(norm(w)) for w in weights]
-
-
-
 
         nx.draw(gr, pos, labels=labels,
                 arrowstyle='-|>', arrows=True, node_color=node_colors,  arrowsize=20,
                 node_size=100, font_size=5, width=0.4, edge_color=edge_colors, edge_cmap=ew_colormap)
-                
-        # labels = nx.get_edge_attributes(gr, 'weight')
-        # rounded_labels = {edge: round(weight, 5) for edge, weight in labels.items()}
-
-        # Draw the edge labels with rounded weights
-        # nx.draw_networkx_edge_labels(gr, pos, edge_labels=rounded_labels, font_size=5)
 
         plt.legend()
         logger(f)
@@ -536,14 +497,6 @@ class GradualAACBR(torch.nn.Module):
         if not prevent_show:
             plt.show()
     
-    def plot_base_score_parameters(self):
-        self.compute_base_scores.plot_parameters()
-
-    def plot_casebase_edge_weights_parameters(self):
-        self.casebase_edge_weights.plot_parameters()
-
-    def plot_irrelevance_edge_weights_parameters(self):
-        self.irrelevance_edge_weights.plot_parameters()
     
     ############################################################################
     # The following contains an implementation of fit that makes limited use of 
@@ -571,17 +524,12 @@ class GradualAACBR(torch.nn.Module):
         X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
 
         train_size = len(X_train)
-        indexes = torch.arange(train_size)
         
-        index_prod = torch.cartesian_prod(indexes, indexes)
 
-        idx_attackers = index_prod[:, 0]
-        idx_targets = index_prod[:, 1]
+        X_attackers = X_train.unsqueeze(1).expand(-1, len(X_train), -1)
+        X_targets = X_train.unsqueeze(0).expand(len(X_train), -1, -1)
 
 
-        X_attackers = X_train[idx_attackers]
-        X_targets = X_train[idx_targets]
-        
         edge_weights_strict = self.__casebase_edge_weights_strict_old(X_attackers, X_targets).reshape((train_size, train_size))
 
         if use_symmetric_attacks:

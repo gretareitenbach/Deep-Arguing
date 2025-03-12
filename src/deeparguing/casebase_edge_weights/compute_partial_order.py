@@ -1,7 +1,9 @@
 
 import torch
 from abc import abstractmethod, ABCMeta
-from typing import Any
+from typing import Callable
+
+type PartialOrderType = ComputePartialOrder | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 class ComputePartialOrder(torch.nn.Module, metaclass=ABCMeta):
 

@@ -1,7 +1,8 @@
-
+from typing import Callable
 import torch
 from abc import abstractmethod, ABCMeta
-from typing import Any
+
+type IrrelevanceType = ComputeIrrelevance | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 class ComputeIrrelevance(torch.nn.Module, metaclass=ABCMeta):
 
