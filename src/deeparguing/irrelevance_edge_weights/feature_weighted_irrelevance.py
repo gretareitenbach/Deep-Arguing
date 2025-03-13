@@ -12,7 +12,7 @@ class FeatureWeightedIrrelevance(ComputeIrrelevance):
         self.W = torch.nn.Parameter(torch.Tensor(no_features))
         torch.nn.init.normal_(self.W)
 
-    def forward(self, new_cases: torch.Tensor, X_train: torch.tensor) -> torch.Tensor:
+    def forward(self, new_cases: torch.Tensor, X_train: torch.Tensor) -> torch.Tensor:
         # new_cases: (B, f) 
         # X_train: (n, f) 
 

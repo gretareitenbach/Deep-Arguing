@@ -26,7 +26,7 @@ X_train = torch.tensor([
     [0], # (a,
     [1], # (b
     [2], # (c
-    [3], # (c
+    [3], # (d
 ], dtype=torch.float32)
 
 y_train = torch.tensor([

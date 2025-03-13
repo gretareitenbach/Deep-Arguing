@@ -71,7 +71,6 @@ class GradualSemantics(ABC):
         return self.influence_func(base_scores, aggregations)
 
     def forward_till_convergence(self, A, base_scores):
-        # strengths = [base_scores]
         prev_strength = base_scores
         # TODO: change to use one of the following stop conditions:
         #   (convergence under some epsilon or max iters reached) OR
@@ -79,7 +78,6 @@ class GradualSemantics(ABC):
         for i in range(self.max_iters):
             # TODO: consider epsilon in forward pass
             prev_strength = self.forward(A, base_scores, prev_strength)
-
         return prev_strength
 
     def __call__(self, A, base_scores) -> Any:

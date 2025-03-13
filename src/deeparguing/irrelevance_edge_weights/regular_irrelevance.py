@@ -1,6 +1,5 @@
 import torch
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import ComputeIrrelevance
-import matplotlib.pyplot as plt
 from deeparguing.casebase_edge_weights.compute_partial_order import ComputePartialOrder
 
 class RegularIrrelevance(ComputeIrrelevance):
@@ -11,7 +10,7 @@ class RegularIrrelevance(ComputeIrrelevance):
         self.compute_partial_order = compute_partial_order
 
 
-    def forward(self, new_cases: torch.Tensor, X_train: torch.tensor) -> torch.Tensor:
+    def forward(self, new_cases: torch.Tensor, X_train: torch.Tensor) -> torch.Tensor:
         
         new_cases = new_cases.unsqueeze(1) # (B, 1, no_features)
         X_train = X_train.unsqueeze(0) # (1, n, no_features)

@@ -293,7 +293,7 @@ class GradualAACBR(torch.nn.Module):
 
         return X_train, y_train, default_indexes
 
-    def forward(self, new_cases: torch.Tensor, post_process_func = lambda x: x):
+    def forward(self, new_cases: torch.Tensor, post_process_func = lambda x: x, return_all_strengths = False):
         """
             Computes the final strenghts of the EW-QAF for each new_case input
 
@@ -342,6 +342,9 @@ class GradualAACBR(torch.nn.Module):
         if final_strengths.dim() == 1:
             final_strengths = final_strengths.unsqueeze(0)
 
+        if return_all_strengths:
+            return final_strengths
+
         return final_strengths[:, self.default_indexes]
 
 
@@ -354,8 +357,8 @@ class GradualAACBR(torch.nn.Module):
 
     def __new_case_influence(self, X_train, base_scores, new_cases):
         new_cases_base_scores = self.compute_base_scores(
-            new_cases).unsqueeze(-1).unsqueeze(-1)  # (B x 1)
-
+            new_cases).unsqueeze(-1).unsqueeze(-1)  # (B x 1 x 1)
+        
         new_cases_attacks_adjacency = self.irrelevance_edge_weights(new_cases, X_train) # B x n
         new_cases_attacks_adjacency = -new_cases_attacks_adjacency
 
@@ -365,6 +368,7 @@ class GradualAACBR(torch.nn.Module):
         # We compute the aggregations *only* for the attacks by the new cases.
         # As new cases are unattacked, this can be computed in a single pass of 
         # aggregation/influence function
+        # b x n x 1
         aggregations = self.gradual_semantics.aggregation_func(
             new_cases_attacks_adjacency, new_cases_base_scores)
         strengths = self.gradual_semantics.influence_func(base_scores, aggregations)

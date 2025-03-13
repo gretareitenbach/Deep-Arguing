@@ -2,14 +2,11 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR, SlowGradualAACBR
-from deeparguing.base_scores.constant_base_score import ConstantBaseScore
-from deeparguing.irrelevance_edge_weights.feature_weighted_irrelevance import \
-    FeatureWeightedIrrelevance
-from deeparguing.semantics.relu_semantics import ReluSemantics
+from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 
 # Semantics is tested separately, we just have to have one to
-# initalise gradual aa-cbr
-mock_gradual_semantics = ReluSemantics(max_iters=0, epsilon=0)
+# initalise/test gradual aa-cbr
+mock_gradual_semantics = SigmoidSemantics(max_iters=0, epsilon=0)
 mock_compute_base_score = lambda _: torch.tensor(0.5)
 mock_casebase_edge_weights = lambda a, b: torch.where(
     torch.all(a >= b, dim=-1),
@@ -310,19 +307,17 @@ def test_gradual_aacbr_has_correct_logic(use_supports, N):
         target = target.to(dtype=torch.int)
         return edge_weights[attacker, target]
 
-
-    no_features = X_train.shape[-1]
     model = GradualAACBR(
-        ReluSemantics(max_iters=5, epsilon=0),
-        ConstantBaseScore(1),
-        FeatureWeightedIrrelevance(no_features),
+        mock_gradual_semantics,
+        mock_compute_base_score,
+        mock_irrelevance_edge_weights,
         edge_weights_test,
     )
 
     slow_model = SlowGradualAACBR(
-        ReluSemantics(max_iters=5, epsilon=0),
-        ConstantBaseScore(1),
-        FeatureWeightedIrrelevance(no_features),
+        mock_gradual_semantics,
+        mock_compute_base_score,
+        mock_irrelevance_edge_weights,
         edge_weights_test,
     )
     slow_model.fit(
@@ -342,5 +337,110 @@ def test_gradual_aacbr_has_correct_logic(use_supports, N):
         use_supports=use_supports,
     )
 
-    assert torch.all(model.A == slow_model.A)
+    assert torch.all(
+        model.A == slow_model.A
+    ), "Logic: Gradual AA-CBR's adjacency matrix does not match Slow Gradual AA-CBR"
 
+
+def test_semantics():
+    """
+         a
+     0 <---> 1
+     ^  _    ^
+     | |╲s   |              default (5) unattacked and does not attack
+    s|   4   |s
+     |  a ╲| |              N1 (6) attacks nothing
+          -                 N2 (7) attacks 4
+     2  ---> 3
+         a
+
+    This test constructs a gradual AA-CBR framework and ensures the final semantics
+    computed is as expected. We check the final semantics according to values we expect
+    from the semantics tests.
+
+    """
+    X_train = torch.tensor(
+        [
+            [0],
+            [1],
+            [2],
+            [3],
+            [4],
+        ]
+    )
+    y_train = torch.tensor(
+        [
+            [0],  # 0
+            [1],  # 1
+            [0],  # 2
+            [1],  # 3
+            [0],  # 4
+        ]
+    )
+    edge_weights = torch.tensor(
+        [
+            # 0, 1, 2, 3, 4, 5, 6, 7
+            [0, 1, 0, 0, 0, 0, 0, 0],  # 0
+            [1, 0, 0, 0, 0, 0, 0, 0],  # 1
+            [1, 0, 0, 1, 0, 0, 0, 0],  # 2
+            [0, 1, 0, 0, 0, 0, 0, 0],  # 3
+            [1, 0, 0, 1, 0, 0, 0, 0],  # 4
+            [0, 0, 0, 0, 0, 0, 0, 0],  # 5
+            [0, 0, 0, 0, 0, 0, 0, 0],  # 6
+            [0, 0, 0, 0, 1, 0, 0, 0],  # 7
+        ],
+        dtype=torch.float32,
+    )
+
+    X_default = torch.tensor([[5]], dtype=torch.float32)
+    y_default = torch.tensor([[5]], dtype=torch.float32)
+
+    bs = torch.tensor([0.5, 0.5, 0.7, 0.8, 0.9, 0.5, 0.5, 0.5])
+
+    def base_score_test(case):
+        case = case.to(dtype=torch.int)
+        return bs[case].squeeze()
+
+    def edge_weights_test(attacker, target):
+        attacker = attacker.to(dtype=torch.int)
+        target = target.to(dtype=torch.int)
+        return edge_weights[attacker, target]
+
+    def irrelevance_test(new_cases, casebase):
+        new_cases = new_cases.unsqueeze(1).to(dtype=torch.int)  # (B, 1, no_features)
+        casebase = casebase.unsqueeze(0).to(dtype=torch.int)  # (1, n, no_features)
+        r = edge_weights[new_cases, casebase].squeeze()
+        return r
+
+    semantics = SigmoidSemantics(max_iters=5, epsilon=0)
+    model = GradualAACBR(
+        semantics,
+        base_score_test,
+        irrelevance_test,
+        edge_weights_test,
+    )
+
+    model.fit(
+        X_train,
+        y_train,
+        X_default,
+        y_default,
+        use_symmetric_attacks=True,
+        use_supports=True,
+        use_blockers=False,  # We are just testing the forward function so blockers can be off
+    )
+
+    result = model(torch.tensor([[6], [7]]), return_all_strengths=True)
+    expected_result = torch.tensor(
+        [
+            [0.7647, 0.4215, 0.7000, 0.4468, 0.9000, 0.5000],
+            [0.7536, 0.4275, 0.7000, 0.4604, 0.8452, 0.5000],
+        ]
+    )
+    assert torch.allclose(
+        expected_result, result, atol=1e-4
+    ), "Semantics: Semantics computation is incorrect"
+
+
+if __name__ == "__main__":
+    test_semantics()
