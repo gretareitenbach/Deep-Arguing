@@ -1,7 +1,10 @@
 import pytest
 import torch
 
-from deeparguing import GradualAACBR
+from deeparguing import GradualAACBR, SlowGradualAACBR
+from deeparguing.base_scores.constant_base_score import ConstantBaseScore
+from deeparguing.irrelevance_edge_weights.feature_weighted_irrelevance import \
+    FeatureWeightedIrrelevance
 from deeparguing.semantics.relu_semantics import ReluSemantics
 
 # Semantics is tested separately, we just have to have one to
@@ -222,6 +225,8 @@ def test_gradual_aacbr_symmetric():
 
 
 batch_size = [1, 2, 3, 4, 5]
+
+
 @pytest.mark.parametrize("batch_size", batch_size)
 def test_gradual_aacbr_batching(batch_size):
     """
@@ -279,3 +284,63 @@ def test_gradual_aacbr_batching(batch_size):
     assert torch.all(A == (expected_attacks + expected_supports)), (
         "Simple: supports are wrong",
     )
+
+
+ns = [5, 10, 20, 50]
+
+
+@pytest.mark.parametrize("N", ns)
+@pytest.mark.parametrize("use_supports", [True, False])
+def test_gradual_aacbr_has_correct_logic(use_supports, N):
+    """
+    Tests if the implementation of GradualAACBR behaves the same as the
+    implementation that is a translation of its mathemathical definition.
+    """
+
+    torch.manual_seed(42)
+    X_train = torch.arange(0, N - 1).unsqueeze(1)
+    y_train = torch.randint(2, (N - 1, 1))
+    edge_weights = torch.randint(10, (N, N)) * 0.1
+
+    X_default = torch.tensor([[N - 1]], dtype=torch.float32)
+    y_default = torch.tensor([[0]], dtype=torch.float32)
+
+    def edge_weights_test(attacker, target):
+        attacker = attacker.to(dtype=torch.int)
+        target = target.to(dtype=torch.int)
+        return edge_weights[attacker, target]
+
+
+    no_features = X_train.shape[-1]
+    model = GradualAACBR(
+        ReluSemantics(max_iters=5, epsilon=0),
+        ConstantBaseScore(1),
+        FeatureWeightedIrrelevance(no_features),
+        edge_weights_test,
+    )
+
+    slow_model = SlowGradualAACBR(
+        ReluSemantics(max_iters=5, epsilon=0),
+        ConstantBaseScore(1),
+        FeatureWeightedIrrelevance(no_features),
+        edge_weights_test,
+    )
+    slow_model.fit(
+        X_train,
+        y_train,
+        X_default,
+        y_default,
+        use_symmetric_attacks=True,
+        use_supports=use_supports,
+    )
+    model.fit(
+        X_train,
+        y_train,
+        X_default,
+        y_default,
+        use_symmetric_attacks=True,
+        use_supports=use_supports,
+    )
+
+    assert torch.all(model.A == slow_model.A)
+

@@ -84,12 +84,13 @@ print("MODEL FIT")
 model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False, use_supports = True)
 # model.A = model.A * 10
 model.show_matrix()
+model.show_graph()
 
 dummy_n = torch.tensor([
     [-1], # Does not attack anything 
     [-2] # Attacks c and d
   ])
 
-result = model(dummy_n, return_all_strengths = False) # Expected [[1, 0], [0, 1]]
+result = model(dummy_n) # Expected [[1, 0], [0, 1]]
 print(result)
 

@@ -56,4 +56,4 @@ strengths = model(new_case)
 print(strengths)
 
 model.show_matrix()
-model.show_graph_with_labels()
+model.show_graph()

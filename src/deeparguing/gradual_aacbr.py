@@ -42,13 +42,6 @@ class GradualAACBR(torch.nn.Module):
         self.irrelevance_edge_weights = irrelevance_edge_weights
         self.A = None
     
-    def __casebase_edge_weights_strict(self, attacker, target, train_size):
-        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
-        return edge_weights * (1 - (edge_weights.T))
-
-    def __casebase_edge_weights_equal(self, attacker, target, train_size):
-        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
-        return edge_weights * edge_weights.T
 
 
     
@@ -138,8 +131,16 @@ class GradualAACBR(torch.nn.Module):
         self.y_train = y_train
         self.default_indexes = default_indexes
 
+    def __casebase_edge_weights_strict(self, attacker, target, train_size):
+        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
+        return edge_weights * (1 - (edge_weights.T))
+
+    def __casebase_edge_weights_equal(self, attacker, target, train_size):
+        edge_weights = self.casebase_edge_weights(attacker, target).reshape((train_size, train_size))
+        return edge_weights * edge_weights.T
+
     def __prepare_default(self, X_train, y_train, X_default, y_default):
-        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
+        X_train, y_train, default_indexes = self._add_default_cases(X_train, y_train, X_default, y_default)
         train_size = len(X_train)
         device = X_train.device
 
@@ -273,7 +274,6 @@ class GradualAACBR(torch.nn.Module):
         
             A = torch.where(same_labels, edge_weights_strict, 0)
             B = attacks.T
-            assert batch_size is not None
             if batch_size is not None:
                 blocked_attacks = self._compute_blocked_product_batched(A, B, batch_size)
             else:
@@ -284,7 +284,7 @@ class GradualAACBR(torch.nn.Module):
 
 
 
-    def __add_default_cases(self, X_train, y_train, X_default, y_default):
+    def _add_default_cases(self, X_train, y_train, X_default, y_default):
         default_index_start = len(X_train)
         X_train = torch.cat((X_train, X_default), dim=0)
         y_train = torch.cat((y_train, y_default), dim=0)
@@ -292,33 +292,6 @@ class GradualAACBR(torch.nn.Module):
         default_indexes = torch.arange(default_index_start, default_index_end)
 
         return X_train, y_train, default_indexes
-
-
-    def __batch_base_scores(self, base_scores: torch.Tensor, batch_size: int) -> torch.Tensor:
-        base_scores = torch.tile(base_scores.unsqueeze(
-            dim=0), (batch_size, 1))  # (B x n)
-        base_scores = base_scores.unsqueeze(2)  # (B x n x 1)
-        return base_scores
-    
-
-    def __new_case_influence(self, X_train, base_scores, new_cases):
-        new_cases_base_scores = self.compute_base_scores(
-            new_cases).unsqueeze(-1).unsqueeze(-1)  # (B x 1)
-
-        new_cases_attacks_adjacency = self.irrelevance_edge_weights(new_cases, X_train) # B x n
-        new_cases_attacks_adjacency = -new_cases_attacks_adjacency
-
-        # B x 1 x n
-        new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(-2)
-
-        # We compute the aggregations *only* for the attacks by the new cases.
-        # As new cases are unattacked, this can be computed in a single pass of 
-        # aggregation/influence function
-        aggregations = self.gradual_semantics.aggregation_func(
-            new_cases_attacks_adjacency, new_cases_base_scores)
-        strengths = self.gradual_semantics.influence_func(base_scores, aggregations)
-
-        return strengths
 
     def forward(self, new_cases: torch.Tensor, post_process_func = lambda x: x):
         """
@@ -370,22 +343,38 @@ class GradualAACBR(torch.nn.Module):
             final_strengths = final_strengths.unsqueeze(0)
 
         return final_strengths[:, self.default_indexes]
-    
-    def show_base_scores(self):
-        base_scores = self.compute_base_scores(self.X_train)  # (n)
-        base_scores_max = base_scores.max()
-        base_scores_min = base_scores.min()
-        base_scores = base_scores.detach().cpu().numpy()
-        print("MAX:", base_scores_max)
-        print("MIN:", base_scores_min)
-        print("BASE SCORES")
-        print(base_scores)
 
+
+    def __batch_base_scores(self, base_scores: torch.Tensor, batch_size: int) -> torch.Tensor:
+        base_scores = torch.tile(base_scores.unsqueeze(
+            dim=0), (batch_size, 1))  # (B x n)
+        base_scores = base_scores.unsqueeze(2)  # (B x n x 1)
+        return base_scores
     
-    def show_graph_with_labels(self, post_process_func = lambda x: x, logger = lambda x: x, 
+
+    def __new_case_influence(self, X_train, base_scores, new_cases):
+        new_cases_base_scores = self.compute_base_scores(
+            new_cases).unsqueeze(-1).unsqueeze(-1)  # (B x 1)
+
+        new_cases_attacks_adjacency = self.irrelevance_edge_weights(new_cases, X_train) # B x n
+        new_cases_attacks_adjacency = -new_cases_attacks_adjacency
+
+        # B x 1 x n
+        new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(-2)
+
+        # We compute the aggregations *only* for the attacks by the new cases.
+        # As new cases are unattacked, this can be computed in a single pass of 
+        # aggregation/influence function
+        aggregations = self.gradual_semantics.aggregation_func(
+            new_cases_attacks_adjacency, new_cases_base_scores)
+        strengths = self.gradual_semantics.influence_func(base_scores, aggregations)
+
+        return strengths
+    
+    
+    def show_graph(self, post_process_func = lambda x: x, logger = lambda x: x, 
                                prevent_show = False, positions = None, threshold = 0.):
         """
-
             Outputs a networkx graph of the casebase
 
             Notes
@@ -399,7 +388,14 @@ class GradualAACBR(torch.nn.Module):
             raise(Exception("Ensure the model has been fit first."))
 
         A = post_process_func(self.A).detach().cpu().numpy()
-        y_train = np.argmax(self.y_train.cpu().detach().numpy(), axis=1)
+        print(self.y_train.shape)
+        print(self.y_train)
+        y_train = self.y_train.cpu().detach().numpy()
+        if self.y_train.shape[-1] > 1:
+            y_train = np.argmax(y_train, axis=1)
+        else:
+            y_train = y_train.squeeze()
+        print(y_train)
         default_indexes = self.default_indexes.cpu().detach().numpy()
         
         A = np.where(np.abs(A) > threshold, A , 0)
@@ -442,7 +438,7 @@ class GradualAACBR(torch.nn.Module):
         newcolors = np.vstack((bottom, white, top))
         ew_colormap = ListedColormap(newcolors, name='WhiteRedGreen')
 
-        edges,weights = zip(*nx.get_edge_attributes(gr,'weight').items())
+        _,weights = zip(*nx.get_edge_attributes(gr,'weight').items())
         norm = Normalize(vmin=-1, vmax=1)
 
         edge_colors = [ew_colormap(norm(w)) for w in weights]
@@ -498,100 +494,5 @@ class GradualAACBR(torch.nn.Module):
             plt.show()
     
     
-    ############################################################################
-    # The following contains an implementation of fit that makes limited use of 
-    #  broadcasting, vectorisation or matrix operations and is used for sanity
-    # checking results    
-    ############################################################################
-    def __casebase_edge_weights_strict_old(self, attacker, target):
-        #This is ineffecient because of repeated calls to casebase_edge_weights
-        return self.casebase_edge_weights(attacker, target) * (1 - self.casebase_edge_weights(target, attacker))
-
-    def __casebase_edge_weights_equal_old(self, attacker, target):
-        #This is ineffecient because of repeated calls to casebase_edge_weights
-        return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
-
-    def slow_fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports = False):
-
-        if (X_train is None or y_train is None or len(X_train) != len(y_train)):
-            raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
-
-        if (X_default is None or y_default is None or len(X_default) != len(y_default)):
-            raise(Exception(f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"))
-
-        self.A = None
-        X_train, y_train, default_indexes = self.__add_default_cases(X_train, y_train, X_default, y_default)
-
-        train_size = len(X_train)
-        
-
-        X_attackers = X_train.unsqueeze(1).expand(-1, len(X_train), -1)
-        X_targets = X_train.unsqueeze(0).expand(len(X_train), -1, -1)
-
-
-        edge_weights_strict = self.__casebase_edge_weights_strict_old(X_attackers, X_targets).reshape((train_size, train_size))
-
-        if use_symmetric_attacks:
-            edge_weights_equal = self.__casebase_edge_weights_equal_old(X_attackers, X_targets).reshape((train_size, train_size))
-        else:
-            edge_weights_equal = torch.zeros_like(edge_weights_strict)
-
-    
-        result = torch.zeros_like(edge_weights_strict)
-
-        for attacker_index in range(train_size):
-
-            if defaults_not_attack and attacker_index in default_indexes:
-                continue
-
-            for target_index in range(train_size):
-
-                if attacker_index == target_index:
-                    continue
-
-                # Could refactor to remove repeats between supports and attacks 
-                # but the code here is supposed to be a direct translation of the fuzzy logic 
-                # (and is only used for testing) so have left it as is
-
-                if torch.all(y_train[attacker_index] == y_train[target_index], dim=-1):
-                    if not use_supports:
-                        continue
-                    # Supports
-                    blocker_value = 1
-                    if use_blockers:
-
-                        for blocker_index in range(train_size):
-
-                            if (defaults_not_attack and blocker_index in default_indexes):
-                                continue
-
-                            blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
-
-                    result[attacker_index, target_index] = edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index]        
-                else:
-                    # Attacks
-                    blocker_value = 1
-                    if use_blockers:
-
-                        for blocker_index in range(train_size):
-
-                            if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (defaults_not_attack and blocker_index in default_indexes):
-                                continue
-
-                            blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
-
-
-                    result[attacker_index, target_index] = -(edge_weights_strict[attacker_index, target_index] * blocker_value + edge_weights_equal[attacker_index, target_index])
-
-
-            
-
-
-        self.A = result
-        self.X_train = X_train
-        self.y_train = y_train
-        self.default_indexes = default_indexes
-
 
     

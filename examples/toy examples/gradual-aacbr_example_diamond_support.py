@@ -49,6 +49,11 @@ model = deeparguing.GradualAACBR(semantics,
                                    fwi.FeatureWeightedIrrelevance(no_features), 
                                    edge_weights_test
                                    )
+slow_model = deeparguing.SlowGradualAACBR(semantics, 
+                                   cbs.ConstantBaseScore(1), 
+                                   fwi.FeatureWeightedIrrelevance(no_features), 
+                                   edge_weights_test
+                                   )
 
 print("MODEL FIT")
 start_time = time.time()
@@ -60,10 +65,10 @@ model.show_matrix()
 
 print("MODEL SLOW_FIT")
 start_time = time.time()
-model.slow_fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False, use_supports = True)
-slow_fit = model.A
+slow_model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=False, use_supports = True)
+slow_fit = slow_model.A
 print("--- %s seconds ---" % (time.time() - start_time))
-model.show_matrix()
+slow_model.show_matrix()
 
 print(new_fit)
 

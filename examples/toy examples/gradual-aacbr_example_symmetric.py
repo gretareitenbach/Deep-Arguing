@@ -53,6 +53,11 @@ model = deeparguing.GradualAACBR(semantics,
                                    fwi.FeatureWeightedIrrelevance(no_features), 
                                    edge_weights_test
                                    )
+slow_model = deeparguing.SlowGradualAACBR(semantics, 
+                                   cbs.ConstantBaseScore(1), 
+                                   fwi.FeatureWeightedIrrelevance(no_features), 
+                                   edge_weights_test
+                                   )
 
 model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=True)
 new_case = torch.tensor([
@@ -65,16 +70,16 @@ print(strengths)
 
 new_fit = model.A
 model.show_matrix()
-model.show_graph_with_labels()
+model.show_graph()
 
-model.slow_fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=True)
-slow_fit = model.A
+slow_model.fit(X_train, y_train, X_default, y_default, use_symmetric_attacks=True)
+slow_fit = slow_model.A
 
 
-strengths = model(new_case)
+strengths = slow_model(new_case)
 print(strengths)
 
-model.show_matrix()
-model.show_graph_with_labels()
+slow_model.show_matrix()
+slow_model.show_graph()
 
 assert(torch.all(new_fit == slow_fit))

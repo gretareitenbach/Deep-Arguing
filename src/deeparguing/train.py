@@ -450,7 +450,7 @@ def evaluate_model(model, X_casebase, y_casebase, X_default, y_default, X_new_ca
             plt.show()
 
     if print_graph:
-        model.show_graph_with_labels(post_process_func=post_process_func, logger=graph_logger, prevent_show=prevent_show)
+        model.show_graph(post_process_func=post_process_func, logger=graph_logger, prevent_show=prevent_show)
 
     if print_matrix:
         model.show_matrix(post_process_func=post_process_func, logger=matrix_logger, prevent_show=prevent_show)
