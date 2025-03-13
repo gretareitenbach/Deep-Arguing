@@ -392,14 +392,11 @@ class GradualAACBR(torch.nn.Module):
             raise(Exception("Ensure the model has been fit first."))
 
         A = post_process_func(self.A).detach().cpu().numpy()
-        print(self.y_train.shape)
-        print(self.y_train)
         y_train = self.y_train.cpu().detach().numpy()
         if self.y_train.shape[-1] > 1:
             y_train = np.argmax(y_train, axis=1)
         else:
             y_train = y_train.squeeze()
-        print(y_train)
         default_indexes = self.default_indexes.cpu().detach().numpy()
         
         A = np.where(np.abs(A) > threshold, A , 0)

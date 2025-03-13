@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
 from typing import Any
+import torch
 
 
 class GradualSemantics(ABC):
 
-    def __init__(self, max_iters, epsilon) -> None:
+    def __init__(self, max_iters, epsilon = 0) -> None:
         super().__init__()
         self.max_iters = max_iters
         self.epsilon = epsilon
 
     @abstractmethod
-    def aggregation_func(self, A, strengths):
+    def aggregation_func(self, A, strengths) -> torch.Tensor:
         """
         Computes the aggregation vector based on the given adjacency matrix and strength vector.
 
@@ -39,7 +40,7 @@ class GradualSemantics(ABC):
         pass
 
     @abstractmethod
-    def influence_func(self, base_scores, aggregations):
+    def influence_func(self, base_scores, aggregations) -> torch.Tensor:
         """
         Computes the strength vector based on the given base score vectors and aggregation vectors.
 
@@ -72,12 +73,12 @@ class GradualSemantics(ABC):
 
     def forward_till_convergence(self, A, base_scores):
         prev_strength = base_scores
-        # TODO: change to use one of the following stop conditions:
-        #   (convergence under some epsilon or max iters reached) OR
-        #   sort the nodes topologically and figure out how to do a single pass with matrix operations -> Only works for ACYCLIC graphs
-        for i in range(self.max_iters):
-            # TODO: consider epsilon in forward pass
-            prev_strength = self.forward(A, base_scores, prev_strength)
+        for _ in range(self.max_iters):
+            next_strength = self.forward(A, base_scores, prev_strength)
+            if torch.allclose(prev_strength, next_strength, atol=self.epsilon):
+                return next_strength  
+
+            prev_strength = next_strength
         return prev_strength
 
     def __call__(self, A, base_scores) -> Any:

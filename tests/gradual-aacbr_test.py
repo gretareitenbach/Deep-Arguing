@@ -442,5 +442,3 @@ def test_semantics():
     ), "Semantics: Semantics computation is incorrect"
 
 
-if __name__ == "__main__":
-    test_semantics()
