@@ -75,7 +75,7 @@ def train_step(model,
 
     predictions = model(X_new_cases, post_process_func=post_process_func).squeeze()
 
-    y_target = torch.argmax(y_new_cases, axis=1)
+    y_target = torch.argmax(y_new_cases, dim=1)
 
     loss = criterion(predictions, y_target) + regularise_graph(model)
     loss.backward()
@@ -165,6 +165,78 @@ def static_train_model(model, X_casebase, y_casebase, X_default, y_default, opti
     pbar = tqdm(range(epochs), disable=disable_tqdm)
 
     for epoch in pbar:
+
+        loss = train_step(model,
+                          X_casebase, y_casebase, X_new_cases, y_new_cases, X_default, y_default,
+                          optimizer, criterion,
+                          use_symmetric_attacks,
+                          use_blockers=use_blockers,
+                          regularise_graph=regularise_graph, post_process_func=post_process_func,
+                          use_supports=use_supports)
+
+        losses.append(loss.item())
+        logger(loss)
+
+        pbar.set_description(
+            f'Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}')
+    
+
+    if plot_loss_curve:
+
+        plt.plot(losses)
+        plt.show()
+    
+    return losses
+
+
+def __build_criterion(model, X_casebase, y_casebase, X_default, y_default, use_symmetric_attacks, use_blockers, use_supports,
+       X_val, y_val, post_process_func):
+    model.fit(X_casebase, y_casebase, X_default, y_default,
+              use_symmetric_attacks=use_symmetric_attacks, use_blockers=use_blockers, use_supports=use_supports)
+    predictions = model(X_val, post_process_func=post_process_func).squeeze()
+    y_val  = torch.argmax(y_val, dim=1)
+    predictions = torch.argmax(predictions, dim=1)
+    num_classes = len(torch.unique(y_val))
+    device = X_casebase.device
+    total = torch.zeros(num_classes, device=device)
+    misclassified = torch.zeros(num_classes, device=device)
+    for cls in range(num_classes):
+        total[cls] += (cls == y_val).sum()
+        misclassified[cls] += ((predictions != y_val) & (y_val == cls)).sum()
+    
+    misclassification_rate = misclassified/total
+    weights = misclassification_rate / (misclassification_rate.sum() + 1e-8)
+    # weights = torch.softmax(misclassification_rate, dim=-1)
+    # print("Miss rate:", misclassification_rate, " - weights:", weights)
+    criterion = torch.nn.CrossEntropyLoss(weight=weights)
+    max_cls = torch.argmax(weights)
+    stop = torch.all(misclassification_rate < 0.15)
+    return criterion, stop
+
+def auto_weight_training(model, X_casebase, y_casebase, X_default, y_default, X_val, y_val, 
+            optimizer, epochs, use_symmetric_attacks, X_new_cases=None, y_new_cases=None,
+            use_blockers=True, plot_loss_curve=False, disable_tqdm=False,
+            regularise_graph = lambda model: 0, logger = lambda x: None, 
+            post_process_func = lambda x: x, use_supports=False):
+
+    if X_new_cases is None or y_new_cases is None:
+        raise Exception("X_new_cases and y_new_cases cannot be None")
+
+    losses = []
+    pbar = tqdm(range(epochs), disable=disable_tqdm)
+
+    criterion, stop = __build_criterion(model, X_casebase, y_casebase, X_default, y_default, use_symmetric_attacks, use_blockers, use_supports,
+       X_val, y_val, post_process_func)
+
+    for epoch in pbar:
+
+        # if ((epoch + 1) % 25) == 0:
+        if ((epoch + 1) % 25) == 0:
+            criterion, stop = __build_criterion(model, X_casebase, y_casebase, X_default, y_default, use_symmetric_attacks, use_blockers, use_supports,
+       X_val, y_val, post_process_func)
+
+        if stop:
+            break
 
         loss = train_step(model,
                           X_casebase, y_casebase, X_new_cases, y_new_cases, X_default, y_default,
@@ -529,10 +601,9 @@ def cluster_data(X, y, cluster_size_func: Callable[[int], int]):
         X_all_centroids.append(X_centroids_group)
         y_all_centroids.append(y_centroids_group)
 
-    original_shape = list(original_shape)
-    original_shape[0] = -1
-    original_shape = tuple(original_shape)
-
-    X_centroids =  np.concatenate(X_all_centroids).reshape(original_shape)
-    y_centroids =  np.concatenate(y_all_centroids)
+    # original_shape = list(original_shape)
+    # original_shape[0] = -1
+    # original_shape = tuple(original_shape)
+    X_centroids =  np.concatenate(X_all_centroids, axis=0)
+    y_centroids =  np.concatenate(y_all_centroids, axis=0)
     return X_centroids, y_centroids
