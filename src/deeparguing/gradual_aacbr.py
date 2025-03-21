@@ -16,7 +16,12 @@ class GradualAACBR(torch.nn.Module):
                  gradual_semantics: GradualSemantics, 
                  compute_base_score: BaseScoreType, 
                  irrelevance_edge_weights: IrrelevanceType, 
-                 casebase_edge_weights: PartialOrderType):
+                 casebase_edge_weights: PartialOrderType,
+                 use_symmetric_attacks = True, 
+                 defaults_not_attack = True, 
+                 use_blockers = True, 
+                 use_supports=False, 
+                 ):
         """
             Gradual AACBR Model
 
@@ -33,6 +38,18 @@ class GradualAACBR(torch.nn.Module):
             casebase_edge_weights : ComputePartialOrder
                 The function that computes the soft ordering between two 
                 arguments in the casebase. 
+            use_symmetric_attack : bool, default True
+                When true, symmetric attacks between cases of the same 
+                characterisation are included
+            defaults_not_attack : bool, default True
+                When true, the default arguments will not be able to attack any
+                case in the casebase
+            use_blockers : bool, default True
+                When true, the model will optimise attacks of minimal between cases
+                of minimal difference
+            use_supports : bool, default False
+                When true, the model will also consider supports between cases
+                with the same outcome
         """
         super().__init__() 
 
@@ -40,13 +57,20 @@ class GradualAACBR(torch.nn.Module):
         self.compute_base_scores = compute_base_score
         self.casebase_edge_weights = casebase_edge_weights
         self.irrelevance_edge_weights = irrelevance_edge_weights
+        self.use_symmetric_attacks = use_symmetric_attacks
+        self.defaults_not_attack = defaults_not_attack
+        self.use_blockers = use_blockers
+        self.use_supports = use_supports
         self.A = None
     
 
 
     
-    def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports=False, 
+    def fit(self, 
+            X_train: torch.Tensor, 
+            y_train: torch.Tensor, 
+            X_default: torch.Tensor, 
+            y_default: torch.Tensor, 
             batch_size=None):
 
         """
@@ -69,18 +93,6 @@ class GradualAACBR(torch.nn.Module):
             y_default : torch.Tensor
                 Input casebase label as a tensor. Shape (Y, Y) where Y is the
                 number of labels
-            use_symmetric_attack : bool, default True
-                When true, symmetric attacks between cases of the same 
-                characterisation are included
-            defaults_not_attack : bool, default True
-                When true, the default arguments will not be able to attack any
-                case in the casebase
-            use_blockers : bool, default True
-                When true, the model will optimise attacks of minimal between cases
-                of minimal difference
-            use_supports : bool, default False
-                When true, the model will also consider supports between cases
-                with the same outcome
 
             Notes
             -----
@@ -108,22 +120,21 @@ class GradualAACBR(torch.nn.Module):
         train_size = len(X_train)
         edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets, train_size)
 
-        if defaults_not_attack:
+        if self.defaults_not_attack:
             edge_weights_strict = torch.where(attackers_default_mask, 0, edge_weights_strict)
 
         attacks, differing_labels = self.__potential_attacks(edge_weights_strict, y_attackers, y_targets, train_size)
 
-        blocked_attacks = self.__minimal_attacks(use_blockers, y_train, edge_weights_strict, attacks, indexes, batch_size)
+        blocked_attacks = self.__minimal_attacks(y_train, edge_weights_strict, attacks, indexes, batch_size)
 
-        if use_supports:
+        if self.use_supports:
             supports, _ = self.__potential_supports(edge_weights_strict, y_attackers, y_targets, train_size)
-            blocked_supports = self.__minimal_supports(use_blockers, edge_weights_strict, batch_size)
+            blocked_supports = self.__minimal_supports(edge_weights_strict, batch_size)
             self.B = (torch.mul(supports, blocked_supports))
         else:
             self.B = torch.zeros_like(edge_weights_strict)
 
-        symmetric_attacks = self.__symmetric_attacks(use_symmetric_attacks, X_attackers,  X_targets, 
-                               defaults_not_attack, attackers_default_mask, train_size, differing_labels)
+        symmetric_attacks = self.__symmetric_attacks(X_attackers, X_targets, attackers_default_mask, train_size, differing_labels)
 
         self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks) 
         self.A = self.A + self.B
@@ -183,13 +194,13 @@ class GradualAACBR(torch.nn.Module):
     
 
 
-    def __symmetric_attacks(self, use_symmetric_attacks, X_attackers,  X_targets, 
-                               defaults_not_attack, attackers_default_mask, train_size, differing_labels):
+    def __symmetric_attacks(self, X_attackers,  X_targets, 
+                               attackers_default_mask, train_size, differing_labels):
 
-        if use_symmetric_attacks: 
+        if self.use_symmetric_attacks: 
             symmetric_attacks = self.__casebase_edge_weights_equal(X_attackers, X_targets, train_size)
             symmetric_attacks = torch.where(differing_labels, symmetric_attacks, 0)
-            if defaults_not_attack:
+            if self.defaults_not_attack:
                 symmetric_attacks = torch.where(attackers_default_mask, 0, symmetric_attacks)
             
         else:
@@ -235,7 +246,7 @@ class GradualAACBR(torch.nn.Module):
         return result
 
 
-    def __minimal_supports(self, use_blockers, edge_weights_strict, batch_size):
+    def __minimal_supports(self, edge_weights_strict, batch_size):
         """
         Compute minimal supports.
     
@@ -243,7 +254,7 @@ class GradualAACBR(torch.nn.Module):
         blocked_supports[i,j] = ∏ₖ (1 - edge_weights_strict[i, k] * edge_weights_strict[j, k])
         Otherwise, return a tensor of ones.
         """
-        if use_blockers:
+        if self.use_blockers:
             A = edge_weights_strict             
             B = edge_weights_strict.T           
             if batch_size is not None:
@@ -255,7 +266,7 @@ class GradualAACBR(torch.nn.Module):
         return blocked_supports
 
 
-    def __minimal_attacks(self, use_blockers, y_train, edge_weights_strict, attacks, indexes, batch_size):
+    def __minimal_attacks(self, y_train, edge_weights_strict, attacks, indexes, batch_size):
         """
         Compute minimal attacks.
     
@@ -267,7 +278,7 @@ class GradualAACBR(torch.nn.Module):
         B = attacks.T
         Otherwise, return a tensor of ones.
         """
-        if use_blockers:
+        if self.use_blockers:
             i_indices = indexes.unsqueeze(1)  
             j_indices = indexes.unsqueeze(0)  
             same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)

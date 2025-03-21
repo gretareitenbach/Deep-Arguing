@@ -48,7 +48,9 @@ def test_gradual_aacbr_simple():
             [0.0, 0.0, 0.0],
         ]
     )
-    model.fit(X_train, y_train, X_default, y_default, use_blockers=False)
+    model.use_blockers = False
+    model.use_supports = False
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == expected_attacks), "Simple: attacks are wrong"
 
@@ -60,14 +62,9 @@ def test_gradual_aacbr_simple():
         ]
     )
 
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_supports=True,
-        use_blockers=False,
-    )
+    model.use_blockers = False
+    model.use_supports = True
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == (expected_attacks + expected_supports)), (
         "Simple: supports are wrong",
@@ -103,7 +100,9 @@ def test_gradual_aacbr_minimal():
             [0.0, 0.0, 0.0, 0.0],
         ]
     )
-    model.fit(X_train, y_train, X_default, y_default, use_blockers=False)
+    model.use_blockers = False
+    model.use_supports = False
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == expected_attacks_no_blockers), (
         "Minimal: no blockers attacks are wrong",
@@ -118,14 +117,9 @@ def test_gradual_aacbr_minimal():
         ]
     )
 
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_supports=True,
-        use_blockers=False,
-    )
+    model.use_supports = True
+    model.use_blockers = False
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(
         A == (expected_attacks_no_blockers + expected_supports_no_blockers)
@@ -140,7 +134,9 @@ def test_gradual_aacbr_minimal():
         ]
     )
 
-    model.fit(X_train, y_train, X_default, y_default, use_blockers=True)
+    model.use_blockers = True
+    model.use_supports = False
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == expected_attacks), (
         "Minimal: attacks with blockers are wrong",
@@ -154,8 +150,9 @@ def test_gradual_aacbr_minimal():
             [0.0, 0.0, 0.0, 0.0],
         ]
     )
-
-    model.fit(X_train, y_train, X_default, y_default, use_supports=True)
+    model.use_blockers = True
+    model.use_supports = True
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == (expected_attacks + expected_supports)), (
         "Minimal: supports with blockers are wrong",
@@ -188,13 +185,9 @@ def test_gradual_aacbr_symmetric():
             [0.0, 0.0, 0.0, 0.0],
         ]
     )
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_symmetric_attacks=True,
-    )
+    model.use_supports = False
+    model.use_symmetric_attacks = True
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == expected_attacks), ("Symmetric: attacks are wrong",)
 
@@ -207,14 +200,9 @@ def test_gradual_aacbr_symmetric():
         ]
     )
 
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_supports=True,
-        use_symmetric_attacks=True,
-    )
+    model.use_supports = True
+    model.use_symmetric_attacks = True
+    model.fit(X_train, y_train, X_default, y_default)
     A = model.A
     assert torch.all(A == (expected_attacks + expected_supports)), (
         "Symmetric: supports are wrong",
@@ -249,12 +237,13 @@ def test_gradual_aacbr_batching(batch_size):
             [0.0, 0.0, 0.0],
         ]
     )
+    model.use_supports = False
+    model.use_blockers = True
     model.fit(
         X_train,
         y_train,
         X_default,
         y_default,
-        use_blockers=True,
         batch_size=batch_size,
     )
     A = model.A
@@ -268,13 +257,13 @@ def test_gradual_aacbr_batching(batch_size):
         ]
     )
 
+    model.use_supports = True
+    model.use_blockers = True
     model.fit(
         X_train,
         y_train,
         X_default,
         y_default,
-        use_supports=True,
-        use_blockers=True,
         batch_size=batch_size,
     )
     A = model.A
@@ -320,22 +309,13 @@ def test_gradual_aacbr_has_correct_logic(use_supports, N):
         mock_irrelevance_edge_weights,
         edge_weights_test,
     )
-    slow_model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_symmetric_attacks=True,
-        use_supports=use_supports,
-    )
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_symmetric_attacks=True,
-        use_supports=use_supports,
-    )
+    slow_model.use_symmetric_attacks = True
+    slow_model.use_supports = use_supports
+    slow_model.fit(X_train, y_train, X_default, y_default)
+
+    model.use_symmetric_attacks = True
+    model.use_supports = use_supports
+    model.fit(X_train, y_train, X_default, y_default)
 
     assert torch.all(
         model.A == slow_model.A
@@ -420,15 +400,11 @@ def test_semantics():
         edge_weights_test,
     )
 
-    model.fit(
-        X_train,
-        y_train,
-        X_default,
-        y_default,
-        use_symmetric_attacks=True,
-        use_supports=True,
-        use_blockers=False,  # We are just testing the forward function so blockers can be off
-    )
+    model.use_symmetric_attacks=True
+    model.use_supports=True
+    # We are just testing the forward function so blockers can be off
+    model.use_blockers=False  
+    model.fit(X_train, y_train, X_default, y_default)
 
     result = model(torch.tensor([[6], [7]]), return_all_strengths=True)
     expected_result = torch.tensor(
@@ -440,5 +416,3 @@ def test_semantics():
     assert torch.allclose(
         expected_result, result, atol=1e-4
     ), "Semantics: Semantics computation is incorrect"
-
-

@@ -34,7 +34,7 @@ setup(
     dependency_links=[
         'https://download.pytorch.org/whl/cu118'
     ],
-    python_requires=">=3.10",
+    python_requires=">=3.12",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
 )

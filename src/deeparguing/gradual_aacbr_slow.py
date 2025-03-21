@@ -12,7 +12,12 @@ class SlowGradualAACBR(GradualAACBR):
                  gradual_semantics: GradualSemantics, 
                  compute_base_score: BaseScoreType, 
                  irrelevance_edge_weights: IrrelevanceType, 
-                 casebase_edge_weights: PartialOrderType):
+                 casebase_edge_weights: PartialOrderType,
+                 use_symmetric_attacks = True, 
+                 defaults_not_attack = True, 
+                 use_blockers = True, 
+                 use_supports=False, 
+                 ):
         """
             Gradual AACBR Model
 
@@ -30,7 +35,9 @@ class SlowGradualAACBR(GradualAACBR):
                 The function that computes the soft ordering between two 
                 arguments in the casebase. 
         """
-        super().__init__(gradual_semantics, compute_base_score, irrelevance_edge_weights, casebase_edge_weights) 
+        super().__init__(gradual_semantics, compute_base_score, irrelevance_edge_weights, casebase_edge_weights, 
+                         use_symmetric_attacks, defaults_not_attack, use_blockers, use_supports,
+                         ) 
 
     ############################################################################
     # The following contains an implementation of fit that makes limited use of 
@@ -46,7 +53,7 @@ class SlowGradualAACBR(GradualAACBR):
         return self.casebase_edge_weights(attacker, target) * self.casebase_edge_weights(target, attacker)
 
     def fit(self, X_train: torch.Tensor, y_train: torch.Tensor, X_default: torch.Tensor, y_default: torch.Tensor, 
-            use_symmetric_attacks = True, defaults_not_attack = True, use_blockers = True, use_supports = False, batch_size = None):
+            batch_size = None):
 
         if (X_train is None or y_train is None or len(X_train) != len(y_train)):
             raise(Exception(f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"))
