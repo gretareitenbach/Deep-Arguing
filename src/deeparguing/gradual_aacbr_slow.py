@@ -76,7 +76,7 @@ class SlowGradualAACBR(GradualAACBR):
 
         edge_weights_strict = self.__casebase_edge_weights_strict(X_attackers, X_targets).reshape((train_size, train_size))
 
-        if use_symmetric_attacks:
+        if self.use_symmetric_attacks:
             edge_weights_equal = self.__casebase_edge_weights_equal(X_attackers, X_targets).reshape((train_size, train_size))
         else:
             edge_weights_equal = torch.zeros_like(edge_weights_strict)
@@ -86,7 +86,7 @@ class SlowGradualAACBR(GradualAACBR):
 
         for attacker_index in range(train_size):
 
-            if defaults_not_attack and attacker_index in default_indexes:
+            if self.defaults_not_attack and attacker_index in default_indexes:
                 continue
 
             for target_index in range(train_size):
@@ -99,15 +99,15 @@ class SlowGradualAACBR(GradualAACBR):
                 # (and is only used for testing) so have left it as is
 
                 if torch.all(y_train[attacker_index] == y_train[target_index], dim=-1):
-                    if not use_supports:
+                    if not self.use_supports:
                         continue
                     # Supports
                     blocker_value = 1
-                    if use_blockers:
+                    if self.use_blockers:
 
                         for blocker_index in range(train_size):
 
-                            if (defaults_not_attack and blocker_index in default_indexes):
+                            if (self.defaults_not_attack and blocker_index in default_indexes):
                                 continue
 
                             blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))
@@ -116,11 +116,11 @@ class SlowGradualAACBR(GradualAACBR):
                 else:
                     # Attacks
                     blocker_value = 1
-                    if use_blockers:
+                    if self.use_blockers:
 
                         for blocker_index in range(train_size):
 
-                            if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (defaults_not_attack and blocker_index in default_indexes):
+                            if torch.all(y_train[attacker_index] != y_train[blocker_index], dim=-1) or (self.defaults_not_attack and blocker_index in default_indexes):
                                 continue
 
                             blocker_value = blocker_value * (1 - (edge_weights_strict[attacker_index, blocker_index] * edge_weights_strict[blocker_index, target_index]))

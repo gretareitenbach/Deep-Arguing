@@ -1,6 +1,5 @@
 import torch
 from abc import abstractmethod, ABCMeta
-from typing import Any
 
 class FeatureExtractor(torch.nn.Module, metaclass=ABCMeta):
 
@@ -9,7 +8,7 @@ class FeatureExtractor(torch.nn.Module, metaclass=ABCMeta):
         self.no_features = no_features
 
     @abstractmethod
-    def forward(self, case: torch.tensor) -> torch.tensor:
+    def forward(self, case: torch.Tensor) -> torch.Tensor:
         pass
 
     @abstractmethod
