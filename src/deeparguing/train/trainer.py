@@ -26,9 +26,8 @@ class Trainer(metaclass=ABCMeta):
         optimizer: Optimizer,
         criterion_factory: Callable,
         epochs,
-        graph_regualariser=lambda _: 0,
+        regulariser=lambda _: 0,
         disable_tqdm=False,
-        post_process_func=lambda A: A,
     ):
         pass
 
@@ -47,8 +46,7 @@ class Trainer(metaclass=ABCMeta):
         y_default: torch.Tensor,
         optimizer: Optimizer,
         criterion: Callable,
-        graph_regulariser=lambda _: 0,
-        post_process_func=lambda x: x,
+        regulariser=lambda _: 0,
     ):
 
         # If in the future we have to overwrite train_step for whatever reason,
@@ -60,11 +58,11 @@ class Trainer(metaclass=ABCMeta):
         # Find a way to accumulate gradients update only when necessary?
         model.fit(X_casebase, y_casebase, X_default, y_default)
 
-        predictions = model(X_new_cases, post_process_func=post_process_func).squeeze()
+        predictions = model(X_new_cases).squeeze()
 
         y_target = torch.argmax(y_new_cases, dim=1)
 
-        loss = criterion(predictions, y_target) + graph_regulariser(model)
+        loss = criterion(predictions, y_target) + regulariser(model)
         loss.backward()
 
         self.losses.append(loss.item())

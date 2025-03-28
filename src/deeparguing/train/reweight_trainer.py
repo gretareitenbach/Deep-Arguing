@@ -14,7 +14,6 @@ class ReweightTrainer(Trainer):
         self,
         X_val: torch.Tensor,
         y_val: torch.Tensor,
-        criterion_class,
         reweight_epoch=25,
         max_misclass_rate=0.15,
         real_time_logger=lambda _: None,
@@ -22,7 +21,6 @@ class ReweightTrainer(Trainer):
         super().__init__(real_time_logger)
         self.X_val = X_val
         self.y_val = y_val
-        self.criterion_class = criterion_class
         self.max_misclass_rate = max_misclass_rate
         self.reweight_epoch = reweight_epoch
 
@@ -36,9 +34,8 @@ class ReweightTrainer(Trainer):
         optimizer: Optimizer,
         criterion_factory: Callable,
         epochs,
-        graph_regualariser=lambda _: 0,
+        regulariser=lambda _: 0,
         disable_tqdm=False,
-        post_process_func=lambda A: A,
     ):
 
         pbar = tqdm(range(epochs), disable=disable_tqdm)
@@ -55,7 +52,6 @@ class ReweightTrainer(Trainer):
                     X_default,
                     y_default,
                     criterion_factory,
-                    post_process_func,
                 )
 
                 if stop:
@@ -73,8 +69,7 @@ class ReweightTrainer(Trainer):
                 y_default,
                 optimizer,
                 built_criterion,
-                graph_regulariser=graph_regualariser,
-                post_process_func=post_process_func,
+                regulariser=regulariser,
             )
 
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
@@ -87,7 +82,6 @@ class ReweightTrainer(Trainer):
         X_default: torch.Tensor,
         y_default: torch.Tensor,
         criterion_factory: Callable,
-        post_process_func,
     ):
         model.fit(
             X_casebase,
@@ -95,7 +89,7 @@ class ReweightTrainer(Trainer):
             X_default,
             y_default,
         )
-        predictions = model(self.X_val, post_process_func=post_process_func).squeeze()
+        predictions = model(self.X_val).squeeze()
         y_val = torch.argmax(self.y_val, dim=1)
         predictions = torch.argmax(predictions, dim=1)
         num_classes = len(torch.unique(y_val))

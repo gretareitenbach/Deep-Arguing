@@ -8,7 +8,6 @@ from deeparguing import GradualAACBR
 from deeparguing.train import Trainer
 
 
-# TODO: Move to separate file
 class SimpleTrainer(Trainer):
 
     def __init__(
@@ -27,9 +26,8 @@ class SimpleTrainer(Trainer):
         optimizer: Optimizer,
         criterion_factory: Callable,
         epochs,
-        graph_regualariser=lambda _: 0,
+        regulariser=lambda _: 0,
         disable_tqdm=False,
-        post_process_func=lambda A: A,
     ):
 
         pbar = tqdm(range(epochs), disable=disable_tqdm)
@@ -48,8 +46,7 @@ class SimpleTrainer(Trainer):
                 y_default,
                 optimizer,
                 criterion,
-                graph_regulariser=graph_regualariser,
-                post_process_func=post_process_func,
+                regulariser=regulariser,
             )
 
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")

@@ -1,0 +1,188 @@
+community_preservation_attacks:
+  type: class
+  class_name: CommunityPreservationRegulariser
+  params:
+    filter_func:
+      type: function
+      value: "filter_to_attacks"
+
+community_preservation_supports:
+  type: class
+  class_name: CommunityPreservationRegulariser
+  params:
+    filter_func:
+      type: function
+      value: "filter_to_supports"
+
+regularisers:
+  type: class
+  class_name: "RegulariserList"
+  params:
+    regularisers:
+      type: list
+      value:
+        [
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "community_preservation_attacks" },
+                { type: value, value: 0.005 },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "community_preservation_supports" },
+                { type: value, value: 0.005 },
+              ],
+          },
+        ]
+
+trainer:
+  type: class
+  class_name: "ReweightTrainer"
+  params:
+    X_val:
+      type: data_ref
+      value: "X_val"
+    y_val:
+      type: data_ref
+      value: "y_val"
+    reweight_epoch:
+      type: value
+      value: 25
+    max_misclass_rate:
+      type: value
+      value: 0.15
+
+build_casebase:
+  type: class
+  class_name: "kMeansCluster"
+  params:
+    cluster_size:
+      type: value
+      value: 15
+
+train_settings:
+  type: dict
+  value:
+    criterion_factory:
+      type: function
+      value: "weighted_cross_entropy"
+    epochs:
+      type: value
+      value: 24000
+    optimizer:
+      type: class
+      sub_type: optim
+      class_name: "AdamW"
+      model: "model"
+      params:
+        lr:
+          type: value
+          value: 0.0002
+    regulariser:
+      type: ref
+      value: "regularisers"
+
+feature_weights:
+  type: class
+  class_name: "FeatureWeightedExtractor"
+  params:
+    no_features:
+      type: data_ref
+      value: "no_features"
+
+scaler:
+  type: class
+  class_name: "Scaler"
+  params:
+    no_features:
+      type: data_ref
+      value: "no_features"
+
+semantics:
+  type: class
+  class_name: "ReluSemantics"
+  params:
+    max_iters:
+      type: value
+      value: 95
+    epsilon:
+      type: value
+      value: 0
+
+partial_order:
+  type: class
+  class_name: "LearnedPartialOrder"
+  params:
+    feature_extractors:
+      type: list
+      value: [{ type: ref, value: "feature_weights" }]
+    comparison_func:
+      type: class
+      class_name: "Subtractor"
+      params:
+        temperature:
+          type: value
+          value: 0.05
+        activation:
+          type: function
+          value: "sigmoid"
+
+irrelevance:
+  type: class
+  class_name: "RegularIrrelevance"
+  params:
+    compute_partial_order:
+      type: ref
+      value: "partial_order"
+
+base_score:
+  type: class
+  class_name: "LearnedBaseScore"
+  params:
+    feature_extractors:
+      type: list
+      value:
+        [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "scaler" },
+        ]
+    activation:
+      type: function
+      value: "sigmoid"
+
+model:
+  type: class
+  class_name: "GradualAACBR"
+  params:
+    gradual_semantics:
+      type: ref
+      value: "semantics"
+    compute_base_score:
+      type: ref
+      value: "base_score"
+    irrelevance_edge_weights:
+      type: ref
+      value: "irrelevance"
+    casebase_edge_weights:
+      type: ref
+      value: "partial_order"
+    use_symmetric_attacks:
+      type: value
+      value: false
+    defaults_not_attack:
+      type: value
+      value: true
+    use_blockers:
+      type: value
+      value: true
+    use_supports:
+      type: value
+      value: true
+    post_process_func:
+      type: function
+      value: "uni_directional"

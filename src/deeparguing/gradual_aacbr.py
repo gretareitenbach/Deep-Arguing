@@ -21,6 +21,7 @@ class GradualAACBR(torch.nn.Module):
                  defaults_not_attack = True, 
                  use_blockers = True, 
                  use_supports=False, 
+                 post_process_func = lambda x: x, 
                  ):
         """
             Gradual AACBR Model
@@ -50,6 +51,9 @@ class GradualAACBR(torch.nn.Module):
             use_supports : bool, default False
                 When true, the model will also consider supports between cases
                 with the same outcome
+           post_process_func: Callable
+                Optionally apply a post process function to the adjacency matrix
+                before computing the gradual semantics
         """
         super().__init__() 
 
@@ -61,9 +65,13 @@ class GradualAACBR(torch.nn.Module):
         self.defaults_not_attack = defaults_not_attack
         self.use_blockers = use_blockers
         self.use_supports = use_supports
+        self.post_process_func = post_process_func
         self.A = None
     
 
+    @property
+    def device(self):
+        return next(self.parameters(), torch.tensor(0)).device
 
     
     def fit(self, 
@@ -304,7 +312,7 @@ class GradualAACBR(torch.nn.Module):
 
         return X_train, y_train, default_indexes
 
-    def forward(self, new_cases: torch.Tensor, post_process_func = lambda x: x, return_all_strengths = False):
+    def forward(self, new_cases: torch.Tensor, return_all_strengths = False):
         """
             Computes the final strenghts of the EW-QAF for each new_case input
 
@@ -315,9 +323,6 @@ class GradualAACBR(torch.nn.Module):
                 Shape (N, x1, ..., xn) where N is the number of new cases 
                 arguments and (x1, ..., xn) is the shape of each argument.
 
-           post_process_func: Callable
-                Optionally apply a post process function to the adjacency matrix
-                before computing the gradual semantics
 
             Returns
             -------
@@ -343,7 +348,7 @@ class GradualAACBR(torch.nn.Module):
         base_scores = self.compute_base_scores(self.X_train)  # (n)
         base_scores = self.__batch_base_scores(base_scores, batch_size)
         base_scores = self.__new_case_influence(self.X_train, base_scores, new_cases)
-        A = post_process_func(self.A)
+        A = self.post_process_func(self.A)
         assert(A.shape == self.A.shape)
         strengths = self.gradual_semantics(A, base_scores)
 
@@ -387,7 +392,7 @@ class GradualAACBR(torch.nn.Module):
         return strengths
     
     
-    def show_graph(self, post_process_func = lambda x: x, logger = lambda x: x, 
+    def show_graph(self, logger = lambda x: x, 
                                prevent_show = False, positions = None, threshold = 0.):
         """
             Outputs a networkx graph of the casebase
@@ -402,7 +407,7 @@ class GradualAACBR(torch.nn.Module):
         if self.A is None:
             raise(Exception("Ensure the model has been fit first."))
 
-        A = post_process_func(self.A).detach().cpu().numpy()
+        A = self.post_process_func(self.A).detach().cpu().numpy()
         y_train = self.y_train.cpu().detach().numpy()
         if self.y_train.shape[-1] > 1:
             y_train = np.argmax(y_train, axis=1)
@@ -464,7 +469,7 @@ class GradualAACBR(torch.nn.Module):
         if not prevent_show:
             plt.show()
 
-    def show_matrix(self, post_process_func = lambda x: x, logger = lambda x: x, prevent_show = False):
+    def show_matrix(self, logger = lambda x: x, prevent_show = False):
         """
 
             Outputs an image of the adjacency matrix of the casebase
@@ -480,7 +485,7 @@ class GradualAACBR(torch.nn.Module):
             raise(Exception("Ensure the model has been fit first."))
 
         f = plt.figure(figsize=(10, 10))
-        A = post_process_func(self.A).detach().cpu().numpy()
+        A = self.post_process_func(self.A).detach().cpu().numpy()
         plt.imshow(A, cmap='cividis', interpolation='nearest')
         ax = plt.gca()
         n = len(self.X_train)
