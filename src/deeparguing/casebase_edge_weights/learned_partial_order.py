@@ -31,8 +31,8 @@ class LearnedPartialOrder(ComputePartialOrder):
         reshape = False
 
         if attacker.shape[1] == 1 and target.shape[0] == 1:
-            attacker = attacker.squeeze()
-            target = target.squeeze()
+            attacker = attacker.squeeze(1)
+            target = target.squeeze(0)
             reshape = True
         
         for feature_extractor in self.feature_extractors:
