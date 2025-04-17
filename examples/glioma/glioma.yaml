@@ -1,0 +1,23 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 0
+    path:
+      type: value
+      value: "./data/glioma/TCGA_InfoWithGrade.csv"
+    excluded_fields:
+      type: list
+      value: [{ type: value, value: 2 }, { type: value, value: 3 }]
+    has_header:
+      type: value
+      value: true
+
+data_pre_process:
+  type: dict
+  value:
+    normalize_func:
+      type: function
+      value: "no_normalize"

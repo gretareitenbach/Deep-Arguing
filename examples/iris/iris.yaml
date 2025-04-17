@@ -2,10 +2,10 @@ data:
   type: data
   sub_type: tabular
   params:
-    target_field: 
+    target_field:
       type: value
       value: 4
-    path: 
+    path:
       type: value
       value: "./data/iris/iris.data"
     labels:
@@ -16,6 +16,9 @@ data:
           { type: value, value: "Iris-versicolor" },
           { type: value, value: "Iris-virginica" },
         ]
+    has_header:
+      type: value
+      value: false
 
 data_pre_process:
   type: dict

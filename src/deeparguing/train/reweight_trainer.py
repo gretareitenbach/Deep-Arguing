@@ -38,7 +38,7 @@ class ReweightTrainer(Trainer):
         disable_tqdm=False,
     ):
 
-        pbar = tqdm(range(epochs), disable=disable_tqdm)
+        pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
 
         built_criterion = None
 

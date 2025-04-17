@@ -34,7 +34,7 @@ class DynamicTrainer(Trainer):
         regulariser=lambda _: 0,
         disable_tqdm=False,
     ):
-        pbar = tqdm(range(epochs), disable=disable_tqdm)
+        pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
         kf = KFold(
             n_splits=self.n_splits, shuffle=True, random_state=self.random_split_state
         )

@@ -1,0 +1,29 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 0
+    path:
+      type: value
+      value: "./data/mushroom/agaricus-lepiota.data"
+    has_header:
+      type: value
+      value: false
+    one_hot_X:
+      type: value
+      value: true
+    shuffle:
+      type: value
+      value: true
+    size:
+      type: value
+      value: 350
+
+data_pre_process:
+  type: dict
+  value:
+    normalize_func:
+      type: function
+      value: "no_normalize"

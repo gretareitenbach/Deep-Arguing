@@ -1,0 +1,29 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 1 
+    path:
+      type: value
+      value: "./data/wdbc/wdbc.data"
+    excluded_fields:
+      type: list
+      value: [{ type: value, value: 0 }]
+    has_header:
+      type: value
+      value: false
+    shuffle:
+      type: value
+      value: true
+    size:
+      type: value
+      value: 500
+
+data_pre_process:
+  type: dict
+  value:
+    normalize_func:
+      type: function
+      value: "no_normalize"

@@ -12,6 +12,7 @@ class Trainer(metaclass=ABCMeta):
 
     def __init__(self, real_time_logger=lambda _: None) -> None:
         self.losses = []
+        self.grads_over_time = []
         # Can be used to log the loss in real time (e.g. if logging to weights and biases)
         self.real_time_logger = real_time_logger
 
@@ -33,6 +34,19 @@ class Trainer(metaclass=ABCMeta):
 
     def plot_loss_curve(self):
         plt.plot(self.losses)
+        plt.show()
+    
+    def plot_grads(self):
+        grads_over_time = torch.stack(self.grads_over_time).numpy()
+        plt.figure(figsize=(10, 6))
+        for i in range(grads_over_time.shape[1]):
+            plt.plot(grads_over_time[:, i], label=f'Param {i}')
+        plt.xlabel('Epoch')
+        plt.ylabel('Gradient Value')
+        plt.title('Gradient Flow Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
         plt.show()
 
     def _train_step(
@@ -61,11 +75,15 @@ class Trainer(metaclass=ABCMeta):
         predictions = model(X_new_cases).squeeze()
 
         y_target = torch.argmax(y_new_cases, dim=1)
-
         loss = criterion(predictions, y_target) + regulariser(model)
         loss.backward()
 
         self.losses.append(loss.item())
         self.real_time_logger(loss.item())
+        grads = []
+        for param in model.parameters():
+            grads.append(param.grad.view(-1))
+        grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
+        self.grads_over_time.append(grads)
         optimizer.step()
         return loss

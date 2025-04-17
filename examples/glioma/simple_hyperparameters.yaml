@@ -1,0 +1,26 @@
+epochs:
+  type: value
+  value: 6000
+lr:
+  type: value
+  value: 0.02
+
+gamma:
+  type: value
+  value: 0.0005
+
+gamma_prime:
+  type: value
+  value: 0.0005
+
+max_iters:
+  type: value
+  value: 95
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: value
+  value: 0.05

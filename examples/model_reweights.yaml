@@ -27,7 +27,7 @@ regularisers:
             value:
               [
                 { type: ref, value: "community_preservation_attacks" },
-                { type: value, value: 0.005 },
+                { type: ref, value: gamma },
               ],
           },
           {
@@ -35,7 +35,7 @@ regularisers:
             value:
               [
                 { type: ref, value: "community_preservation_supports" },
-                { type: value, value: 0.005 },
+                { type: ref, value: gamma_prime },
               ],
           },
         ]
@@ -51,19 +51,19 @@ trainer:
       type: data_ref
       value: "y_val"
     reweight_epoch:
-      type: value
-      value: 25
+      type: ref
+      value: reweight_epoch
     max_misclass_rate:
-      type: value
-      value: 0.15
+      type: ref
+      value: max_misclass_rate 
 
 build_casebase:
   type: class
   class_name: "kMeansCluster"
   params:
     cluster_size:
-      type: value
-      value: 15
+      type: ref
+      value: cluster_size
 
 train_settings:
   type: dict
@@ -72,8 +72,8 @@ train_settings:
       type: function
       value: "weighted_cross_entropy"
     epochs:
-      type: value
-      value: 24000
+      type: ref
+      value: epochs
     optimizer:
       type: class
       sub_type: optim
@@ -81,8 +81,8 @@ train_settings:
       model: "model"
       params:
         lr:
-          type: value
-          value: 0.0002
+          type: ref
+          value: lr
     regulariser:
       type: ref
       value: "regularisers"
@@ -108,11 +108,11 @@ semantics:
   class_name: "ReluSemantics"
   params:
     max_iters:
-      type: value
-      value: 95
+      type: ref
+      value: max_iters
     epsilon:
-      type: value
-      value: 0
+      type: ref
+      value: epsilon
 
 partial_order:
   type: class
@@ -126,8 +126,8 @@ partial_order:
       class_name: "Subtractor"
       params:
         temperature:
-          type: value
-          value: 0.05
+          type: ref
+          value: temperature
         activation:
           type: function
           value: "sigmoid"

@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 import torch
@@ -20,20 +22,22 @@ def one_hot_encode(data):
 def load_tabular_data(
     path,
     target_field,
-    device="cpu",
+    device: str = "cpu",
     labels=[],
-    size=-1,
+    size=None,
     shuffle=False,
     seed=42,
     excluded_fields=[],
     one_hot_X=False,
+    has_header=False,
 ):
-    data = pd.read_csv(path, header=0)
+    if has_header:
+        data = pd.read_csv(path, header=0)
+    else:
+        data = pd.read_csv(path, header=None)
 
     data = data.values
-    X = exclude_fields(
-        np.array(data), [target_field] + excluded_fields
-    )
+    X = exclude_fields(np.array(data), [target_field] + excluded_fields)
     y = data[:, target_field]
 
     if shuffle:
@@ -56,7 +60,6 @@ def load_tabular_data(
     X = np.array(X, dtype=np.float32)
     X = torch.tensor(X, dtype=torch.float32, device=device)
     y = torch.tensor(y, dtype=torch.float32, device=device)
-
 
     X = X[:size]
     y = y[:size]
@@ -90,7 +93,11 @@ def load_mnist(as_vector=False, size=-1, labels=[]):
     return X, y
 
 
-def split_data(X, y, seed, test_size=0.2):
+def split_data(
+    X: torch.Tensor, y: torch.Tensor, seed, test_size=0.2
+) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
+]:
 
     X_train_full, X_test, y_train_full, y_test = train_test_split(
         X, y, test_size=test_size, random_state=seed
