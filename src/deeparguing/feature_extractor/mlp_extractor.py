@@ -1,15 +1,24 @@
+from typing import override
+
 import torch
-import matplotlib.pyplot as plt
+from torch import Tensor
+
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+
 
 class MLPExtractor(FeatureExtractor):
 
-
-    def __init__(self, input_size, hidden_sizes, output_size, output_activation = None):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: list[int],
+        output_size: int,
+        output_activation: torch.nn.Module | None = None,
+    ):
         super(MLPExtractor, self).__init__(output_size)
 
         layer_sizes = [input_size] + hidden_sizes + [output_size]
-        
+
         self.layers = torch.nn.ModuleList()
         for i in range(len(layer_sizes) - 1):
             self.layers.append(torch.nn.Linear(layer_sizes[i], layer_sizes[i + 1]))
@@ -18,19 +27,20 @@ class MLPExtractor(FeatureExtractor):
 
         if output_activation:
             self.layers.append(output_activation)
-        
 
-    def forward(self, case: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, case: Tensor) -> Tensor:
         for layer in self.layers:
             case = layer(case)
 
         case = case.squeeze()
-        
+
         return case
 
-
+    @override
     def get_output_features(self) -> int:
         return self.no_features
 
+    @override
     def plot_parameters(self):
         print("Not plotting NN params")

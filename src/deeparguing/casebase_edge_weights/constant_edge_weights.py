@@ -1,4 +1,6 @@
+from typing import override
 import torch
+from torch import Tensor
 
 from deeparguing.casebase_edge_weights.compute_partial_order import \
     ComputePartialOrder
@@ -10,8 +12,10 @@ class ConstantPartialOrder(ComputePartialOrder):
         super(ConstantPartialOrder, self).__init__()
         self.edge_weights = edge_weights
 
-    def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
         return torch.ones(attacker.shape[0] * target.shape[0]) * self.edge_weights
 
+    @override
     def plot_parameters(self):
         print(self.edge_weights)

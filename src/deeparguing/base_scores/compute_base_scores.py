@@ -1,14 +1,17 @@
-import torch
-from abc import abstractmethod, ABCMeta
-from typing import Callable
+from abc import ABCMeta, abstractmethod
+from typing import Callable, override
 
-type BaseScoreType = ComputeBaseScores | Callable[[torch.Tensor], torch.Tensor]
+import torch
+from torch import Tensor
+
+type BaseScoreType = ComputeBaseScores | Callable[[Tensor], Tensor]
+
 
 class ComputeBaseScores(torch.nn.Module, metaclass=ABCMeta):
 
-
     @abstractmethod
-    def forward(self, nodes: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, nodes: Tensor) -> Tensor:
         pass
 
     @abstractmethod

@@ -1,13 +1,18 @@
+from typing import override
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+
 
 class SimpleCNN(FeatureExtractor):
 
     # Code adpated from https://github.com/pytorch/examples/blob/main/mnist/main.py
 
-    def __init__(self, no_features):
+    def __init__(self, no_features: int):
         super(SimpleCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
@@ -16,7 +21,8 @@ class SimpleCNN(FeatureExtractor):
         self.fc1 = nn.Linear(9216, 128)
         self.fc2 = nn.Linear(128, 10)
 
-    def forward(self, case: torch.tensor) -> torch.tensor:
+    @override
+    def forward(self, case: Tensor) -> Tensor:
         if case.ndim == 3:
             case = case.unsqueeze(1)
         x = self.conv1(case)
@@ -32,10 +38,11 @@ class SimpleCNN(FeatureExtractor):
         x = self.fc2(x)
         return x
 
-
+    @override
     def get_output_features(self) -> int:
         return self.fc2.out_features
 
+    @override
     def plot_parameters(self):
         print("CNN PARAMETERS ARE NOT PRINTED")
         pass

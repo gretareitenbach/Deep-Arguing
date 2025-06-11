@@ -1,26 +1,21 @@
 from abc import ABCMeta, abstractmethod
-from typing import Tuple
+from typing import Tuple, override
 
-import torch
+from torch import Tensor
 
 
 class Cluster(metaclass=ABCMeta):
 
     @abstractmethod
-    def cluster_data(
-        self, X: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def cluster_data(self, X: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
         pass
 
-    def __call__(
-        self, X: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __call__(self, X: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
         return self.cluster_data(X, y)
 
 
 class IdentityCluster(Cluster):
 
-    def cluster_data(
-        self, X: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    @override
+    def cluster_data(self, X: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
         return X, y

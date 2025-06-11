@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
+from torch import Tensor
 
 
 def exclude_fields(X, excluded_indices):
@@ -20,16 +21,16 @@ def one_hot_encode(data):
 
 
 def load_tabular_data(
-    path,
-    target_field,
+    path: str,
+    target_field: str,
     device: str = "cpu",
-    labels=[],
-    size=None,
-    shuffle=False,
-    seed=42,
-    excluded_fields=[],
-    one_hot_X=False,
-    has_header=False,
+    labels: list[str] = [],
+    size: int | None = None,
+    shuffle: bool = False,
+    seed: float = 42,
+    excluded_fields: list[str] = [],
+    one_hot_X: bool = False,
+    has_header: bool = False,
 ):
     if has_header:
         data = pd.read_csv(path, header=0)
@@ -67,7 +68,7 @@ def load_tabular_data(
     return X, y
 
 
-def load_mnist(as_vector=False, size=-1, labels=[]):
+def load_mnist(as_vector: bool = False, size: int = -1, labels: list[str] = []):
 
     from torchvision.datasets import MNIST
 
@@ -94,10 +95,8 @@ def load_mnist(as_vector=False, size=-1, labels=[]):
 
 
 def split_data(
-    X: torch.Tensor, y: torch.Tensor, seed, test_size=0.2
-) -> Tuple[
-    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
-]:
+    X: Tensor, y: Tensor, seed: float, test_size: float = 0.2
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
 
     X_train_full, X_test, y_train_full, y_test = train_test_split(
         X, y, test_size=test_size, random_state=seed
@@ -109,5 +108,5 @@ def split_data(
     return X_train, y_train, X_val, y_val, X_test, y_test
 
 
-def normalize_data(X, mean, std):
+def normalize_data(X: Tensor, mean: float, std: float) -> Tensor:
     return (X - mean) / std

@@ -1,17 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import Any
 import torch
+from torch import Tensor
 
 
 class GradualSemantics(ABC):
 
-    def __init__(self, max_iters, epsilon = 0) -> None:
+    def __init__(self, max_iters: int, epsilon: float = 0) -> None:
         super().__init__()
         self.max_iters = max_iters
         self.epsilon = epsilon
 
     @abstractmethod
-    def aggregation_func(self, A, strengths) -> torch.Tensor:
+    def aggregation_func(self, A: Tensor, strengths: Tensor) -> Tensor:
         """
         Computes the aggregation vector based on the given adjacency matrix and strength vector.
 
@@ -40,7 +40,7 @@ class GradualSemantics(ABC):
         pass
 
     @abstractmethod
-    def influence_func(self, base_scores, aggregations) -> torch.Tensor:
+    def influence_func(self, base_scores: Tensor, aggregations: Tensor) -> Tensor:
         """
         Computes the strength vector based on the given base score vectors and aggregation vectors.
 
@@ -67,11 +67,11 @@ class GradualSemantics(ABC):
         pass
 
 
-    def forward(self, A, base_scores, strengths):
+    def forward(self, A: Tensor, base_scores: Tensor, strengths: Tensor):
         aggregations = self.aggregation_func(A, strengths)
         return self.influence_func(base_scores, aggregations)
 
-    def forward_till_convergence(self, A, base_scores):
+    def forward_till_convergence(self, A: Tensor, base_scores: Tensor):
         prev_strength = base_scores
         for _ in range(self.max_iters):
             next_strength = self.forward(A, base_scores, prev_strength)
@@ -81,5 +81,5 @@ class GradualSemantics(ABC):
             prev_strength = next_strength
         return prev_strength
 
-    def __call__(self, A, base_scores) -> Any:
+    def __call__(self, A: Tensor, base_scores: Tensor) -> Tensor:
         return self.forward_till_convergence(A, base_scores)

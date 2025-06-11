@@ -1,15 +1,17 @@
+from abc import ABCMeta, abstractmethod
+from typing import Callable, override
 
 import torch
-from abc import abstractmethod, ABCMeta
-from typing import Callable
+from torch import Tensor
 
-type PartialOrderType = ComputePartialOrder | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+type PartialOrderType = ComputePartialOrder | Callable[[Tensor, Tensor], Tensor]
+
 
 class ComputePartialOrder(torch.nn.Module, metaclass=ABCMeta):
 
-
     @abstractmethod
-    def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
         pass
 
     @abstractmethod
@@ -17,21 +19,25 @@ class ComputePartialOrder(torch.nn.Module, metaclass=ABCMeta):
         pass
 
 
-
 class CompareCases(torch.nn.Module, metaclass=ABCMeta):
 
-
     @abstractmethod
-    def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
         pass
 
 
-
 class Subtractor(CompareCases):
-    def __init__(self, temperature=1., activation=lambda x: x):
+
+    def __init__(
+        self,
+        temperature: float = 1.0,
+        activation: Callable[[Tensor], Tensor] = lambda x: x,
+    ):
         super(Subtractor, self).__init__()
         self.temperature = temperature
         self.activation = activation
-    
-    def forward(self, attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+
+    @override
+    def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
         return self.activation((attacker - target) / self.temperature)

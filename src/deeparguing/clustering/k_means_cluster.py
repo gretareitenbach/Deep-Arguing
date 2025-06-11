@@ -1,21 +1,21 @@
-from typing import Tuple
+from typing import Tuple, override
 
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
+from torch import Tensor
 
 from deeparguing.clustering import Cluster
 
 
 class kMeansCluster(Cluster):
 
-    def __init__(self, cluster_size) -> None:
+    def __init__(self, cluster_size: int) -> None:
         super().__init__()
         self.cluster_size = cluster_size
 
-    def cluster_data(
-        self, X: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    @override
+    def cluster_data(self, X: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
         """
         For each label in y, make clusters of X. The number of clusters is
         dependent on the cluster_size_func

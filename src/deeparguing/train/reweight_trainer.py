@@ -1,22 +1,25 @@
-from typing import Callable
+from typing import Any, Callable, Tuple, override
 
 import torch
+from torch import Tensor
 from torch.optim import Optimizer
 from tqdm import tqdm
 
 from deeparguing import GradualAACBR
+from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
+from deeparguing.train.trainer import CriterionFactory
 
 
 class ReweightTrainer(Trainer):
 
     def __init__(
         self,
-        X_val: torch.Tensor,
-        y_val: torch.Tensor,
-        reweight_epoch=25,
-        max_misclass_rate=0.15,
-        real_time_logger=lambda _: None,
+        X_val: Tensor,
+        y_val: Tensor,
+        reweight_epoch: int = 25,
+        max_misclass_rate: float = 0.15,
+        real_time_logger: Callable[[Any], Any] = lambda _: None,
     ) -> None:
         super().__init__(real_time_logger)
         self.X_val = X_val
@@ -24,18 +27,19 @@ class ReweightTrainer(Trainer):
         self.max_misclass_rate = max_misclass_rate
         self.reweight_epoch = reweight_epoch
 
+    @override
     def train(
         self,
         model: GradualAACBR,
-        X_casebase: torch.Tensor,
-        y_casebase: torch.Tensor,
-        X_default: torch.Tensor,
-        y_default: torch.Tensor,
+        X_casebase: Tensor,
+        y_casebase: Tensor,
+        X_default: Tensor,
+        y_default: Tensor,
         optimizer: Optimizer,
-        criterion_factory: Callable,
-        epochs,
-        regulariser=lambda _: 0,
-        disable_tqdm=False,
+        criterion_factory: CriterionFactory,
+        epochs: int,
+        regulariser: RegulariserType = lambda _: 0,
+        disable_tqdm: bool = False,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
@@ -76,13 +80,13 @@ class ReweightTrainer(Trainer):
 
     def __build_criterion(
         self,
-        model,
-        X_casebase: torch.Tensor,
-        y_casebase: torch.Tensor,
-        X_default: torch.Tensor,
-        y_default: torch.Tensor,
-        criterion_factory: Callable,
-    ):
+        model: GradualAACBR,
+        X_casebase: Tensor,
+        y_casebase: Tensor,
+        X_default: Tensor,
+        y_default: Tensor,
+        criterion_factory: CriterionFactory,
+    ) -> Tuple[torch.nn.Module, Tensor]:
         model.fit(
             X_casebase,
             y_casebase,

@@ -1,14 +1,17 @@
-from typing import Callable
-import torch
-from abc import abstractmethod, ABCMeta
+from abc import ABCMeta, abstractmethod
+from typing import Callable, override
 
-type IrrelevanceType = ComputeIrrelevance | Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+import torch
+from torch import Tensor
+
+type IrrelevanceType = ComputeIrrelevance | Callable[[Tensor, Tensor], Tensor]
+
 
 class ComputeIrrelevance(torch.nn.Module, metaclass=ABCMeta):
 
-
     @abstractmethod
-    def forward(self, new_cases: torch.Tensor, X_train: torch.Tensor) -> torch.Tensor:
+    @override
+    def forward(self, new_cases: Tensor, X_train: Tensor) -> Tensor:
         pass
 
     @abstractmethod
