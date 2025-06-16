@@ -18,6 +18,6 @@ data:
 data_pre_process:
   type: dict
   value:
-    normalize_func:
+    pre_process_func:
       type: function
       value: "no_normalize"

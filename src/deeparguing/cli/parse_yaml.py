@@ -1,0 +1,206 @@
+import sys
+from typing import Any, Callable, Dict
+
+import torch
+import yaml
+from torch.optim import *
+
+from deeparguing import GradualAACBR
+from deeparguing.base_scores import *
+from deeparguing.casebase_edge_weights import *
+from deeparguing.clustering import *
+from deeparguing.feature_extractor import *
+from deeparguing.helper import *
+from deeparguing.irrelevance_edge_weights import *
+from deeparguing.regulariser import *
+from deeparguing.semantics import *
+from deeparguing.train import *
+
+FUNCTIONS: Dict[str, Callable[..., Any]] = {
+    "sigmoid": torch.sigmoid,
+    "filter_to_attacks": filter_to_attacks,
+    "filter_to_supports": filter_to_supports,
+    "weighted_cross_entropy": lambda weight: torch.nn.CrossEntropyLoss(weight=weight),
+    "cross_entropy": lambda: torch.nn.CrossEntropyLoss(),
+    "uni_directional": lambda A: torch.where(
+        torch.abs(A) > torch.abs(A.T), A, 0
+    ),  # todo move to own file?
+    "normalize_data": normalize_data,
+    "no_normalize": lambda a, b, c: a,
+}
+
+instances: Dict[str, Any] = {}
+data_dict: Dict[str, Any] = {}
+
+
+def read_config_files(config_file_paths: list[str]) -> Dict[str, str]:
+    model_config: Dict[str, str] = {}
+    for config_file_path in config_file_paths:
+        with open(config_file_path, "r") as file:
+            new_config = yaml.safe_load(file)
+            overlapping_keys = set(model_config.keys()) & set(new_config.keys())
+
+            if overlapping_keys:
+                print(
+                    f"Error: Duplicate key(s) found in '{config_file_path}': {', '.join(overlapping_keys)}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            model_config.update(new_config)
+
+    return model_config
+
+
+def load_data_dict(
+    entry: Dict[str, Any],
+    config: Dict[str, Any],
+    ref_stack: list[str],
+    device: str = "cpu",
+):
+
+    params: Dict[str, Any] = {
+        k: parse_entry(v, config, ref_stack) for k, v in entry.get("params", {}).items()
+    }
+    if entry["sub_type"] == "tabular":
+        X, y = load_tabular_data(device=device, **params)
+    else:
+        raise ValueError(f"Unknown data subtype: {entry['sub_type']}")
+
+    X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=42)
+    data_dict["labels"] = torch.unique(y, dim=0)
+    data_dict["no_features"] = X.shape[-1]
+    data_dict["y_train"] = y_train
+    data_dict["y_val"] = y_val
+    data_dict["y_test"] = y_test
+
+    X_train_mean = X_train.mean(dim=0)
+    X_train_std = X_train.std(dim=0) + 1e-8
+
+    data_dict["X_train_mean"] = X_train_mean
+    data_dict["X_train_std"] = X_train_std
+
+    if "data_pre_process" not in instances.keys():
+        instances["data_pre_process"] = parse_entry(
+            config["data_pre_process"], config, ref_stack
+        )
+
+    assert type(instances["data_pre_process"]) == dict
+
+    data_pre_process: Dict[str, Any] = instances["data_pre_process"]
+    data_dict["X_train"] = data_pre_process["pre_process_func"](
+        X_train, X_train_mean, X_train_std
+    )
+    data_dict["X_val"] = data_pre_process["pre_process_func"](
+        X_val, X_train_mean, X_train_std
+    )
+
+    data_dict["X_test"] = data_pre_process["pre_process_func"](
+        X_test, X_train_mean, X_train_std
+    )
+
+    print("Test Size:", len(X_test))
+    print("Train Size:", len(X_train))
+    print("Validation Size:", len(X_val))
+    return data_dict
+
+
+def check_entry_for_value(entry: Dict[str, Any]):
+    if "value" in entry:
+        return entry["value"]
+    else:
+        raise ValueError(f"Entry: {entry} has no value.")
+
+
+def parse_entry(
+    entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[str]
+) -> Any:
+    if "type" in entry:
+        entry_type = entry["type"]
+    else:
+        raise ValueError(f"Entry has no type: {entry}")
+
+    entry_sub_type = entry["sub_type"] if "sub_type" in entry else None
+
+    if entry_type == "value":
+        return check_entry_for_value(entry)
+
+    if entry_type == "dict":
+        children = check_entry_for_value(entry)
+        result: Dict[str, Any] = {}
+        for key, value in children.items():
+            result[key] = parse_entry(value, config, ref_stack)
+        return result
+
+    if entry_type == "list":
+        children = check_entry_for_value(entry)
+        result: list[Any] = []
+        for child in children:
+            result.append(parse_entry(child, config, ref_stack))
+        return result
+
+    if entry_type == "class":
+        class_name = entry["class_name"]
+        params: Dict[str, Any] = {
+            k: parse_entry(v, config, ref_stack)
+            for k, v in entry.get("params", {}).items()
+        }
+        if entry_sub_type == "optim":
+            model_name = entry["model"]
+            if model_name not in instances:
+                instances[model_name] = parse_entry(
+                    config[model_name], config, ref_stack
+                )
+            params["params"] = instances[model_name].parameters()
+
+        return globals()[class_name](**params)
+
+    if entry_type == "ref":
+        ref_name = check_entry_for_value(entry)
+        if ref_name in ref_stack:
+            raise ValueError(
+                f"Cannot parse self or mutually recursive references: {ref_name}. References being parsed: {ref_stack}"
+            )
+        if ref_name not in instances:
+            ref_stack.append(ref_name)
+            instances[ref_name] = parse_entry(config[ref_name], config, ref_stack)
+            ref_stack.remove(ref_name)
+        return instances[ref_name]
+
+    if entry_type == "data_ref":
+        if not data_dict:
+            raise ValueError(f"Entry {entry} not found in the data specification.")
+        ref_name = check_entry_for_value(entry)
+        assert data_dict
+        assert ref_name in data_dict
+        return data_dict[ref_name]
+
+    if entry_type == "function":
+        func_name = check_entry_for_value(entry)
+        if func_name in FUNCTIONS:
+            return FUNCTIONS[func_name]
+        else:
+            raise ValueError(f"Function {func_name} not found.")
+
+    raise ValueError(
+        f"Input is not formatted correctly, parsing failed.\nType: {entry_type}\nEntry: {entry}."
+    )
+
+
+def parse_model_config(
+    model_config: Dict[str, Any], device: str="cpu"
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+
+    if "data" not in model_config:
+        raise ValueError("Cannot find data key in provided config files.")
+
+    data_dict = load_data_dict(
+        model_config["data"], model_config, ref_stack=[], device=device
+    )
+
+    for key, value in model_config.items():
+        if key in instances or key == "data":
+            continue
+        instances[key] = parse_entry(value, model_config, ref_stack=[])
+
+    return data_dict, instances
