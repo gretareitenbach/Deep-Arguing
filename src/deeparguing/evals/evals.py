@@ -109,7 +109,7 @@ def print_results(accuracy: float, precision: float, recall: float, f1: float, c
     df = pd.DataFrame(
         cm,
         index=[f"Actual {torch.argmax(l).item()}" for l in labels],
-        columns=[f"Predicted {torch.argmax(l).item()}" for l in labels],
+        columns=[f"Pred {torch.argmax(l).item()}" for l in labels],
     )
 
     print(df)

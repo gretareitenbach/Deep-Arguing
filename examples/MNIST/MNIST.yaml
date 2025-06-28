@@ -1,0 +1,38 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 0
+    path:
+      type: value
+      value: "./data/MNIST/mnist_train.csv"
+    has_header:
+      type: value
+      value: true
+    shuffle:
+      type: value
+      value: true
+    size:
+      type: value
+      # value: 30000
+      value: 60000
+      # value: 500
+    # labels:
+    #   type: list
+    #   value:
+    #     [
+    #       { type: value, value: 0 },
+    #       { type: value, value: 1 },
+    #       { type: value, value: 2 },
+    #       { type: value, value: 3 },
+    #       { type: value, value: 4 },
+    #     ]
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "normalize_data"

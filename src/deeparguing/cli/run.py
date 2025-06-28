@@ -1,4 +1,14 @@
+import os
+
+# This will ensure determism of the KMEANS Clustering if used
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+
+import optuna
 import torch
+from optuna import Trial
 
 from deeparguing import GradualAACBR
 from deeparguing.base_scores import *
@@ -18,16 +28,12 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 
-if __name__ == "__main__":
-
-    args = parse_command_line()
-    plot_matrix_before, plot_matrix_after, plot_graph_before, plot_graph_after = plots(
-        args
-    )
-
-    total = 0
+def run(trial: Trial | None = None):
 
     model_config = read_config_files(args.config)
+
+    total = 0
+    f1s = []
 
     for seed_idx, seed in enumerate(args.seed):
         # TODO: Move this logic to separate function
@@ -35,7 +41,7 @@ if __name__ == "__main__":
         print(f"Running With Torch Seed: {seed}")
         torch.manual_seed(seed)
 
-        data_dict, instances = parse_model_config(model_config, device=device)
+        data_dict, instances = parse_model_config(model_config, trial, device=device)
 
         assert data_dict
         assert instances
@@ -50,7 +56,6 @@ if __name__ == "__main__":
         trainer: Trainer = instances["trainer"]
         train_settings = instances["train_settings"]
 
-        no_features = data_dict["no_features"]
         labels = data_dict["labels"]
 
         X_casebase, y_casebase = instances["build_casebase"](X_train, y_train)
@@ -100,4 +105,29 @@ if __name__ == "__main__":
         if f1 > 0.7:
             total += 1
         if len(args.seed) > 1:
-            print("PERCENT F1", total / (seed_idx + 1) * 100)
+            print(f"PERCENT F1 > 0.7: {total / (seed_idx + 1) * 100}%")
+            print(f"{total}/{seed_idx + 1}")
+        f1s.append(f1)
+
+    return np.mean(f1s)
+
+
+if __name__ == "__main__":
+
+    args = parse_command_line()
+    plot_matrix_before, plot_matrix_after, plot_graph_before, plot_graph_after = plots(
+        args
+    )
+
+    if args.tuning:
+        study = optuna.create_study(direction="maximize")
+        study.optimize(run, n_trials=args.n_trials)
+        print("\nBest trial:")
+        best = study.best_trial
+        print(f"Value: {best.value}")
+        print("Params:")
+        for key, val in best.params.items():
+            print(f"  {key}: {val}")
+    else:
+        average_f1 = run()
+        print(f"Average f1 score: {average_f1}")

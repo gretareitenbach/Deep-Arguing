@@ -78,6 +78,35 @@ class ConnectivityRegulariser(Regulariser):
         return result
 
 
+class DAGRegulariser(Regulariser):
+    """
+    This is an modification of NOTEARS (https://proceedings.neurips.cc/paper_files/paper/2018/file/e347c51419ffb23ca3fd5050202f9c3d-Paper.pdf)
+    which introduces a regulariser that forces the learned graph to be a DAG
+    """
+
+    def __init__(
+        self,
+        filter_func: FilterFunc = lambda A: A,
+        alpha: float = 0.5,
+    ):
+        super().__init__()
+        self.filter_func = filter_func
+        self.alpha = alpha
+
+
+    @override
+    def forward(self, model: GradualAACBR) -> Tensor:
+        assert model.A != None
+        A = self.filter_func(model.A)
+        d = A.shape[0]
+        h = torch.trace(torch.matrix_exp(A * A)) - d
+        result = h + self.alpha * h ** 2
+        # result = 0.5 * self.rho * (h**2) + self.alpha * h
+        # self.alpha = self.alpha * 1.005
+
+        return result
+
+
 class RegulariserList(Regulariser):
 
     def __init__(self, regularisers: list[Tuple[Regulariser, float]]):

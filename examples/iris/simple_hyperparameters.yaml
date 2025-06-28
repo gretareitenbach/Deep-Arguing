@@ -1,21 +1,27 @@
 epochs:
   type: value
-  value: 6000
+  value: 150 
+  # value: 3000 
+
 lr:
   type: value
   value: 0.02
 
 gamma:
   type: value
-  value: 0.0005
+  value: 0.0
 
 gamma_prime:
   type: value
-  value: 0.0005
+  value: 0.0
+
+gamma_dag:
+  type: value
+  value: 0.05
 
 max_iters:
   type: value
-  value: 95
+  value: 99
 
 epsilon:
   type: value

@@ -1,11 +1,9 @@
 epochs:
   type: value
-  value: 150 
-  # value: 3000 
-
+  value: 24000
 lr:
   type: value
-  value: 0.02
+  value: 0.0002
 
 gamma:
   type: value
@@ -15,13 +13,9 @@ gamma_prime:
   type: value
   value: 0.0005
 
-gamma_dag:
-  type: value
-  value: 0.0005
-
 max_iters:
   type: value
-  value: 99
+  value: 95
 
 epsilon:
   type: value
@@ -30,3 +24,15 @@ epsilon:
 temperature:
   type: value
   value: 0.05
+
+reweight_epoch:
+  type: value
+  value: 25
+
+max_misclass_rate:
+  type: value
+  value: 0.15
+
+cluster_size:
+  type: value
+  value: 15

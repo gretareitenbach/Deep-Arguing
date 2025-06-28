@@ -68,6 +68,14 @@ def parse_command_line():
         ),
     )
 
+    parser.add_argument(
+        "--tuning", "-ht", action="store_true", help="Run hyperparameter tuning"
+    )
+
+    parser.add_argument(
+        "--n_trials", "-nt", type=int, default=10, help="Set the number of hyperparameter trials to run"
+    )
+
     return parser.parse_args()
 
 

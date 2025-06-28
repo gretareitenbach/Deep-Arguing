@@ -1,0 +1,68 @@
+epochs:
+  type: tune
+  tune_type: int
+  params:
+    name: "epochs"
+    low: 10
+    high: 500
+    step: 10
+    log: False
+
+lr:
+  type: tune
+  tune_type: float
+  params:
+    name: "lr"
+    low: 0.00005
+    high: 0.1
+    log: True
+
+gamma:
+  type: tune
+  tune_type: float
+  params:
+    name: "gamma"
+    low: 0.00005
+    high: 0.1
+    log: True
+
+gamma_prime:
+  type: tune
+  tune_type: float
+  params:
+    name: "gamma_prime"
+    low: 0.00005
+    high: 0.1
+    log: True
+
+gamma_dag:
+  type: tune
+  tune_type: float
+  params:
+    name: "gamma_dag"
+    low: 0.00005
+    high: 0.1
+    log: True
+
+max_iters:
+  type: tune
+  tune_type: int
+  params:
+    name: "max_iters"
+    low: 50
+    high: 150
+    step: 1
+    log: False
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: tune
+  tune_type: float
+  params:
+    name: "temperature"
+    low: 0.005
+    high: 0.1
+    log: True

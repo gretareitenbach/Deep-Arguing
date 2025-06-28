@@ -18,6 +18,10 @@ dag_regulariser:
   type: class
   class_name: DAGRegulariser
 
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+
 regularisers:
   type: class
   class_name: "RegulariserList"
@@ -30,18 +34,26 @@ regularisers:
             type: list,
             value:
               [
-                { type: ref, value: "community_preservation_attacks" },
-                { type: ref, value: gamma },
+                { type: ref, value: "sparsity_regulariser" },
+                { type: ref, value: gamma_sparse },
               ],
           },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "community_preservation_supports" },
-                { type: ref, value: gamma_prime },
-              ],
-          },
+          # {
+          #   type: list,
+          #   value:
+          #     [
+          #       { type: ref, value: "community_preservation_attacks" },
+          #       { type: ref, value: gamma },
+          #     ],
+          # },
+          # {
+          #   type: list,
+          #   value:
+          #     [
+          #       { type: ref, value: "community_preservation_supports" },
+          #       { type: ref, value: gamma_prime },
+          #     ],
+          # },
           {
             type: list,
             value:
@@ -55,10 +67,33 @@ regularisers:
 trainer:
   type: class
   class_name: "SimpleTrainer"
+# trainer:
+#   type: class
+#   class_name: "ReweightTrainer"
+#   params:
+#     X_val:
+#       type: data_ref
+#       value: "X_val"
+#     y_val:
+#       type: data_ref
+#       value: "y_val"
+#     reweight_epoch:
+#       type: ref
+#       value: reweight_epoch
+#     max_misclass_rate:
+#       type: ref
+#       value: max_misclass_rate 
 
+# build_casebase:
+#   type: class
+#   class_name: "IdentityCluster"
 build_casebase:
   type: class
-  class_name: "IdentityCluster"
+  class_name: "kMeansCluster"
+  params:
+    cluster_size:
+      type: ref
+      value: cluster_size
 
 train_settings:
   type: dict
@@ -82,6 +117,30 @@ train_settings:
       type: ref
       value: "regularisers"
 
+      
+
+# train_settings:
+#   type: dict
+#   value:
+#     criterion_factory:
+#       type: function
+#       value: "weighted_cross_entropy"
+#     epochs:
+#       type: ref
+#       value: epochs
+#     optimizer:
+#       type: class
+#       sub_type: optim
+#       class_name: "AdamW"
+#       model: "model"
+#       params:
+#         lr:
+#           type: ref
+#           value: lr
+#     regulariser:
+#       type: ref
+#       value: "regularisers"
+
 feature_weights:
   type: class
   # class_name: "FeatureWeightedExtractor"
@@ -96,7 +155,7 @@ feature_weights:
       value: "no_features"
     hidden_sizes:
       type: list
-      value: [{type: value, value: 10}]
+      value: [{ type: value, value: 10 }, {type: value, value: 20}, {type: value, value: 10}]
     output_size:
       type: value
       value: 1
@@ -191,4 +250,5 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "uni_directional"
+      value: "identity"
+      # value: "uni_directional"

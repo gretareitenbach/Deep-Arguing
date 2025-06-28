@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict
 
 import torch
 import yaml
+from optuna import Trial
 from torch.optim import *
 
 from deeparguing import GradualAACBR
@@ -25,6 +26,7 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "uni_directional": lambda A: torch.where(
         torch.abs(A) > torch.abs(A.T), A, 0
     ),  # todo move to own file?
+    "identity": lambda A: A,
     "normalize_data": normalize_data,
     "no_normalize": lambda a, b, c: a,
 }
@@ -56,11 +58,13 @@ def load_data_dict(
     entry: Dict[str, Any],
     config: Dict[str, Any],
     ref_stack: list[str],
+    trial: Trial | None,
     device: str = "cpu",
 ):
 
     params: Dict[str, Any] = {
-        k: parse_entry(v, config, ref_stack) for k, v in entry.get("params", {}).items()
+        k: parse_entry(v, config, ref_stack, trial)
+        for k, v in entry.get("params", {}).items()
     }
     if entry["sub_type"] == "tabular":
         X, y = load_tabular_data(device=device, **params)
@@ -82,7 +86,7 @@ def load_data_dict(
 
     if "data_pre_process" not in instances.keys():
         instances["data_pre_process"] = parse_entry(
-            config["data_pre_process"], config, ref_stack
+            config["data_pre_process"], config, ref_stack, trial
         )
 
     assert type(instances["data_pre_process"]) == dict
@@ -113,7 +117,7 @@ def check_entry_for_value(entry: Dict[str, Any]):
 
 
 def parse_entry(
-    entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[str]
+    entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[str], trial: Trial | None
 ) -> Any:
     if "type" in entry:
         entry_type = entry["type"]
@@ -129,27 +133,27 @@ def parse_entry(
         children = check_entry_for_value(entry)
         result: Dict[str, Any] = {}
         for key, value in children.items():
-            result[key] = parse_entry(value, config, ref_stack)
+            result[key] = parse_entry(value, config, ref_stack, trial)
         return result
 
     if entry_type == "list":
         children = check_entry_for_value(entry)
         result: list[Any] = []
         for child in children:
-            result.append(parse_entry(child, config, ref_stack))
+            result.append(parse_entry(child, config, ref_stack, trial))
         return result
 
     if entry_type == "class":
         class_name = entry["class_name"]
         params: Dict[str, Any] = {
-            k: parse_entry(v, config, ref_stack)
+            k: parse_entry(v, config, ref_stack, trial)
             for k, v in entry.get("params", {}).items()
         }
         if entry_sub_type == "optim":
             model_name = entry["model"]
             if model_name not in instances:
                 instances[model_name] = parse_entry(
-                    config[model_name], config, ref_stack
+                    config[model_name], config, ref_stack, trial
                 )
             params["params"] = instances[model_name].parameters()
 
@@ -163,7 +167,7 @@ def parse_entry(
             )
         if ref_name not in instances:
             ref_stack.append(ref_name)
-            instances[ref_name] = parse_entry(config[ref_name], config, ref_stack)
+            instances[ref_name] = parse_entry(config[ref_name], config, ref_stack, trial)
             ref_stack.remove(ref_name)
         return instances[ref_name]
 
@@ -182,25 +186,50 @@ def parse_entry(
         else:
             raise ValueError(f"Function {func_name} not found.")
 
+    if entry_type == "tune":
+        return parse_tune_values(entry, trial)
+
     raise ValueError(
         f"Input is not formatted correctly, parsing failed.\nType: {entry_type}\nEntry: {entry}."
     )
 
 
+def parse_tune_values(entry: Dict[str, Any], trial: Trial | None) -> Any:
+    if trial is None:
+        raise ValueError("Attempt to parse tuning variables. Hyperparameter tuning is no turned on")
+    if "tune_type" not in entry:
+        raise ValueError(f"Tune Type is not specified in entry: {entry}")
+    if entry["tune_type"] == "int":
+        value = trial.suggest_int(**entry["params"])
+        return value
+    if entry["tune_type"] == "float":
+        value = trial.suggest_float(**entry["params"])
+        return value
+    else:
+        raise ValueError(
+            f"Unsupported tune type {entry['tune_type']} for entry {entry}."
+        )
+
+
 def parse_model_config(
-    model_config: Dict[str, Any], device: str="cpu"
+    model_config: Dict[str, Any], trial: Trial | None = None, device: str = "cpu"
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    global data_dict
+    global instances
+    
+    instances = {}
+    data_dict = {}
 
     if "data" not in model_config:
         raise ValueError("Cannot find data key in provided config files.")
 
     data_dict = load_data_dict(
-        model_config["data"], model_config, ref_stack=[], device=device
+        model_config["data"], model_config, ref_stack=[], trial=trial, device=device
     )
 
     for key, value in model_config.items():
         if key in instances or key == "data":
             continue
-        instances[key] = parse_entry(value, model_config, ref_stack=[])
+        instances[key] = parse_entry(value, model_config, ref_stack=[], trial = trial)
 
     return data_dict, instances

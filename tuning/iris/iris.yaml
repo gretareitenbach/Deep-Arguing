@@ -1,0 +1,28 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 4
+    path:
+      type: value
+      value: "./data/iris/iris.data"
+    labels:
+      type: list
+      value:
+        [
+          { type: value, value: "Iris-setosa" },
+          { type: value, value: "Iris-versicolor" },
+          { type: value, value: "Iris-virginica" },
+        ]
+    has_header:
+      type: value
+      value: false
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "normalize_data"
