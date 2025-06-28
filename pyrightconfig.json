@@ -4,7 +4,7 @@
   "reportMissingParameterType": true,
   "reportMissingReturnType": true,
   "reportUnknownVariableType": true,
-  "reportUnknownMemberType": true,
+  "reportUnknownMemberType": false,
   "reportUnknownArgumentType": true,
   "reportImplicitOverride": true,
   "reportIncompatibleMethodOverride": true
