@@ -17,6 +17,8 @@ class MLPExtractor(FeatureExtractor):
     ):
         super(MLPExtractor, self).__init__(output_size)
 
+        hidden_sizes = [i for i in hidden_sizes if i > 0]
+
         layer_sizes = [input_size] + hidden_sizes + [output_size]
 
         self.layers = torch.nn.ModuleList()

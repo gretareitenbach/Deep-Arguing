@@ -108,6 +108,7 @@ def run(trial: Trial | None = None):
             print(f"PERCENT F1 > 0.7: {total / (seed_idx + 1) * 100}%")
             print(f"{total}/{seed_idx + 1}")
         f1s.append(f1)
+        print(f"Average f1 score: {np.mean(f1s)}")
 
     return np.mean(f1s)
 
@@ -130,4 +131,3 @@ if __name__ == "__main__":
             print(f"  {key}: {val}")
     else:
         average_f1 = run()
-        print(f"Average f1 score: {average_f1}")

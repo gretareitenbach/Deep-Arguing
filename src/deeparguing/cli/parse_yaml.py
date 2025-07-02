@@ -117,7 +117,10 @@ def check_entry_for_value(entry: Dict[str, Any]):
 
 
 def parse_entry(
-    entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[str], trial: Trial | None
+    entry: Dict[str, Any],
+    config: Dict[str, Any],
+    ref_stack: list[str],
+    trial: Trial | None,
 ) -> Any:
     if "type" in entry:
         entry_type = entry["type"]
@@ -167,7 +170,9 @@ def parse_entry(
             )
         if ref_name not in instances:
             ref_stack.append(ref_name)
-            instances[ref_name] = parse_entry(config[ref_name], config, ref_stack, trial)
+            instances[ref_name] = parse_entry(
+                config[ref_name], config, ref_stack, trial
+            )
             ref_stack.remove(ref_name)
         return instances[ref_name]
 
@@ -187,28 +192,36 @@ def parse_entry(
             raise ValueError(f"Function {func_name} not found.")
 
     if entry_type == "tune":
-        return parse_tune_values(entry, trial)
+        return parse_tune_values(entry, config, ref_stack, trial)
 
     raise ValueError(
         f"Input is not formatted correctly, parsing failed.\nType: {entry_type}\nEntry: {entry}."
     )
 
 
-def parse_tune_values(entry: Dict[str, Any], trial: Trial | None) -> Any:
+def parse_tune_values(entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[Any], trial: Trial | None) -> Any:
     if trial is None:
-        raise ValueError("Attempt to parse tuning variables. Hyperparameter tuning is no turned on")
+        raise ValueError(
+            "Attempt to parse tuning variables. Hyperparameter tuning is no turned on"
+        )
+    params: Dict[str, Any] = {
+        k: parse_entry(v, config, ref_stack, trial)
+        for k, v in entry.get("params", {}).items()
+    }
     if "tune_type" not in entry:
         raise ValueError(f"Tune Type is not specified in entry: {entry}")
-    if entry["tune_type"] == "int":
-        value = trial.suggest_int(**entry["params"])
-        return value
-    if entry["tune_type"] == "float":
-        value = trial.suggest_float(**entry["params"])
-        return value
+    elif entry["tune_type"] == "int":
+        func = trial.suggest_int
+    elif entry["tune_type"] == "float":
+        func = trial.suggest_float
+    elif entry["tune_type"] == "categorical":
+        func = trial.suggest_categorical
     else:
         raise ValueError(
             f"Unsupported tune type {entry['tune_type']} for entry {entry}."
         )
+
+    return func(**params)
 
 
 def parse_model_config(
@@ -216,7 +229,7 @@ def parse_model_config(
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     global data_dict
     global instances
-    
+
     instances = {}
     data_dict = {}
 
@@ -230,6 +243,6 @@ def parse_model_config(
     for key, value in model_config.items():
         if key in instances or key == "data":
             continue
-        instances[key] = parse_entry(value, model_config, ref_stack=[], trial = trial)
+        instances[key] = parse_entry(value, model_config, ref_stack=[], trial=trial)
 
     return data_dict, instances
