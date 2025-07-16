@@ -114,6 +114,6 @@ cluster_size:
   params:
     name: { type: "value", value: "cluter_size"}
     low: { type: "value", value: 5 }
-    high: { type: "value", value: 30 }
+    high: { type: "value", value: 15 }
     step: { type: "value", value: 5 }
     log: { type: "value", value: False }

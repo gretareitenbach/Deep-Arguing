@@ -199,7 +199,12 @@ def parse_entry(
     )
 
 
-def parse_tune_values(entry: Dict[str, Any], config: Dict[str, Any], ref_stack: list[Any], trial: Trial | None) -> Any:
+def parse_tune_values(
+    entry: Dict[str, Any],
+    config: Dict[str, Any],
+    ref_stack: list[Any],
+    trial: Trial | None,
+) -> Any:
     if trial is None:
         raise ValueError(
             "Attempt to parse tuning variables. Hyperparameter tuning is no turned on"
@@ -220,8 +225,11 @@ def parse_tune_values(entry: Dict[str, Any], config: Dict[str, Any], ref_stack: 
         raise ValueError(
             f"Unsupported tune type {entry['tune_type']} for entry {entry}."
         )
+    value: Any = func(**params)
 
-    return func(**params)
+    print(f"Hyperparameter: ({params['name']}: {value})")
+
+    return value
 
 
 def parse_model_config(

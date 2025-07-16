@@ -1,0 +1,75 @@
+epochs:
+  type: value
+  value: 1413
+
+lr:
+  type: value
+  value: 0.0009203655193635532
+
+gamma_dag:
+  type: value
+  value: 0.00008530190048976477
+
+max_iters:
+  type: value
+  value: 123 
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: value
+  value: 0.005632387040020599
+
+dag_alpha:
+  type: value
+  value: 0.00027133442996040227
+
+hidden_weight_1:
+  type: value
+  value: 10
+
+hidden_weight_2:
+  type: value
+  value: 20
+
+hidden_weight_3:
+  type: value
+  value: 30
+
+hidden_weight_4:
+  type: value
+  value: 10
+
+mlp_hidden_sizes:
+  type: list
+  value:
+    [
+      { type: ref, value: hidden_weight_1 },
+      { type: ref, value: hidden_weight_2 },
+      { type: ref, value: hidden_weight_3 },
+      { type: ref, value: hidden_weight_4 },
+    ]
+
+cluster_size:
+  type: value
+  value: 5 
+
+
+
+
+# Best trial:
+# Value: 0.7310682401433791
+# Params:
+#   epochs: 1413
+#   lr: 0.0009203655193635532
+#   dag_alpha: 0.00027133442996040227
+#   gamma_dag: 8.530190048976477e-05
+#   max_iters: 123
+#   temperature: 0.005632387040020599
+#   hidden_weight_1: 10
+#   hidden_weight_2: 20
+#   hidden_weight_3: 30
+#   hidden_weight_4: 10
+#   cluter_size: 5
