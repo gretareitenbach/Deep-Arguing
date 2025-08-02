@@ -29,6 +29,8 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "identity": lambda A: A,
     "normalize_data": normalize_data,
     "no_normalize": lambda a, b, c: a,
+    "use_train": lambda X_train, y_train, X_casebase, y_casebase: (X_train, y_train),
+    "use_casebase": lambda X_train, y_train, X_casebase, y_casebase: (X_casebase, y_casebase),
 }
 
 instances: Dict[str, Any] = {}

@@ -59,6 +59,7 @@ def run(trial: Trial | None = None):
         labels = data_dict["labels"]
 
         X_casebase, y_casebase = instances["build_casebase"](X_train, y_train)
+        X_new_cases, y_new_cases = instances["build_new_cases"](X_train, y_train, X_casebase, y_casebase)
 
         X_defaults = X_train.mean(dim=0).tile(len(labels), 1)
         y_defaults = labels.flip([0])
@@ -73,6 +74,8 @@ def run(trial: Trial | None = None):
             model,
             X_casebase,
             y_casebase,
+            X_new_cases,
+            y_new_cases,
             X_defaults,
             y_defaults,
             **train_settings,
@@ -88,10 +91,19 @@ def run(trial: Trial | None = None):
             X_test = data_dict["X_test"]
             y_test = data_dict["y_test"]
 
-            acc, prec, rec, f1, cm = evaluate_model(
+            acc_test, prec_test, rec_test, f1_test, cm_test = evaluate_model(
                 model, X_casebase, y_casebase, X_defaults, y_defaults, X_test, y_test
             )
-            print_results(acc, prec, rec, f1, cm, "TEST", labels)
+            print_results(acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels)
+
+        if args.run_train:
+            X_train = data_dict["X_train"]
+            y_train = data_dict["y_train"]
+
+            acc_train, prec_train, rec_train, f1_train, cm_train = evaluate_model(
+                model, X_casebase, y_casebase, X_defaults, y_defaults, X_train, y_train
+            )
+            print_results(acc_train, prec_train, rec_train, f1_train, cm_train, "TRAIN", labels)
 
         if args.plot_loss:
             trainer.plot_loss_curve()

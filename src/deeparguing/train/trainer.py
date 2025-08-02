@@ -25,6 +25,8 @@ class Trainer(metaclass=ABCMeta):
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,

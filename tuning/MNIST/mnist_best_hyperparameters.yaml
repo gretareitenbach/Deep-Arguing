@@ -1,6 +1,6 @@
 epochs:
   type: value
-  value: 1470
+  value: 1011
 
 lr:
   type: value

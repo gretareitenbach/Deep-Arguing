@@ -30,7 +30,11 @@ def parse_command_line():
     )
 
     parser.add_argument(
-        "--run_test", "-rt", action="store_true", help="Run on the test set"
+        "--run_test", "-rt", action="store_true", help="Run evaluation on the test set"
+    )
+
+    parser.add_argument(
+        "--run_train", "-rtr", action="store_true", help="Run evaluation on the train set"
     )
 
     parser.add_argument("--plot_loss", "-pl", action="store_true", help="Plot the loss")

@@ -37,6 +37,10 @@ build_casebase:
       type: ref
       value: cluster_size
 
+build_new_cases:
+  type: function
+  value: "use_train"
+
 train_settings:
   type: dict
   value:
@@ -58,6 +62,9 @@ train_settings:
     regulariser:
       type: ref
       value: "regularisers"
+    batch_size:
+      type: value
+      value: 7680
 
 feature_weights:
   type: class

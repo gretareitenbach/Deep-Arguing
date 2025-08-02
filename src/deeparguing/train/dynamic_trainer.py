@@ -1,6 +1,5 @@
 from typing import Any, Callable, override
 
-import torch
 from sklearn.model_selection import KFold
 from torch import Tensor
 from torch.optim import Optimizer
@@ -30,6 +29,8 @@ class DynamicTrainer(Trainer):
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
@@ -42,6 +43,9 @@ class DynamicTrainer(Trainer):
         kf = KFold(
             n_splits=self.n_splits, shuffle=True, random_state=self.random_split_state
         )
+
+        if X_new_cases is not None or y_new_cases is not None:
+            print("Warning: Dynamic Trainer does not make use of X_new_cases or y_new_cases")
 
         criterion = criterion_factory()
 

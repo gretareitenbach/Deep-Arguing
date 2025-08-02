@@ -1,5 +1,6 @@
 from typing import Any, Callable, override
 
+import torch
 from torch import Tensor
 from torch.optim import Optimizer
 from tqdm import tqdm
@@ -24,6 +25,8 @@ class SimpleTrainer(Trainer):
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
@@ -31,25 +34,36 @@ class SimpleTrainer(Trainer):
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
+        batch_size: None | int = None,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
 
         criterion = criterion_factory()
 
-        for epoch in pbar:
+        n_samples = X_new_cases.shape[0]
 
-            loss = self._train_step(
-                model,
-                X_casebase,
-                y_casebase,
-                X_casebase,
-                y_casebase,
-                X_default,
-                y_default,
-                optimizer,
-                criterion,
-                regulariser=regulariser,
-            )
+        batch_size = batch_size if batch_size is not None else n_samples
+
+        for epoch in pbar:
+            permutation = torch.randperm(n_samples)
+
+            for i in range(0, n_samples, batch_size):
+                indices = permutation[i : i + batch_size]
+                batch_X_new_cases = X_new_cases[indices]
+                batch_y_new_cases = y_new_cases[indices]
+
+                loss = self._train_step(
+                    model,
+                    X_casebase,
+                    y_casebase,
+                    batch_X_new_cases,
+                    batch_y_new_cases,
+                    X_default,
+                    y_default,
+                    optimizer,
+                    criterion,
+                    regulariser=regulariser,
+                )
 
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
