@@ -64,7 +64,7 @@ hidden_weight_1:
   params:
     name: { type: "value", value: "hidden_weight_1" }
     low: { type: "value", value: 0 }
-    high: { type: "value", value: 50 }
+    high: { type: "value", value: 100 }
     step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
@@ -74,7 +74,7 @@ hidden_weight_2:
   params:
     name: { type: "value", value: "hidden_weight_2" }
     low: { type: "value", value: 0 }
-    high: { type: "value", value: 50 }
+    high: { type: "value", value: 80 }
     step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
@@ -84,7 +84,7 @@ hidden_weight_3:
   params:
     name: { type: "value", value: "hidden_weight_3" }
     low: { type: "value", value: 0 }
-    high: { type: "value", value: 50 }
+    high: { type: "value", value: 60 }
     step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
@@ -94,8 +94,28 @@ hidden_weight_4:
   params:
     name: { type: "value", value: "hidden_weight_4" }
     low: { type: "value", value: 0 }
-    high: { type: "value", value: 50 }
+    high: { type: "value", value: 40 }
     step: { type: "value", value: 10 }
+    log: { type: "value", value: False }
+
+hidden_weight_5:
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "hidden_weight_5" }
+    low: { type: "value", value: 0 }
+    high: { type: "value", value: 20 }
+    step: { type: "value", value: 5 }
+    log: { type: "value", value: False }
+
+hidden_weight_6:
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "hidden_weight_6" }
+    low: { type: "value", value: 0 }
+    high: { type: "value", value: 10 }
+    step: { type: "value", value: 2 }
     log: { type: "value", value: False }
 
 mlp_hidden_sizes:
@@ -106,6 +126,8 @@ mlp_hidden_sizes:
       { type: ref, value: hidden_weight_2 },
       { type: ref, value: hidden_weight_3 },
       { type: ref, value: hidden_weight_4 },
+      { type: ref, value: hidden_weight_5 },
+      { type: ref, value: hidden_weight_6 },
     ]
 
 cluster_size:

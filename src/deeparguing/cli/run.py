@@ -68,6 +68,7 @@ def run(trial: Trial | None = None):
         if plot_graph_before:
             model.show_graph()
 
+        model.train()
         trainer.train(
             model,
             X_casebase,

@@ -14,6 +14,8 @@ class MLPExtractor(FeatureExtractor):
         hidden_sizes: list[int],
         output_size: int,
         output_activation: torch.nn.Module | None = None,
+        bias: bool = True,
+        dropout: None | float = None,
     ):
         super(MLPExtractor, self).__init__(output_size)
 
@@ -23,9 +25,11 @@ class MLPExtractor(FeatureExtractor):
 
         self.layers = torch.nn.ModuleList()
         for i in range(len(layer_sizes) - 1):
-            self.layers.append(torch.nn.Linear(layer_sizes[i], layer_sizes[i + 1]))
+            self.layers.append(torch.nn.Linear(layer_sizes[i], layer_sizes[i + 1], bias))
             if i < len(layer_sizes) - 2:
                 self.layers.append(torch.nn.ReLU())
+                if dropout:
+                    self.layers.append(torch.nn.Dropout(p=dropout))
 
         if output_activation:
             self.layers.append(output_activation)

@@ -182,9 +182,8 @@ class GradualAACBR(torch.nn.Module):
     def __casebase_edge_weights_strict(
         self, attacker: Tensor, target: Tensor, train_size: int
     ) -> Tensor:
-        edge_weights = self.casebase_edge_weights(attacker, target).reshape(
-            (train_size, train_size)
-        )
+        edge_weights = self.casebase_edge_weights(attacker, target)
+        edge_weights = edge_weights.reshape((train_size, train_size))
         return edge_weights * (1 - (edge_weights.T))
 
     def __casebase_edge_weights_equal(

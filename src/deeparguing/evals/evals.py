@@ -69,6 +69,7 @@ def evaluate_model(
         and f1 score
 
     """
+    model.eval()
     model.fit(X_casebase, y_casebase, X_default, y_default)
     final_strengths = model(X_new_cases)
 
