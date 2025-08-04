@@ -1,11 +1,20 @@
 import argparse
 import ast
+import logging
 from typing import Any, Tuple
 
 PLOT_NONE = 0
 PLOT_BEFORE = 1
 PLOT_AFTER = 2
 PLOT_BOTH = 3
+
+LOG_LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL,
+}
 
 
 def parse_command_line():
@@ -34,7 +43,10 @@ def parse_command_line():
     )
 
     parser.add_argument(
-        "--run_train", "-rtr", action="store_true", help="Run evaluation on the train set"
+        "--run_train",
+        "-rtr",
+        action="store_true",
+        help="Run evaluation on the train set",
     )
 
     parser.add_argument("--plot_loss", "-pl", action="store_true", help="Plot the loss")
@@ -77,7 +89,19 @@ def parse_command_line():
     )
 
     parser.add_argument(
-        "--n_trials", "-nt", type=int, default=10, help="Set the number of hyperparameter trials to run"
+        "--n_trials",
+        "-nt",
+        type=int,
+        default=10,
+        help="Set the number of hyperparameter trials to run",
+    )
+
+    parser.add_argument(
+        "--log",
+        type=str.lower,
+        choices=LOG_LEVELS.keys(),
+        default="info",
+        help="Set the logging level (default: info)",
     )
 
     return parser.parse_args()

@@ -1,6 +1,7 @@
 epochs:
   type: value
-  value: 430 
+  value: 1000
+  # value: 430 
   # value: 3000 
 
 lr:
@@ -52,6 +53,10 @@ mlp_hidden_sizes:
       { type: ref, value: hidden_weight_3 },
       { type: ref, value: hidden_weight_4 },
     ]
+
+cluster_size:
+  type: value
+  value: 5
 
 # Best trial:
 # Value: 0.7299534552136056

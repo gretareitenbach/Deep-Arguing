@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -102,16 +103,16 @@ def evaluate_model(
 
 def print_results(accuracy: float, precision: float, recall: float, f1: float, cm: NDArray[Any], title: str, labels: list[str]):
     results_title = "-" * 30 + f" RESULTS ON THE {title} SET " + "-" * 30
-    print(results_title)
-    print(
+    logging.info(results_title)
+    logging.info(
         f"Accuracy: {round(accuracy, 4)}; Precision: {round(precision, 4)}; Recall: {round(recall, 4)}; F1: {round(f1, 4)}"
     )
-    print("-" * len(results_title))
+    logging.info("-" * len(results_title))
     df = pd.DataFrame(
         cm,
         index=[f"Actual {torch.argmax(l).item()}" for l in labels],
         columns=[f"Pred {torch.argmax(l).item()}" for l in labels],
     )
 
-    print(df)
+    logging.info(f"Confusion Matrix: \n{df}")
 

@@ -4,7 +4,7 @@ epochs:
   params:
     name: { type: "value", value: "epochs" }
     low: { type: "value", value: 10 }
-    high: { type: "value", value: 5000 }
+    high: { type: "value", value: 2000 }
     step: { type: "value", value: 1 }
     log: { type: "value", value: False }
 
@@ -98,25 +98,6 @@ hidden_weight_4:
     step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
-hidden_weight_5:
-  type: tune
-  tune_type: int
-  params:
-    name: { type: "value", value: "hidden_weight_5" }
-    low: { type: "value", value: 0 }
-    high: { type: "value", value: 20 }
-    step: { type: "value", value: 5 }
-    log: { type: "value", value: False }
-
-hidden_weight_6:
-  type: tune
-  tune_type: int
-  params:
-    name: { type: "value", value: "hidden_weight_6" }
-    low: { type: "value", value: 0 }
-    high: { type: "value", value: 10 }
-    step: { type: "value", value: 2 }
-    log: { type: "value", value: False }
 
 mlp_hidden_sizes:
   type: list
@@ -126,8 +107,6 @@ mlp_hidden_sizes:
       { type: ref, value: hidden_weight_2 },
       { type: ref, value: hidden_weight_3 },
       { type: ref, value: hidden_weight_4 },
-      { type: ref, value: hidden_weight_5 },
-      { type: ref, value: hidden_weight_6 },
     ]
 
 cluster_size:

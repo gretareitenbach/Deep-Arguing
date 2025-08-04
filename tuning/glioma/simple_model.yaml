@@ -29,9 +29,21 @@ trainer:
   type: class
   class_name: "SimpleTrainer"
 
+# build_casebase:
+#   type: class
+#   class_name: "IdentityCluster"
+
 build_casebase:
   type: class
-  class_name: "IdentityCluster"
+  class_name: "kMeansCluster"
+  params:
+    cluster_size:
+      type: ref
+      value: cluster_size
+
+build_new_cases:
+  type: function
+  value: "use_train"
 
 train_settings:
   type: dict

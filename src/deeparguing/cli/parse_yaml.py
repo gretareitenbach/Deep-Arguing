@@ -1,3 +1,4 @@
+import logging
 import sys
 from typing import Any, Callable, Dict
 
@@ -30,7 +31,10 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "normalize_data": normalize_data,
     "no_normalize": lambda a, b, c: a,
     "use_train": lambda X_train, y_train, X_casebase, y_casebase: (X_train, y_train),
-    "use_casebase": lambda X_train, y_train, X_casebase, y_casebase: (X_casebase, y_casebase),
+    "use_casebase": lambda X_train, y_train, X_casebase, y_casebase: (
+        X_casebase,
+        y_casebase,
+    ),
 }
 
 instances: Dict[str, Any] = {}
@@ -45,9 +49,8 @@ def read_config_files(config_file_paths: list[str]) -> Dict[str, str]:
             overlapping_keys = set(model_config.keys()) & set(new_config.keys())
 
             if overlapping_keys:
-                print(
-                    f"Error: Duplicate key(s) found in '{config_file_path}': {', '.join(overlapping_keys)}",
-                    file=sys.stderr,
+                logging.critical(
+                    f"Error: Duplicate key(s) found in '{config_file_path}': {', '.join(overlapping_keys)}"
                 )
                 sys.exit(1)
 
@@ -105,9 +108,9 @@ def load_data_dict(
         X_test, X_train_mean, X_train_std
     )
 
-    print("Test Size:", len(X_test))
-    print("Train Size:", len(X_train))
-    print("Validation Size:", len(X_val))
+    logging.debug(f"Test Size: {len(X_test)}")
+    logging.debug(f"Train Size: {len(X_train)}")
+    logging.debug(f"Validation Size, {len(X_val)}")
     return data_dict
 
 
@@ -229,7 +232,7 @@ def parse_tune_values(
         )
     value: Any = func(**params)
 
-    print(f"Hyperparameter: ({params['name']}: {value})")
+    logging.debug(f"Hyperparameter: ({params['name']}: {value})")
 
     return value
 

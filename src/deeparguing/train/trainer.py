@@ -7,9 +7,10 @@ from torch import Tensor
 from torch.optim import Optimizer
 
 from deeparguing import GradualAACBR
-from deeparguing.regulariser import Regulariser, RegulariserType
+from deeparguing.regulariser import RegulariserType
 
 type CriterionFactory = Callable[..., torch.nn.Module]
+
 
 class Trainer(metaclass=ABCMeta):
 
@@ -91,5 +92,6 @@ class Trainer(metaclass=ABCMeta):
                 grads.append(param.grad.view(-1))
         grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
         self.grads_over_time.append(grads)
+
         optimizer.step()
         return loss
