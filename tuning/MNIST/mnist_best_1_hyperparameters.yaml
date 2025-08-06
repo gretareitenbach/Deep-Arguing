@@ -1,18 +1,18 @@
 epochs:
   type: value
-  value: 4727
+  value: 839
 
 lr:
   type: value
-  value: 0.019730585237639073
+  value: 0.0013991740132865943
 
 gamma_dag:
   type: value
-  value: 0.0004773472802850908
+  value: 0.0037884048712796036
 
 max_iters:
   type: value
-  value: 70
+  value: 50
 
 epsilon:
   type: value
@@ -20,27 +20,27 @@ epsilon:
 
 temperature:
   type: value
-  value: 0.04439520197984534
+  value: 0.028505522303378605
 
 dag_alpha:
   type: value
-  value: 0.005309478043133992
+  value: 0.0017196148538302528
 
 hidden_weight_1:
   type: value
-  value: 10
+  value: 50
 
 hidden_weight_2:
   type: value
-  value: 20
+  value: 40
 
 hidden_weight_3:
   type: value
-  value: 10
+  value: 20
 
 hidden_weight_4:
   type: value
-  value: 0
+  value: 40
 
 mlp_hidden_sizes:
   type: list
@@ -54,19 +54,19 @@ mlp_hidden_sizes:
 
 cluster_size:
   type: value
-  value: 10 
-# Best trial:
-# Value: 0.9875770535246969
-# Params:
-#   epochs: 4727
-#   lr: 0.019730585237639073
-#   dag_alpha: 0.005309478043133992
-#   gamma_dag: 0.0004773472802850908
-#   max_iters: 70
-#   temperature: 0.04439520197984534
-#   hidden_weight_1: 10
-#   hidden_weight_2: 20
-#   hidden_weight_3: 0
-#   hidden_weight_4: 10
-#   cluter_size: 10
-#
+  value: 5
+
+
+
+
+# {'epochs': 839,
+  # 'lr': 0.0013991740132865943, 
+  # 'dag_alpha': 0.0017196148538302528, 
+  # 'gamma_dag': 0.0037884048712796036, 
+  # 'max_iters': 50, 
+  # 'temperature': 0.028505522303378605, 
+  # 'hidden_weight_1': 50, 
+  # 'hidden_weight_2': 40, 
+  # 'hidden_weight_3': 20, 
+  # 'hidden_weight_4': 40, 
+  # 'cluter_size': 5}

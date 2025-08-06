@@ -10,21 +10,23 @@ os.environ["OMP_NUM_THREADS"] = "1"
 import optuna
 import torch
 from optuna import Trial
+from torch.nn.utils import parameters_to_vector
 
 from deeparguing import GradualAACBR
 from deeparguing.base_scores import *
 from deeparguing.casebase_edge_weights import *
 from deeparguing.cli import (parse_command_line, parse_model_config, plots,
                              read_config_files)
+from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
-from deeparguing.evals import evaluate_model, print_results
+from deeparguing.evals import (evaluate_model, print_results,
+                               visualize_overlayed_loss_landscapes)
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
 from deeparguing.regulariser import *
 from deeparguing.semantics import *
 from deeparguing.train import Trainer
-from deeparguing.cli.parse_command_line import LOG_LEVELS
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")
@@ -76,6 +78,9 @@ def run(trial: Trial | None = None):
         if plot_graph_before:
             model.show_graph()
 
+        if args.visualise_loss_landscape:
+            theta_pre = parameters_to_vector(model.parameters()).clone().detach()
+
         model.train()
         trainer.train(
             model,
@@ -88,6 +93,8 @@ def run(trial: Trial | None = None):
             **train_settings,
             disable_tqdm=args.disable_tqdm,
         )
+
+        model.eval()
 
         acc, prec, rec, f1, cm = evaluate_model(
             model, X_casebase, y_casebase, X_defaults, y_defaults, X_val, y_val
@@ -129,9 +136,26 @@ def run(trial: Trial | None = None):
         if f1 > 0.7:
             total += 1
         if len(args.seed) > 1:
-            logging.info(f"F1 > 0.7 in {total}/{seed_idx + 1} seeds, which is {total / (seed_idx + 1) * 100}%")
+            logging.info(
+                f"F1 > 0.7 in {total}/{seed_idx + 1} seeds, which is {total / (seed_idx + 1) * 100}%"
+            )
         f1s.append(f1)
         logging.info(f"Average f1 score: {np.mean(f1s)}")
+
+        if args.visualise_loss_landscape:
+            visualize_overlayed_loss_landscapes(
+                model,
+                train_settings["criterion_factory"](),
+                X_train,
+                y_train,
+                X_casebase,
+                y_casebase,
+                X_defaults,
+                y_defaults,
+                theta_pre,
+                train_settings["regulariser"],
+                steps=30,
+            )
 
     return np.mean(f1s)
 
@@ -141,9 +165,10 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     logging.basicConfig(
-        level=LOG_LEVELS[args.log], format="%(asctime)s - %(levelname)s - %(message)s", force=True,
+        level=LOG_LEVELS[args.log],
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        force=True,
     )
-
 
     plot_matrix_before, plot_matrix_after, plot_graph_before, plot_graph_after = plots(
         args

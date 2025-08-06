@@ -89,6 +89,10 @@ def parse_command_line():
     )
 
     parser.add_argument(
+        "--visualise_loss_landscape", "-vll", action="store_true", help="Visualises the loss landscape after training"
+    )
+
+    parser.add_argument(
         "--n_trials",
         "-nt",
         type=int,
