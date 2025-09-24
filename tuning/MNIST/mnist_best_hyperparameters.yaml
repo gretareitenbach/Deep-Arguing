@@ -1,18 +1,18 @@
 epochs:
   type: value
-  value: 1011
+  value: 1912
 
 lr:
   type: value
-  value: 0.003934682825195239
+  value: 0.0010773454579728057
 
 gamma_dag:
   type: value
-  value: 0.0001977665242176584
+  value: 0.08312338066981176
 
 max_iters:
   type: value
-  value: 111
+  value: 58
 
 epsilon:
   type: value
@@ -20,23 +20,23 @@ epsilon:
 
 temperature:
   type: value
-  value: 0.0327887251304392
+  value: 0.06777341894709812
 
 dag_alpha:
   type: value
-  value: 0.02678924218025782
+  value: 0.0040839538230620556
 
 hidden_weight_1:
   type: value
-  value: 30
+  value: 100
 
 hidden_weight_2:
   type: value
-  value: 20
+  value: 70
 
 hidden_weight_3:
   type: value
-  value: 10
+  value: 60
 
 hidden_weight_4:
   type: value

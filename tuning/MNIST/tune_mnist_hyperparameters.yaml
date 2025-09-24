@@ -3,7 +3,7 @@ epochs:
   tune_type: int
   params:
     name: { type: "value", value: "epochs" }
-    low: { type: "value", value: 10 }
+    low: { type: "value", value: 100 }
     high: { type: "value", value: 2000 }
     step: { type: "value", value: 1 }
     log: { type: "value", value: False }
@@ -13,7 +13,7 @@ lr:
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.00005 }
+    low: { type: "value", value: 0.0005 }
     high: { type: "value", value: 0.1 }
     log: { type: "value", value: True }
 
