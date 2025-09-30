@@ -30,6 +30,7 @@ setup(
         "scikit-learn",
         "torchviz",
         "pandas",
+        "optuna",
     ],
     dependency_links=[
         'https://download.pytorch.org/whl/cu118'
