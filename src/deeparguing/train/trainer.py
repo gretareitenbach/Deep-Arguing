@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.optim import Optimizer
 
 from deeparguing import GradualAACBR
+from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.regulariser import RegulariserType
 
 type CriterionFactory = Callable[..., torch.nn.Module]
@@ -86,6 +87,8 @@ class Trainer(metaclass=ABCMeta):
 
         self.losses.append(loss.item())
         self.real_time_logger(loss.item())
+        ExperimentLogger.current().log_metrics({"loss": loss.item()})
+
         grads: list[Tensor] = []
         for param in model.parameters():
             if param.grad is not None:

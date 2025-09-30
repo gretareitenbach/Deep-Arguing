@@ -89,7 +89,10 @@ def parse_command_line():
     )
 
     parser.add_argument(
-        "--visualise_loss_landscape", "-vll", action="store_true", help="Visualises the loss landscape after training"
+        "--visualise_loss_landscape",
+        "-vll",
+        action="store_true",
+        help="Visualises the loss landscape after training",
     )
 
     parser.add_argument(
@@ -106,6 +109,26 @@ def parse_command_line():
         choices=LOG_LEVELS.keys(),
         default="info",
         help="Set the logging level (default: info)",
+    )
+
+    parser.add_argument(
+        "--experiment_logger",
+        "-el",
+        type=str,
+        choices=["none", "wandb"],
+        default="none",
+        help=(
+            "Experiment Logger:\n"
+            "  none = no logger\n"
+            "  wandb = weights and biases logger"
+        ),
+    )
+
+    parser.add_argument(
+        "--project",
+        type=str,
+        default="gradual-aa-cbr",
+        help="Project Name",
     )
 
     return parser.parse_args()

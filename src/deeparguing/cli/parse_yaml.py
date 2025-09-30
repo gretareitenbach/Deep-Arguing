@@ -10,6 +10,7 @@ from torch.optim import *
 from deeparguing import GradualAACBR
 from deeparguing.base_scores import *
 from deeparguing.casebase_edge_weights import *
+from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.clustering import *
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
@@ -212,7 +213,7 @@ def parse_tune_values(
 ) -> Any:
     if trial is None:
         raise ValueError(
-            "Attempt to parse tuning variables. Hyperparameter tuning is no turned on"
+            "Attempt to parse tuning variables. Hyperparameter tuning is not turned on. Use -ht in the command line to ensure you are running with hyperparameter tuning on."
         )
     params: Dict[str, Any] = {
         k: parse_entry(v, config, ref_stack, trial)
@@ -233,6 +234,7 @@ def parse_tune_values(
     value: Any = func(**params)
 
     logging.debug(f"Hyperparameter: ({params['name']}: {value})")
+    ExperimentLogger.current().log_params({params['name']: value})
 
     return value
 
