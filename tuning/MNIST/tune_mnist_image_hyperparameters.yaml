@@ -1,0 +1,69 @@
+epochs:
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "epochs" }
+    low: { type: "value", value: 100 }
+    high: { type: "value", value: 2000 }
+    step: { type: "value", value: 1 }
+    log: { type: "value", value: False }
+
+lr:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "lr" }
+    low: { type: "value", value: 0.0005 }
+    high: { type: "value", value: 0.1 }
+    log: { type: "value", value: True }
+
+dag_alpha:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "dag_alpha" }
+    low: { type: "value", value: 0.00005 }
+    high: { type: "value", value: 0.1 }
+    log: { type: "value", value: True }
+
+gamma_dag:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "gamma_dag" }
+    low: { type: "value", value: 0.00005 }
+    high: { type: "value", value: 0.1 }
+    log: { type: "value", value: True }
+
+max_iters:
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "max_iters" }
+    low: { type: "value", value: 50 }
+    high: { type: "value", value: 150 }
+    step: { type: "value", value: 1 }
+    log: { type: "value", value: False }
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "temperature" }
+    low: { type: "value", value: 0.005 }
+    high: { type: "value", value: 0.1 }
+    log: { type: "value", value: True }
+
+cluster_size:
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "cluter_size"}
+    low: { type: "value", value: 5 }
+    high: { type: "value", value: 15 }
+    step: { type: "value", value: 5 }
+    log: { type: "value", value: False }

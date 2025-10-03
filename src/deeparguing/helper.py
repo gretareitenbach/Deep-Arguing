@@ -68,7 +68,9 @@ def load_tabular_data(
     return X, y
 
 
-def load_mnist(as_vector: bool = False, size: int = -1, labels: list[str] = []):
+def load_mnist(
+    device: str = "cpu", as_vector: bool = False, size: int = -1, labels: list[str] = []
+) -> Tuple[Tensor, Tensor]:
 
     from torchvision.datasets import MNIST
 
@@ -90,6 +92,12 @@ def load_mnist(as_vector: bool = False, size: int = -1, labels: list[str] = []):
     # encoder = LabelEncoder()
     encoder.fit(y)
     y = encoder.transform(y)
+
+    X = torch.tensor(X, dtype=torch.float32, device=device)
+    y = torch.tensor(y, dtype=torch.float32, device=device)
+
+    X = X[:size]
+    y = y[:size]
 
     return X, y
 

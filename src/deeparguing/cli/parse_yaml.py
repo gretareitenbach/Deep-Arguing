@@ -74,6 +74,8 @@ def load_data_dict(
     }
     if entry["sub_type"] == "tabular":
         X, y = load_tabular_data(device=device, **params)
+    elif entry["sub_type"] == "mnist":
+        X, y = load_mnist(device=device, **params)
     else:
         raise ValueError(f"Unknown data subtype: {entry['sub_type']}")
 

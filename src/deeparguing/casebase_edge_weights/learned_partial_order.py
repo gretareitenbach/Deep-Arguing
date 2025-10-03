@@ -58,7 +58,7 @@ class LearnedPartialOrder(ComputePartialOrder):
             attacker = attacker.unsqueeze(1)
             target = target.unsqueeze(0)
 
-        result = self.comparison_func(attacker, target)
+        result = self.comparison_func(attacker, target).squeeze()
         return result
 
     @override

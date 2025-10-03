@@ -46,6 +46,9 @@ class kMeansCluster(Cluster):
         X_ = X.cpu().numpy()
         y_ = y.cpu().numpy()
 
+
+        original_shape = list(X_.shape)
+
         X_all_centroids = []
         y_all_centroids = []
 
@@ -72,6 +75,8 @@ class kMeansCluster(Cluster):
         y_centroids = np.concatenate(y_all_centroids, axis=0)
 
         X_centroids = torch.tensor(X_centroids, device=X.device, dtype=X.dtype)
+        original_shape[0] = -1
+        X_centroids = X_centroids.reshape(original_shape)
         y_centroids = torch.tensor(y_centroids, device=X.device, dtype=X.dtype)
 
         return X_centroids, y_centroids

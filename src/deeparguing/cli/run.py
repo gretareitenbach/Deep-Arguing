@@ -81,9 +81,12 @@ def run(project: str="gradual-aa-cbr"):
             X_new_cases, y_new_cases = instances["build_new_cases"](
                 X_train, y_train, X_casebase, y_casebase
             )
-    
-            X_defaults = X_train.mean(dim=0).tile(len(labels), 1)
+            n_dims = X_train.dim()
+            tile_shape = [1] * n_dims
+            tile_shape[0] = len(labels)
+            X_defaults = X_train.mean(dim=0).tile(tile_shape)
             y_defaults = labels.flip([0])
+    
     
             if plot_matrix_before:
                 model.show_matrix()
