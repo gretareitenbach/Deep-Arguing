@@ -63,8 +63,8 @@ train_settings:
       type: ref
       value: "regularisers"
     batch_size:
-      type: value
-      value: 7680
+      type: ref
+      value: "batch_size"
 
 feature_weights:
   type: class

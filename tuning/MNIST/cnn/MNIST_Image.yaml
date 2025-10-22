@@ -4,7 +4,7 @@ data:
   params:
     size:
       type: value
-      value: 60000
+      value: 10000
     labels:
       type: list
       value:
