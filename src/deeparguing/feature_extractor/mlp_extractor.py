@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import override
 
 import torch
@@ -18,21 +19,25 @@ class MLPExtractor(FeatureExtractor):
         dropout: None | float = None,
     ):
         super(MLPExtractor, self).__init__(output_size)
-
         hidden_sizes = [i for i in hidden_sizes if i > 0]
-
         layer_sizes = [input_size] + hidden_sizes + [output_size]
-
-        self.layers = torch.nn.ModuleList()
+        
+        layers = OrderedDict()
         for i in range(len(layer_sizes) - 1):
-            self.layers.append(torch.nn.Linear(layer_sizes[i], layer_sizes[i + 1], bias))
+            # Add linear layer with stable name
+            layers[f"linear_{i}"] = torch.nn.Linear(layer_sizes[i], layer_sizes[i + 1], bias)
+            
+            # Add activation and dropout for hidden layers only
             if i < len(layer_sizes) - 2:
-                self.layers.append(torch.nn.ReLU())
+                layers[f"relu_{i}"] = torch.nn.ReLU()
                 if dropout:
-                    self.layers.append(torch.nn.Dropout(p=dropout))
-
+                    layers[f"dropout_{i}"] = torch.nn.Dropout(p=dropout)
+        
+        # Add output activation if specified
         if output_activation:
-            self.layers.append(output_activation)
+            layers["output_activation"] = output_activation
+        
+        self.layers = torch.nn.Sequential(layers)    
 
     @override
     def forward(self, case: Tensor) -> Tensor:

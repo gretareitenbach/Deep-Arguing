@@ -6,6 +6,7 @@ import torch
 import yaml
 from optuna import Trial
 from torch.optim import *
+from torch.optim.lr_scheduler import *
 
 from deeparguing import GradualAACBR
 from deeparguing.base_scores import *
@@ -24,7 +25,7 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "filter_to_attacks": filter_to_attacks,
     "filter_to_supports": filter_to_supports,
     "weighted_cross_entropy": lambda weight: torch.nn.CrossEntropyLoss(weight=weight),
-    "cross_entropy": lambda: torch.nn.CrossEntropyLoss(),
+    "cross_entropy": lambda: torch.nn.CrossEntropyLoss(label_smoothing=0.05),
     "uni_directional": lambda A: torch.where(
         torch.abs(A) > torch.abs(A.T), A, 0
     ),  # todo move to own file?
@@ -144,7 +145,12 @@ def parse_entry(
         children = check_entry_for_value(entry)
         result: Dict[str, Any] = {}
         for key, value in children.items():
-            result[key] = parse_entry(value, config, ref_stack, trial)
+            if key not in instances:
+                child_entry = parse_entry(value, config, ref_stack, trial)
+                instances[key] = child_entry
+            else:
+                child_entry = instances[key]
+            result[key] = child_entry
         return result
 
     if entry_type == "list":
@@ -167,6 +173,14 @@ def parse_entry(
                     config[model_name], config, ref_stack, trial
                 )
             params["params"] = instances[model_name].parameters()
+
+        if entry_sub_type == "scheduler":
+            optimizer = entry["optimizer"]
+            if optimizer not in instances:
+                instances[optimizer] = parse_entry(
+                    config[optimizer], config, ref_stack, trial
+                )
+            params["optimizer"] = instances[optimizer]
 
         return globals()[class_name](**params)
 
@@ -236,7 +250,7 @@ def parse_tune_values(
     value: Any = func(**params)
 
     logging.debug(f"Hyperparameter: ({params['name']}: {value})")
-    ExperimentLogger.current().log_params({params['name']: value})
+    ExperimentLogger.current().log_params({params["name"]: value})
 
     return value
 

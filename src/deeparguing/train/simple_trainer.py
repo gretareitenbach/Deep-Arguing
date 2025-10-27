@@ -3,9 +3,11 @@ from typing import Any, Callable, override
 import torch
 from torch import Tensor
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
 
 from deeparguing import GradualAACBR
+from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
 from deeparguing.train.trainer import CriterionFactory
@@ -35,6 +37,7 @@ class SimpleTrainer(Trainer):
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
         batch_size: None | int = None,
+        scheduler: LRScheduler | None = None,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
@@ -64,6 +67,11 @@ class SimpleTrainer(Trainer):
                     optimizer,
                     criterion,
                     regulariser=regulariser,
+                    scheduler=scheduler,
                 )
 
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
+
+            ExperimentLogger.current().log_metrics(
+                {"loss_per_epoch": loss.item(), "epoch": epoch}
+            )

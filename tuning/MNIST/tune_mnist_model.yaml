@@ -59,12 +59,32 @@ train_settings:
         lr:
           type: ref
           value: lr
+        weight_decay:
+          type: value
+          value: 0.0004
     regulariser:
       type: ref
       value: "regularisers"
     batch_size:
       type: value
       value: 7680
+    scheduler:
+      type: class
+      sub_type: "scheduler"
+      class_name: "LinearLR"
+      optimizer: "optimizer"
+      params:
+        start_factor:
+          type: value
+          value: 0.01
+        end_factor: 
+          type: value
+          value: 1.0
+        total_iters:
+          type: value
+          value: 200
+        
+
 
 feature_weights:
   type: class

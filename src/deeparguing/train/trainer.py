@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
@@ -36,6 +37,7 @@ class Trainer(metaclass=ABCMeta):
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
+        scheduler: LRScheduler | None = None,
     ):
         pass
 
@@ -68,6 +70,7 @@ class Trainer(metaclass=ABCMeta):
         optimizer: Optimizer,
         criterion: Callable[[Tensor, Tensor], Tensor],
         regulariser: RegulariserType = lambda _: 0,
+        scheduler: LRScheduler | None = None,
     ) -> Tensor:
 
         # If in the future we have to overwrite train_step for whatever reason,
@@ -89,6 +92,8 @@ class Trainer(metaclass=ABCMeta):
         self.real_time_logger(loss.item())
         ExperimentLogger.current().log_metrics({"loss": loss.item()})
 
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
         grads: list[Tensor] = []
         for param in model.parameters():
             if param.grad is not None:
@@ -96,5 +101,14 @@ class Trainer(metaclass=ABCMeta):
         grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
         self.grads_over_time.append(grads)
 
+        ExperimentLogger.current().log_metrics(
+            {
+                f"Gradient {n}": torch.norm(p.grad.cpu())
+                for n, p in model.named_parameters()
+            }
+        )
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
+
         return loss
