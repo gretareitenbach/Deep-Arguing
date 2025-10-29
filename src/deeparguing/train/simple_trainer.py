@@ -46,7 +46,6 @@ class SimpleTrainer(Trainer):
 
         batch_size = batch_size if batch_size is not None else n_samples
 
-        print(criterion.label_smoothing)
 
         for epoch in pbar:
             permutation = torch.randperm(n_samples)
