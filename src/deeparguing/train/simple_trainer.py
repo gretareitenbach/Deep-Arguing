@@ -10,7 +10,6 @@ from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
-from deeparguing.train.trainer import CriterionFactory
 
 
 class SimpleTrainer(Trainer):
@@ -32,21 +31,22 @@ class SimpleTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion_factory: CriterionFactory,
+        criterion: torch.nn.Module,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
+        gradient_max_norm: float | None = None, 
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
 
-        criterion = criterion_factory()
-
         n_samples = X_new_cases.shape[0]
 
         batch_size = batch_size if batch_size is not None else n_samples
+
+        print(criterion.label_smoothing)
 
         for epoch in pbar:
             permutation = torch.randperm(n_samples)
@@ -68,6 +68,7 @@ class SimpleTrainer(Trainer):
                     criterion,
                     regulariser=regulariser,
                     scheduler=scheduler,
+                    gradient_max_norm=gradient_max_norm,
                 )
 
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")

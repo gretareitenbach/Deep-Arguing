@@ -33,11 +33,13 @@ class Trainer(metaclass=ABCMeta):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion_factory: CriterionFactory,
+        criterion: torch.nn.Module,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
+        batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
+        gradient_max_norm: float | None = None,
     ):
         pass
 
@@ -71,6 +73,7 @@ class Trainer(metaclass=ABCMeta):
         criterion: Callable[[Tensor, Tensor], Tensor],
         regulariser: RegulariserType = lambda _: 0,
         scheduler: LRScheduler | None = None,
+        gradient_max_norm: float | None = None,
     ) -> Tensor:
 
         # If in the future we have to overwrite train_step for whatever reason,
@@ -92,7 +95,10 @@ class Trainer(metaclass=ABCMeta):
         self.real_time_logger(loss.item())
         ExperimentLogger.current().log_metrics({"loss": loss.item()})
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        if gradient_max_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=True
+            )
 
         grads: list[Tensor] = []
         for param in model.parameters():
@@ -107,7 +113,9 @@ class Trainer(metaclass=ABCMeta):
                 for n, p in model.named_parameters()
             }
         )
+
         optimizer.step()
+
         if scheduler is not None:
             scheduler.step()
 

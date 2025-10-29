@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict
 import torch
 import yaml
 from optuna import Trial
+from torch.nn import *
 from torch.optim import *
 from torch.optim.lr_scheduler import *
 
@@ -20,12 +21,12 @@ from deeparguing.regulariser import *
 from deeparguing.semantics import *
 from deeparguing.train import *
 
+
+
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,
     "filter_to_attacks": filter_to_attacks,
     "filter_to_supports": filter_to_supports,
-    "weighted_cross_entropy": lambda weight: torch.nn.CrossEntropyLoss(weight=weight),
-    "cross_entropy": lambda: torch.nn.CrossEntropyLoss(label_smoothing=0.05),
     "uni_directional": lambda A: torch.where(
         torch.abs(A) > torch.abs(A.T), A, 0
     ),  # todo move to own file?
