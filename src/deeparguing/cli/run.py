@@ -116,6 +116,8 @@ def run(project: str = "gradual-aa-cbr"):
                 y_defaults,
                 **train_settings,
                 disable_tqdm=args.disable_tqdm,
+                X_val=X_val,
+                y_val=y_val,
             )
 
             model.eval()

@@ -38,6 +38,8 @@ class SimpleTrainer(Trainer):
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
         gradient_max_norm: float | None = None, 
+        X_val: Tensor | None = None,
+        y_val: Tensor | None = None,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
@@ -70,8 +72,20 @@ class SimpleTrainer(Trainer):
                     gradient_max_norm=gradient_max_norm,
                 )
 
+            assert(loss)
+
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
 
-            ExperimentLogger.current().log_metrics(
-                {"loss_per_epoch": loss.item(), "epoch": epoch}
-            )
+            if X_val is not None and y_val is not None:
+                predictions = model(X_val).squeeze()
+                y_target = torch.argmax(y_val, dim=1)
+                val_loss: Tensor = criterion(predictions, y_target) + regulariser(model)
+                ExperimentLogger.current().log_metrics(
+                    {"loss_per_epoch": loss.item(), "epoch": epoch, "val_loss_per_epoch": val_loss.item()}
+                )
+            else:
+                ExperimentLogger.current().log_metrics(
+                    {"loss_per_epoch": loss.item(), "epoch": epoch}
+                )
+
+

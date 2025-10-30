@@ -40,6 +40,8 @@ class Trainer(metaclass=ABCMeta):
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
         gradient_max_norm: float | None = None,
+        X_val: Tensor | None = None,
+        y_val: Tensor | None = None,
     ):
         pass
 
