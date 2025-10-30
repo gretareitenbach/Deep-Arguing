@@ -6,6 +6,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from torch import Tensor
+from torchvision.datasets import *
 
 
 def exclude_fields(X, excluded_indices):
@@ -68,19 +69,28 @@ def load_tabular_data(
     return X, y
 
 
-def load_mnist(
-    device: str = "cpu", as_vector: bool = False, size: int = -1, labels: list[str] = []
+def load_torch_images(
+    class_name: str,
+    device: str = "cpu",
+    as_vector: bool = False,
+    size: int = -1,
+    labels: list[str] = [],
+    shuffle: bool = False,
+    seed: float = 42,
 ) -> Tuple[Tensor, Tensor]:
 
-    from torchvision.datasets import MNIST
+    imaging_set = globals()[class_name]("./temp/", train=True, download=True)
 
-    mnist_trainset = MNIST("./temp/", train=True, download=True)
-    # mnist_testset = MNIST("./temp/", train=False, download=True)
-
-    X = mnist_trainset.data[:size].float().numpy()
+    X = imaging_set.data[:size].float().numpy()
     if as_vector:
         X = X.reshape((X.shape[0], X.shape[1] * X.shape[2]))
-    y = mnist_trainset.targets[:size].numpy()
+    y = imaging_set.targets[:size].numpy()
+
+    if shuffle:
+        np.random.seed(seed)
+        indicies = np.random.permutation(len(X))
+        X = X[indicies]
+        y = y[indicies]
 
     if len(labels) != 0:
         mask = np.isin(y, labels)
@@ -89,7 +99,6 @@ def load_mnist(
 
     y = y.reshape(-1, 1)
     encoder = OneHotEncoder(sparse_output=False)
-    # encoder = LabelEncoder()
     encoder.fit(y)
     y = encoder.transform(y)
 

@@ -29,17 +29,14 @@ trainer:
   type: class
   class_name: "SimpleTrainer"
 
-# build_casebase:
-#   type: class
-#   class_name: "IdentityCluster"
-
 build_casebase:
   type: class
-  class_name: "kMeansCluster"
-  params:
-    cluster_size:
-      type: ref
-      value: cluster_size
+  class_name: "IdentityCluster"
+  # class_name: "kMeansCluster"
+  # params:
+  #   cluster_size:
+  #     type: ref
+  #     value: cluster_size
 
 build_new_cases:
   type: function
@@ -48,9 +45,13 @@ build_new_cases:
 train_settings:
   type: dict
   value:
-    criterion_factory:
-      type: function
-      value: "cross_entropy"
+    criterion:
+      type: class
+      class_name: "CrossEntropyLoss"
+      params:
+        label_smoothing:
+          type: value
+          value: 0.05
     epochs:
       type: ref
       value: epochs
@@ -63,17 +64,18 @@ train_settings:
         lr:
           type: ref
           value: lr
+        weight_decay:
+          type: value
+          value: 0.0004
     regulariser:
       type: ref
       value: "regularisers"
+    gradient_max_norm:
+      type: value
+      value: 1.0
 
 feature_weights:
   type: class
-  # class_name: "FeatureWeightedExtractor"
-  # params:
-  #   no_features:
-  #     type: data_ref
-  #     value: "no_features"
   class_name: "MLPExtractor"
   params:
     input_size:

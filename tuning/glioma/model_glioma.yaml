@@ -1,18 +1,11 @@
-community_preservation_attacks:
+dag_regulariser:
   type: class
-  class_name: CommunityPreservationRegulariser
+  class_name: DAGRegulariser
   params:
-    filter_func:
-      type: function
-      value: "filter_to_attacks"
-
-community_preservation_supports:
-  type: class
-  class_name: CommunityPreservationRegulariser
-  params:
-    filter_func:
-      type: function
-      value: "filter_to_supports"
+    alpha:
+      type: ref
+      value: dag_alpha
+    
 
 regularisers:
   type: class
@@ -26,36 +19,15 @@ regularisers:
             type: list,
             value:
               [
-                { type: ref, value: "community_preservation_attacks" },
-                { type: ref, value: gamma },
-              ],
-          },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "community_preservation_supports" },
-                { type: ref, value: gamma_prime },
+                { type: ref, value: "dag_regulariser" },
+                { type: ref, value: gamma_dag },
               ],
           },
         ]
 
 trainer:
   type: class
-  class_name: "ReweightTrainer"
-  params:
-    X_val:
-      type: data_ref
-      value: "X_val"
-    y_val:
-      type: data_ref
-      value: "y_val"
-    reweight_epoch:
-      type: ref
-      value: reweight_epoch
-    max_misclass_rate:
-      type: ref
-      value: max_misclass_rate 
+  class_name: "SimpleTrainer"
 
 build_casebase:
   type: class
@@ -65,12 +37,20 @@ build_casebase:
       type: ref
       value: cluster_size
 
+build_new_cases:
+  type: function
+  value: "use_train"
+
 train_settings:
   type: dict
   value:
-    criterion_factory:
-      type: function
-      value: "weighted_cross_entropy"
+    criterion:
+      type: class
+      class_name: "CrossEntropyLoss"
+      params:
+        label_smoothing:
+          type: value
+          value: 0.05
     epochs:
       type: ref
       value: epochs
@@ -83,17 +63,29 @@ train_settings:
         lr:
           type: ref
           value: lr
+        weight_decay:
+          type: value
+          value: 0.0004
     regulariser:
       type: ref
       value: "regularisers"
+    gradient_max_norm:
+      type: value
+      value: 1.0
 
 feature_weights:
   type: class
-  class_name: "FeatureWeightedExtractor"
+  class_name: "MLPExtractor"
   params:
-    no_features:
+    input_size:
       type: data_ref
       value: "no_features"
+    hidden_sizes:
+      type: ref
+      value: mlp_hidden_sizes
+    output_size:
+      type: value
+      value: 1
 
 scaler:
   type: class

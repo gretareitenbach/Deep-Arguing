@@ -1,0 +1,60 @@
+epochs:
+  type: value
+  # value: 1000
+  value: 430 
+  # value: 3000 
+
+lr:
+  type: value
+  value: 0.00043550221972029154
+
+gamma_dag:
+  type: value
+  value: 0.000265391991872852
+
+max_iters:
+  type: value
+  value: 86
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: value
+  value: 0.0089012749637506
+
+dag_alpha:
+  type: value
+  value: 0.0016046122840315505
+
+hidden_weight_1:
+  type: value
+  value: 20
+
+hidden_weight_2:
+  type: value
+  value: 50
+
+hidden_weight_3:
+  type: value
+  value: 30
+
+hidden_weight_4:
+  type: value
+  value: 40
+
+mlp_hidden_sizes:
+  type: list
+  value:
+    [
+      # {type: value, value: 2} 
+      { type: ref, value: hidden_weight_1 },
+      { type: ref, value: hidden_weight_2 },
+      { type: ref, value: hidden_weight_3 },
+      { type: ref, value: hidden_weight_4 },
+    ]
+
+# cluster_size:
+#   type: value
+#   value: 15

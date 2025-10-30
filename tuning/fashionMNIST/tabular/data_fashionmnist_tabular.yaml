@@ -1,10 +1,19 @@
 data:
   type: data
-  sub_type: mnist
+  sub_type: torch_imaging
   params:
+    class_name:
+      type: value
+      value: "FashionMNIST"
+    as_vector:
+      type: value
+      value: true
+    shuffle:
+      type: value
+      value: true
     size:
       type: value
-      value: 10000
+      value: 60000
     labels:
       type: list
       value:

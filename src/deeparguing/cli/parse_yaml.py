@@ -21,8 +21,6 @@ from deeparguing.regulariser import *
 from deeparguing.semantics import *
 from deeparguing.train import *
 
-
-
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,
     "filter_to_attacks": filter_to_attacks,
@@ -76,8 +74,8 @@ def load_data_dict(
     }
     if entry["sub_type"] == "tabular":
         X, y = load_tabular_data(device=device, **params)
-    elif entry["sub_type"] == "mnist":
-        X, y = load_mnist(device=device, **params)
+    elif entry["sub_type"] == "torch_imaging":
+        X, y = load_torch_images(device=device, **params)
     else:
         raise ValueError(f"Unknown data subtype: {entry['sub_type']}")
 

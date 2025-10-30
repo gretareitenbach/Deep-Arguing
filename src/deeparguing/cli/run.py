@@ -64,6 +64,12 @@ def run(project: str = "gradual-aa-cbr"):
                     config={"trial_id": f"{trial_id}_-1", "seed": seed},
                 )
 
+            for path in args.config:
+                filename = os.path.splitext(os.path.basename(path))[0]
+                ExperimentLogger.current().log_artifact(
+                filename, path, type="config"
+                )
+
             logging.info("=" * 100)
             logging.info(f"Running With Torch Seed: {seed}")
             torch.manual_seed(seed)
