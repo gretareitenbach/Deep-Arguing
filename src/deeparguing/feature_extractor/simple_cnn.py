@@ -12,27 +12,26 @@ class SimpleCNN(FeatureExtractor):
 
     # Code adpated from https://github.com/pytorch/examples/blob/main/mnist/main.py
 
-    def __init__(self):
-        super(SimpleCNN, self).__init__(no_features = 10)
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+    def __init__(self, in_channels: int = 1):
+        super(SimpleCNN, self).__init__(no_features=10)
+        self.conv1 = nn.Conv2d(in_channels, 32, 3, 1)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
+        self.fc1 = nn.Linear(12544, 128)
         # self.fc2 = nn.Linear(128, 10)
         self.fc2 = nn.Linear(128, 1)
 
     @override
     def forward(self, case: Tensor) -> Tensor:
-        if case.ndim == 3:
-            B, B2, _ = case.shape
-            case = case.unsqueeze(1)
+        # if case.ndim == 3:
+        #     B, H, W = case.shape
+        #     case = case.unsqueeze(1)
 
         if case.ndim == 4:
-            B, B2, H, W = case.shape
-            case = case.reshape(B*B2, 1, H, W)
+            B, H, W, C = case.shape
+            case = case.reshape(B, C, H, W)
 
-        
         x = self.conv1(case)
         x = F.relu(x)
         x = self.conv2(x)
@@ -44,7 +43,7 @@ class SimpleCNN(FeatureExtractor):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        return x.view(B, B2).squeeze()
+        return x
 
     @override
     def get_output_features(self) -> int:

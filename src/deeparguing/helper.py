@@ -74,39 +74,58 @@ def load_torch_images(
     device: str = "cpu",
     as_vector: bool = False,
     size: int = -1,
-    labels: list[str] = [],
+    labels: list[int] = [],
     shuffle: bool = False,
     seed: float = 42,
 ) -> Tuple[Tensor, Tensor]:
+    """
+    Loads an image dataset (e.g., MNIST, CIFAR10) directly as torch tensors.
 
-    imaging_set = globals()[class_name]("./temp/", train=True, download=True)
+    Args:
+        class_name: The name of a torchvision dataset class (string name, e.g. 'MNIST').
+        device: Device for tensors ('cpu' or 'cuda').
+        as_vector: Flatten images into vectors if True.
+        size: Limit the dataset to this many samples (-1 for all).
+        labels: Optional list of label integers to filter by.
+        shuffle: Shuffle the data if True.
+        seed: Random seed for reproducibility.
 
-    X = imaging_set.data[:size].float().numpy()
+    Returns:
+        (X, y): Tensors of images and one-hot encoded labels.
+    """
+
+    dataset_class = globals()[class_name]
+    dataset = dataset_class("./temp/", train=True, download=True)
+
+    if size == -1 or size > len(dataset):
+        size = len(dataset)
+
+    X = dataset.data[:size]
+    y = torch.tensor(dataset.targets[:size], dtype=torch.long)
+
+    if isinstance(X, np.ndarray):
+        X = torch.from_numpy(X)
+    X = X.float()
+
     if as_vector:
-        X = X.reshape((X.shape[0], X.shape[1] * X.shape[2]))
-    y = imaging_set.targets[:size].numpy()
+        X = X.view(X.size(0), -1)
 
     if shuffle:
-        np.random.seed(seed)
-        indicies = np.random.permutation(len(X))
-        X = X[indicies]
-        y = y[indicies]
+        torch.manual_seed(int(seed))
+        indices = torch.randperm(X.size(0))
+        X = X[indices]
+        y = y[indices]
 
-    if len(labels) != 0:
-        mask = np.isin(y, labels)
-        y = y[mask]
+    if len(labels) > 0:
+        mask = torch.isin(y, torch.tensor(labels, device=y.device))
         X = X[mask]
+        y = y[mask]
 
-    y = y.reshape(-1, 1)
-    encoder = OneHotEncoder(sparse_output=False)
-    encoder.fit(y)
-    y = encoder.transform(y)
+    y = torch.nn.functional.one_hot(y, num_classes=len(torch.unique(y))).float()
 
-    X = torch.tensor(X, dtype=torch.float32, device=device)
-    y = torch.tensor(y, dtype=torch.float32, device=device)
-
-    X = X[:size]
-    y = y[:size]
+    # Move to device
+    X = X.to(device)
+    y = y.to(device)
 
     return X, y
 

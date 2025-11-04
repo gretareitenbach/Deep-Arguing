@@ -66,9 +66,7 @@ def run(project: str = "gradual-aa-cbr"):
 
             for path in args.config:
                 filename = os.path.splitext(os.path.basename(path))[0]
-                ExperimentLogger.current().log_artifact(
-                filename, path, type="config"
-                )
+                ExperimentLogger.current().log_artifact(filename, path, type="config")
 
             logging.info("=" * 100)
             logging.info(f"Running With Torch Seed: {seed}")
@@ -97,6 +95,7 @@ def run(project: str = "gradual-aa-cbr"):
             X_new_cases, y_new_cases = instances["build_new_cases"](
                 X_train, y_train, X_casebase, y_casebase
             )
+
             n_dims = X_train.dim()
             tile_shape = [1] * n_dims
             tile_shape[0] = len(labels)

@@ -1,0 +1,49 @@
+epochs:
+  type: value
+  value: 1912
+
+lr:
+  type: value
+  value: 0.0010773454579728057
+
+gamma_dag:
+  type: value
+  value: 0.08312338066981176
+
+max_iters:
+  type: value
+  value: 58
+
+epsilon:
+  type: value
+  value: 0
+
+temperature:
+  type: value
+  value: 0.06777341894709812
+
+dag_alpha:
+  type: value
+  value: 0.0040839538230620556
+
+cluster_size:
+  type: value
+  value: 5
+
+batch_size:
+  type: value
+  value: 7680
+
+gradient_max_norm:
+  type: value
+  value: 1.0
+
+weight_decay:
+  type: value
+  value: 0.0004
+
+label_smoothing:
+  type: value
+  value: 0.05
+
+

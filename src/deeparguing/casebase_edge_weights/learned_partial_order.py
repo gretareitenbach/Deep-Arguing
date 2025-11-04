@@ -22,6 +22,15 @@ class LearnedPartialOrder(ComputePartialOrder):
         self.comparison_func = comparison_func
         self.batch_size = batch_size
 
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        for feature_extractor in self.feature_extractors:
+            feature_extractor = cast(FeatureExtractor, feature_extractor)
+            if self.batch_size is None:
+                x = feature_extractor(x)
+            else:
+                x = self.split_apply_fe(x, feature_extractor, self.batch_size)
+        return x
+
     @override
     def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
 
@@ -29,36 +38,21 @@ class LearnedPartialOrder(ComputePartialOrder):
         # target (n, no_features)
         if target.ndim == 1:
             target = target.unsqueeze(0)
-
         if attacker.ndim == 1:
             attacker = attacker.unsqueeze(0)
 
-        # TODO: Dimension reshaping to support handling different size attackers/targets
-        # When dealing with newcases attacking the casebase: Need to handle this differently
-        reshape = False
+        # If they are the same object, avoid redundant feature extraction
+        if attacker is target:
+            attacker_emb = target_emb = self._extract_features(attacker)
+        else:
+            attacker_emb = self._extract_features(attacker)
+            target_emb = self._extract_features(target)
 
-        if attacker.shape[1] == 1 and target.shape[0] == 1:
-            attacker = attacker.squeeze(1)
-            target = target.squeeze(0)
-            reshape = True
+        attacker_emb = attacker_emb.unsqueeze(1)
+        target_emb = target_emb.unsqueeze(0)
 
-        for feature_extractor in self.feature_extractors:
-            feature_extractor = cast(FeatureExtractor, feature_extractor)
+        result = self.comparison_func(attacker_emb, target_emb).squeeze()
 
-            if self.batch_size == None:
-                attacker = feature_extractor(attacker)
-                target = feature_extractor(target)
-            else:
-                attacker = self.split_apply_fe(
-                    attacker, feature_extractor, self.batch_size
-                )
-                target = self.split_apply_fe(target, feature_extractor, self.batch_size)
-
-        if reshape:
-            attacker = attacker.unsqueeze(1)
-            target = target.unsqueeze(0)
-
-        result = self.comparison_func(attacker, target).squeeze()
         return result
 
     @override

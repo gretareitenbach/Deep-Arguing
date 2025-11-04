@@ -216,16 +216,8 @@ class GradualAACBR(torch.nn.Module):
         self, X_train: Tensor, y_train: Tensor
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
 
-        ndims = X_train.ndim
-        attackers_shape = [-1]*(ndims + 1)
-        attackers_shape[1] = len(X_train)
-
-        targets_shape = [-1]*(ndims + 1)
-        targets_shape[0] = len(X_train)
-
-        X_attackers = X_train.unsqueeze(1).expand(attackers_shape)
-        X_targets = X_train.unsqueeze(0).expand(targets_shape)
-
+        X_attackers = X_train
+        X_targets = X_train
 
         y_attackers = y_train.unsqueeze(1).expand(-1, len(y_train), -1)
         y_targets = y_train.unsqueeze(0).expand(len(y_train), -1, -1)
