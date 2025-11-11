@@ -131,6 +131,13 @@ def parse_command_line():
         help="Project Name",
     )
 
+    parser.add_argument(
+        "--log_val_loss",
+        "-lv",
+        action="store_true",
+        help="Log the validation loss"
+    )
+
     return parser.parse_args()
 
 

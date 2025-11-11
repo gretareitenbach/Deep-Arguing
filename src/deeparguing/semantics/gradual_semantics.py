@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 import torch
 from torch import Tensor
 
@@ -24,7 +25,7 @@ class GradualSemantics(ABC):
         Returns:
             Array-like
                 N x 1 aggregation vector.
-        
+
         Note:
             Strengths may be batched with a batch size B in dimension 0
             and the result should therefore have size B in dimension 0 too.
@@ -53,7 +54,7 @@ class GradualSemantics(ABC):
         Returns:
             Array-like
                 N x 1 strength vector.
-            
+
         Note:
             base_scores may be batched with a batch size B in dimension 0
             and the result should therefore have size B in dimension 0 too.
@@ -66,7 +67,6 @@ class GradualSemantics(ABC):
         """
         pass
 
-
     def forward(self, A: Tensor, base_scores: Tensor, strengths: Tensor):
         aggregations = self.aggregation_func(A, strengths)
         return self.influence_func(base_scores, aggregations)
@@ -76,7 +76,7 @@ class GradualSemantics(ABC):
         for _ in range(self.max_iters):
             next_strength = self.forward(A, base_scores, prev_strength)
             if torch.allclose(prev_strength, next_strength, atol=self.epsilon):
-                return next_strength  
+                return next_strength
 
             prev_strength = next_strength
         return prev_strength

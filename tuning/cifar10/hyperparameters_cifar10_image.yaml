@@ -4,7 +4,7 @@ epochs:
 
 lr:
   type: value
-  value: 0.0010773454579728057
+  value: 0.02
 
 gamma_dag:
   type: value
@@ -32,7 +32,9 @@ cluster_size:
 
 batch_size:
   type: value
-  value: 7680
+  value: 1500
+  # value: 4000
+  # value: 7680
 
 gradient_max_norm:
   type: value

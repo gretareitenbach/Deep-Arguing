@@ -43,7 +43,7 @@ class SimpleCNN(FeatureExtractor):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        return x
+        return x.squeeze()
 
     @override
     def get_output_features(self) -> int:

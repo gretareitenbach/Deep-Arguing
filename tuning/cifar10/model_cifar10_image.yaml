@@ -28,6 +28,7 @@ regularisers:
 trainer:
   type: class
   class_name: "SimpleTrainer"
+  # class_name: "ApproximateTrainer"
 
 build_casebase:
   type: class

@@ -93,25 +93,25 @@ class Trainer(metaclass=ABCMeta):
         loss: Tensor = criterion(predictions, y_target) + regulariser(model)
         loss.backward()
 
-        self.losses.append(loss.item())
+        # self.losses.append(loss.item())
         self.real_time_logger(loss.item())
-        ExperimentLogger.current().log_metrics({"loss": loss.item()})
+        ExperimentLogger.current().log_metrics({"loss": float(loss.item())})
 
         if gradient_max_norm is not None:
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=True
             )
 
-        grads: list[Tensor] = []
-        for param in model.parameters():
-            if param.grad is not None:
-                grads.append(param.grad.view(-1))
-        grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
-        self.grads_over_time.append(grads)
+        # grads: list[Tensor] = []
+        # for param in model.parameters():
+        #     if param.grad is not None:
+        #         grads.append(param.grad.view(-1))
+        # grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
+        # self.grads_over_time.append(grads)
 
         ExperimentLogger.current().log_metrics(
             {
-                f"Gradient {n}": torch.norm(p.grad.cpu())
+                f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
                 for n, p in model.named_parameters()
             }
         )
@@ -122,3 +122,35 @@ class Trainer(metaclass=ABCMeta):
             scheduler.step()
 
         return loss
+
+    def log_validation_loss(
+        self,
+        model: GradualAACBR,
+        batch_size: int | None,
+        X_val: Tensor,
+        y_val: Tensor,
+        criterion: torch.nn.Module,
+        regulariser: RegulariserType,
+    ):
+        n_samples = X_val.shape[0]
+        batch_size = batch_size if batch_size is not None else n_samples
+        model.eval()
+        val_loss_total = 0.0
+        num_batches = 0
+
+        with torch.no_grad():
+            for i in range(0, len(X_val), batch_size):
+                X_batch = X_val[i : i + batch_size]
+                y_batch = y_val[i : i + batch_size]
+
+                predictions = model(X_batch).squeeze()
+                y_target = torch.argmax(y_batch, dim=1)
+                batch_loss = criterion(predictions, y_target) + regulariser(model)
+
+                val_loss_total += batch_loss.item()
+                num_batches += 1
+
+        val_loss_avg = val_loss_total / num_batches if num_batches > 0 else float("nan")
+
+        model.train()  # restore training mode
+        return val_loss_avg

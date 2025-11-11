@@ -123,6 +123,7 @@ def run(project: str = "gradual-aa-cbr"):
                 disable_tqdm=args.disable_tqdm,
                 X_val=X_val,
                 y_val=y_val,
+                log_val_loss = args.log_val_loss,
             )
 
             model.eval()
