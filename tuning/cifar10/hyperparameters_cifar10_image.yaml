@@ -4,7 +4,8 @@ epochs:
 
 lr:
   type: value
-  value: 0.02
+  # value: 0.02
+  value: 0.001
 
 gamma_dag:
   type: value
@@ -13,10 +14,6 @@ gamma_dag:
 max_iters:
   type: value
   value: 58
-
-epsilon:
-  type: value
-  value: 0
 
 temperature:
   type: value
@@ -32,8 +29,8 @@ cluster_size:
 
 batch_size:
   type: value
-  value: 1500
-  # value: 4000
+  # value: 1500
+  value: 4000
   # value: 7680
 
 gradient_max_norm:

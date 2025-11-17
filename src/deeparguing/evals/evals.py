@@ -1,4 +1,5 @@
 import logging
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -27,6 +28,7 @@ def evaluate_model(
     y_default: Tensor,
     X_new_cases: Tensor,
     y_new_cases: Tensor,
+    batch_size: int | None = None,
     print_compute_graph: bool = False,
 ) -> Tuple[float, float, float, float, NDArray[...]]:
     """
@@ -72,9 +74,18 @@ def evaluate_model(
     """
     model.eval()
     model.fit(X_casebase, y_casebase, X_default, y_default)
-    final_strengths = model(X_new_cases)
 
-    y_predicted = final_strengths.cpu().detach().numpy()
+    n_samples = X_new_cases.shape[0]
+    batch_size = batch_size if batch_size is not None else n_samples
+
+    for i in range(0, len(X_new_cases), batch_size):
+        X_batch = X_new_cases[i : i + batch_size]
+        predictions = model(X_batch).squeeze().cpu().detach().numpy()
+        if i == 0:
+            y_predicted = predictions
+        else:
+            y_predicted = np.concat((y_predicted, predictions))
+
     y_predicted = np.argmax(y_predicted, axis=1)
     y_new_cases_orig = np.argmax(y_new_cases.cpu().detach().numpy(), axis=1)
 
@@ -101,7 +112,16 @@ def evaluate_model(
 
     return accuracy, precision, recall, f1, cm
 
-def print_results(accuracy: float, precision: float, recall: float, f1: float, cm: NDArray[Any], title: str, labels: list[str]):
+
+def print_results(
+    accuracy: float,
+    precision: float,
+    recall: float,
+    f1: float,
+    cm: NDArray[Any],
+    title: str,
+    labels: list[str],
+):
     results_title = "-" * 30 + f" RESULTS ON THE {title} SET " + "-" * 30
     logging.info(results_title)
     logging.info(
@@ -115,4 +135,3 @@ def print_results(accuracy: float, precision: float, recall: float, f1: float, c
     )
 
     logging.info(f"Confusion Matrix: \n{df}")
-

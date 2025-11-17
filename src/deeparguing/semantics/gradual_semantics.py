@@ -6,7 +6,7 @@ from torch import Tensor
 
 class GradualSemantics(ABC):
 
-    def __init__(self, max_iters: int, epsilon: float = 0) -> None:
+    def __init__(self, max_iters: int, epsilon: float | None = None) -> None:
         super().__init__()
         self.max_iters = max_iters
         self.epsilon = epsilon
@@ -75,8 +75,9 @@ class GradualSemantics(ABC):
         prev_strength = base_scores
         for _ in range(self.max_iters):
             next_strength = self.forward(A, base_scores, prev_strength)
-            if torch.allclose(prev_strength, next_strength, atol=self.epsilon):
-                return next_strength
+            if self.epsilon is not None:
+                if torch.allclose(prev_strength, next_strength, atol=self.epsilon):
+                    return next_strength
 
             prev_strength = next_strength
         return prev_strength

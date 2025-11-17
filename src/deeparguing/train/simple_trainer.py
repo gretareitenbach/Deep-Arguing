@@ -77,7 +77,9 @@ class SimpleTrainer(Trainer):
             pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
 
             if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg = self.log_validation_loss(model, batch_size, X_val, y_val, criterion, regulariser)
+                val_loss_avg = self.log_validation_loss(
+                    model, batch_size, X_val, y_val, criterion, regulariser
+                )
                 ExperimentLogger.current().log_metrics(
                     {
                         "loss_per_epoch": float(loss.item()),
@@ -89,4 +91,3 @@ class SimpleTrainer(Trainer):
                 ExperimentLogger.current().log_metrics(
                     {"loss_per_epoch": float(loss.item()), "epoch": epoch}
                 )
-

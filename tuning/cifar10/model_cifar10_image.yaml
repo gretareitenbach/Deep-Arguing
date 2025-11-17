@@ -100,9 +100,6 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
-    epsilon:
-      type: ref
-      value: epsilon
 
 partial_order:
   type: class

@@ -117,7 +117,7 @@ class RegulariserList(Regulariser):
     def forward(self, model: GradualAACBR):
         assert model.A != None
 
-        total = torch.tensor(0.0, device=model.device)
+        total = torch.zeros(1, device=model.device).squeeze()
 
         for reg_func, weight in self.regularisers:
             total += weight * reg_func(model)

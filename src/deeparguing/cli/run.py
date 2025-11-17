@@ -123,13 +123,22 @@ def run(project: str = "gradual-aa-cbr"):
                 disable_tqdm=args.disable_tqdm,
                 X_val=X_val,
                 y_val=y_val,
-                log_val_loss = args.log_val_loss,
+                log_val_loss=args.log_val_loss,
             )
+
+            batch_size = train_settings.get("batch_size", None)
 
             model.eval()
 
             acc, prec, rec, f1, cm = evaluate_model(
-                model, X_casebase, y_casebase, X_defaults, y_defaults, X_val, y_val
+                model,
+                X_casebase,
+                y_casebase,
+                X_defaults,
+                y_defaults,
+                X_val,
+                y_val,
+                batch_size=batch_size,
             )
             print_results(acc, prec, rec, f1, cm, "VALIDATION", labels)
             ExperimentLogger.current().log_metrics(
@@ -154,6 +163,7 @@ def run(project: str = "gradual-aa-cbr"):
                     y_defaults,
                     X_test,
                     y_test,
+                    batch_size=batch_size,
                 )
                 print_results(
                     acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels
@@ -171,6 +181,7 @@ def run(project: str = "gradual-aa-cbr"):
                     y_defaults,
                     X_train,
                     y_train,
+                    batch_size=batch_size,
                 )
                 print_results(
                     acc_train,

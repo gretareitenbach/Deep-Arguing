@@ -441,7 +441,10 @@ class GradualAACBR(torch.nn.Module):
         if return_all_strengths:
             return final_strengths
 
-        return final_strengths[:, self.default_indexes]
+        start = min(self.default_indexes)
+        end   = max(self.default_indexes) + 1
+
+        return final_strengths[:, start:end]
 
     def __batch_base_scores(self, base_scores: Tensor, batch_size: int) -> Tensor:
         base_scores = torch.tile(
