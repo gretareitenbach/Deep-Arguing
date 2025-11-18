@@ -7,7 +7,7 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 
 class SigmoidSemantics(GradualSemantics):
 
-    def __init__(self, max_iters: int, epsilon: float = 0) -> None:
+    def __init__(self, max_iters: int, epsilon: float | None = None) -> None:
         super().__init__(max_iters, epsilon)
 
     @override

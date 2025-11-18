@@ -1,0 +1,7 @@
+
+1. Make a flag for logging gradients in trainer.py
+2. Make a flag for logging loss in trainer.py
+3. Make a flag for logging loss in simple_trainera.py
+
+
+4. Make sure whenever you are indexes a GPU tensor using another tensor that the index tensor is also on GPU

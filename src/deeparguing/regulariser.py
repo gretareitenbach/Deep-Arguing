@@ -99,7 +99,8 @@ class DAGRegulariser(Regulariser):
         assert model.A != None
         A = self.filter_func(model.A)
         d = A.shape[0]
-        h = torch.trace(torch.matrix_exp(A * A)) - d
+        m = torch.matrix_exp(A * A)
+        h = torch.trace(m) - d
         result = h + self.alpha * h ** 2
         # result = 0.5 * self.rho * (h**2) + self.alpha * h
         # self.alpha = self.alpha * 1.005

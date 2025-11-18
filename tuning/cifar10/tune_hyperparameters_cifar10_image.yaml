@@ -3,8 +3,8 @@ epochs:
   tune_type: int
   params:
     name: { type: "value", value: "epochs" }
-    low: { type: "value", value: 500 }
-    high: { type: "value", value: 1500 }
+    low: { type: "value", value: 2000 }
+    high: { type: "value", value: 3000 }
     step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
@@ -60,7 +60,7 @@ temperature:
   params:
     name: { type: "value", value: "temperature" }
     low: { type: "value", value: 0.0005 }
-    high: { type: "value", value: 0.1 }
+    high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
 weight_decay:
