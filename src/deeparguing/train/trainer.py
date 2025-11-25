@@ -95,7 +95,7 @@ class Trainer(metaclass=ABCMeta):
 
         y_target = torch.argmax(y_new_cases, dim=1)
         with record_function("my_loss"):
-            loss: Tensor = criterion(predictions, y_target) 
+            loss: Tensor = criterion(predictions, y_target)
 
         with record_function("my_regulariser"):
             loss += regulariser(model)
@@ -111,7 +111,9 @@ class Trainer(metaclass=ABCMeta):
         with record_function("my_gradient_clip"):
             if gradient_max_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=True
+                    model.parameters(),
+                    max_norm=gradient_max_norm,
+                    error_if_nonfinite=False,
                 )
 
         # grads: list[Tensor] = []
@@ -122,12 +124,12 @@ class Trainer(metaclass=ABCMeta):
         # self.grads_over_time.append(grads)
 
         # with record_function("my_log_gradients"):
-            # ExperimentLogger.current().log_metrics(
-            #     {
-            #         f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
-            #         for n, p in model.named_parameters()
-            #     }
-            # )
+        # ExperimentLogger.current().log_metrics(
+        #     {
+        #         f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
+        #         for n, p in model.named_parameters()
+        #     }
+        # )
 
         with record_function("my_optimizer_step"):
             optimizer.step()

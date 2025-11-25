@@ -89,7 +89,7 @@ class ApproximateTrainer(Trainer):
 
             if gradient_max_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=True
+                    model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=False
                 )
 
             # grads: list[Tensor] = []

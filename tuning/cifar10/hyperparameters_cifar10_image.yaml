@@ -30,7 +30,7 @@ cluster_size:
 batch_size:
   type: value
   # value: 1500
-  value: 500
+  value: 250
   # value: 4000
   # value: 7680
 

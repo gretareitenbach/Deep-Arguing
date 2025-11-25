@@ -33,7 +33,6 @@ from deeparguing.train import Trainer
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")
-torch.autograd.set_detect_anomaly(True)
 
 def run(project: str = "gradual-aa-cbr"):
     def objective(trial: Trial | None = None):

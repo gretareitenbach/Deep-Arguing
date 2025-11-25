@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, Normalize
+from pykeops.torch import LazyTensor
 from torch import Tensor
 from torch.profiler import record_function
 
@@ -120,20 +121,20 @@ class GradualAACBR(torch.nn.Module):
 
         """
 
-        if len(X_train) != len(y_train):
-            raise (
-                Exception(
-                    f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"
-                )
-            )
-
-        if len(X_default) != len(y_default):
-            raise (
-                Exception(
-                    f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"
-                )
-            )
-
+        # if len(X_train) != len(y_train):
+        #     raise (
+        #         Exception(
+        #             f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"
+        #         )
+        #     )
+        #
+        # if len(X_default) != len(y_default):
+        #     raise (
+        #         Exception(
+        #             f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"
+        #         )
+        #     )
+        #
         self.A = None
 
         with record_function("my_prepare_default"):
@@ -173,7 +174,9 @@ class GradualAACBR(torch.nn.Module):
                     edge_weights_strict, y_attackers, y_targets, train_size
                 )
             with record_function("my_blocked_supports"):
-                blocked_supports = self.__minimal_supports(edge_weights_strict, batch_size)
+                blocked_supports = self.__minimal_supports(
+                    edge_weights_strict, batch_size
+                )
             with record_function("my_compute_supports"):
                 self.B = torch.mul(supports, blocked_supports)
         else:
@@ -181,7 +184,11 @@ class GradualAACBR(torch.nn.Module):
 
         with record_function("my_compute_symmetric"):
             symmetric_attacks = self.__symmetric_attacks(
-                X_attackers, X_targets, attackers_default_mask, train_size, differing_labels
+                X_attackers,
+                X_targets,
+                attackers_default_mask,
+                train_size,
+                differing_labels,
             )
 
         with record_function("my_compute_A"):
@@ -291,7 +298,9 @@ class GradualAACBR(torch.nn.Module):
                 )
 
         else:
-            symmetric_attacks = torch.zeros((train_size, train_size), device=X_attackers.device)
+            symmetric_attacks = torch.zeros(
+                (train_size, train_size), device=X_attackers.device
+            )
         return symmetric_attacks
 
     def _compute_blocked_product_batched(
@@ -320,15 +329,36 @@ class GradualAACBR(torch.nn.Module):
             # A_chunk -> (n_rows, 1, batch_size)
             # B_chunk -> (1, m, batch_size)
             # Then compute the product over the chunk dimension.
-            term = torch.prod(1 - A_chunk.unsqueeze(1) * B_chunk.unsqueeze(0), dim=-1)
+            term = self._compute_blocked_product(A_chunk, B_chunk)
             result = result * term
         return result
 
+    # def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
+    #     A = A.unsqueeze(1)  # Shape (n, 1, n)
+    #     B = B.unsqueeze(0)  # Shape (1, n, n)
+    #     # result = torch.prod(1 - (A * B), dim=2)
+    #     eps = 1e-10
+    #     term = 1 - (A * B)
+    #
+    #     # P = exp( sum( log(x) ) )
+    #     result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
+    #     return result
     def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
-        A = A.unsqueeze(1)  # Shape (n, 1, n)
-        B = B.unsqueeze(0)  # Shape (1, n, n)
-        result = torch.prod(1 - (A * B), dim=2)
-        return result
+        # A shape: (N, N) -> Wrap as LazyTensor (N, 1, N)
+        A_lazy = LazyTensor(A.unsqueeze(1))
+
+        # B shape: (N, N) -> Wrap as LazyTensor (1, N, N)
+        B_lazy = LazyTensor(B.unsqueeze(0))
+
+        # Symbolic math - no memory allocated yet!
+        # We want sum( log( 1 - A*B ) ) over dim 2
+        term = (1 - A_lazy * B_lazy) + 1e-10
+
+        # KeOps supports .log() and .sum() natively
+        # This creates a custom fused CUDA kernel compiled on the fly
+        result_log_sum = term.log().sum(dim=2)
+
+        return torch.exp(result_log_sum)
 
     def __minimal_supports(
         self, edge_weights_strict: Tensor, batch_size: int | None
@@ -396,7 +426,9 @@ class GradualAACBR(torch.nn.Module):
         X_train = torch.cat((X_train, X_default), dim=0)
         y_train = torch.cat((y_train, y_default), dim=0)
         default_index_end = len(X_train)
-        default_indexes = torch.arange(default_index_start, default_index_end, device=X_train.device)
+        default_indexes = torch.arange(
+            default_index_start, default_index_end, device=X_train.device
+        )
 
         return X_train, y_train, default_indexes
 

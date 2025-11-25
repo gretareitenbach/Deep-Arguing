@@ -5,3 +5,7 @@
 
 
 4. Make sure whenever you are indexes a GPU tensor using another tensor that the index tensor is also on GPU
+
+5. Change prod to log sum
+
+6. When gradient clipping - do not check for inf

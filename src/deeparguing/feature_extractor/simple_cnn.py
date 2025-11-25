@@ -53,7 +53,7 @@ class SimpleCNN(FeatureExtractor):
         self.fc1 = nn.Linear(4096 * 2, 4096 * 2)
         self.fc2 = nn.Linear(4096 * 2, 2048 * 2)
         self.fc3 = nn.Linear(2048 * 2, out_channels)
-        self.relu = nn.ReLU()
+        # self.relu = nn.ReLU()
 
     @override
     def forward(self, case: Tensor) -> Tensor:
@@ -65,26 +65,26 @@ class SimpleCNN(FeatureExtractor):
             B, H, W, C = case.shape
             case = case.reshape(B, C, H, W)
         x = case
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
+        x = F.relu(self.bn1(self.conv1(x))) 
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         x = self.maxpool(x)
 
-        x = self.relu(self.bn2(self.conv4(x)))
-        x = self.relu(self.conv5(x))
-        x = self.relu(self.conv6(x))
+        x = F.relu(self.bn2(self.conv4(x)))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
         x = self.maxpool(x)
         x = self.dropout(x)
 
-        x = self.relu(self.bn3(self.conv7(x)))
-        x = self.relu(self.conv8(x))
-        x = self.relu(self.conv9(x))
+        x = F.relu(self.bn3(self.conv7(x))) # This is where it was crashing
+        x = F.relu(self.conv8(x))
+        x = F.relu(self.conv9(x))
         x = self.maxpool(x)
         x = self.dropout(x)
 
         x = torch.flatten(x, start_dim=1)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
         x = self.dropout(x)
         x = self.fc3(x)
         return x.squeeze()

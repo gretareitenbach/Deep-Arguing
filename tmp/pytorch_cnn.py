@@ -16,7 +16,7 @@ transform = transforms.Compose(
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
 )
 
-batch_size = 500
+batch_size = 250
 
 # -------------------------------------------------------
 # Load training set normally (CPU) so transforms still work
