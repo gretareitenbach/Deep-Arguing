@@ -6,7 +6,6 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from torch.profiler import record_function
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
@@ -43,6 +42,8 @@ class Trainer(metaclass=ABCMeta):
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
+        log_val_loss: bool =False,
+        log_gradients: bool = False,
     ):
         pass
 
@@ -77,62 +78,43 @@ class Trainer(metaclass=ABCMeta):
         regulariser: RegulariserType = lambda _: 0,
         scheduler: LRScheduler | None = None,
         gradient_max_norm: float | None = None,
+        log_gradients: bool = False,
     ) -> Tensor:
 
         # If in the future we have to overwrite train_step for whatever reason,
         # consider using a strategy pattern instead of inheritance
 
-        with record_function("my_zero_grad"):
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
         # TODO: consider efficiency issues with having to rebuild each time
         # Find a way to accumulate gradients update only when necessary?
-        with record_function("my_fit"):
-            model.fit(X_casebase, y_casebase, X_default, y_default)
+        model.fit(X_casebase, y_casebase, X_default, y_default)
 
-        with record_function("my_forward"):
-            predictions = model(X_new_cases).squeeze()
+        predictions = model(X_new_cases).squeeze()
 
         y_target = torch.argmax(y_new_cases, dim=1)
-        with record_function("my_loss"):
-            loss: Tensor = criterion(predictions, y_target)
+        loss: Tensor = criterion(predictions, y_target)
 
-        with record_function("my_regulariser"):
-            loss += regulariser(model)
+        loss += regulariser(model)
 
-        with record_function("my_backward"):
-            loss.backward()
+        loss.backward()
 
-        # self.losses.append(loss.item())
-        # with record_function("my_log_loss"):
-        #     self.real_time_logger(loss.item())
-        #     ExperimentLogger.current().log_metrics({"loss": float(loss.item())})
+        if gradient_max_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                max_norm=gradient_max_norm,
+                error_if_nonfinite=False,
+            )
 
-        with record_function("my_gradient_clip"):
-            if gradient_max_norm is not None:
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    max_norm=gradient_max_norm,
-                    error_if_nonfinite=False,
-                )
+        if log_gradients:
+            ExperimentLogger.current().log_metrics(
+                {
+                    f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
+                    for n, p in model.named_parameters()
+                }
+            )
 
-        # grads: list[Tensor] = []
-        # for param in model.parameters():
-        #     if param.grad is not None:
-        #         grads.append(param.grad.view(-1))
-        # grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
-        # self.grads_over_time.append(grads)
-
-        # with record_function("my_log_gradients"):
-        # ExperimentLogger.current().log_metrics(
-        #     {
-        #         f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
-        #         for n, p in model.named_parameters()
-        #     }
-        # )
-
-        with record_function("my_optimizer_step"):
-            optimizer.step()
+        optimizer.step()
 
         if scheduler is not None:
             scheduler.step()

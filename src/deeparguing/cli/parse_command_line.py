@@ -138,6 +138,13 @@ def parse_command_line():
         help="Log the validation loss"
     )
 
+    parser.add_argument(
+        "--log_gradients",
+        "-lg",
+        action="store_true",
+        help="Log the gradients during training"
+    )
+
     return parser.parse_args()
 
 

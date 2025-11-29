@@ -196,9 +196,9 @@ net = Net().to(device)
 
 import torch.optim as optim
 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-# optimizer = optim.AdamW(net.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+# optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.AdamW(net.parameters(), lr=0.001, weight_decay=0.0004)
 
 epochs = 1
 
@@ -232,6 +232,13 @@ with torch.profiler.profile(
                     loss = criterion(outputs, labels)
                 with record_function("my_backward"):
                     loss.backward()
+
+                with record_function("my_gradient_clip"):
+                        torch.nn.utils.clip_grad_norm_(
+                            net.parameters(),
+                            max_norm=1.0,
+                            error_if_nonfinite=False,
+                        )
                 with record_function("my_step"):
                     optimizer.step()
     

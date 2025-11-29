@@ -28,7 +28,6 @@ regularisers:
 trainer:
   type: class
   class_name: "SimpleTrainer"
-  # class_name: "ApproximateTrainer"
 
 build_casebase:
   type: class
@@ -67,9 +66,9 @@ train_settings:
         weight_decay:
           type: ref
           value: "weight_decay"
-    # regulariser:
-    #   type: ref
-    #   value: "regularisers"
+    regulariser:
+      type: ref
+      value: "regularisers"
     batch_size:
       type: ref
       value: "batch_size"

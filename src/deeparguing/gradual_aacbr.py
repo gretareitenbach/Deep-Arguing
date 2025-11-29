@@ -6,9 +6,7 @@ import numpy as np
 import torch
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, Normalize
-from pykeops.torch import LazyTensor
 from torch import Tensor
-from torch.profiler import record_function
 
 from deeparguing.base_scores.compute_base_scores import BaseScoreType
 from deeparguing.casebase_edge_weights.compute_partial_order import \
@@ -121,79 +119,66 @@ class GradualAACBR(torch.nn.Module):
 
         """
 
-        # if len(X_train) != len(y_train):
-        #     raise (
-        #         Exception(
-        #             f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"
-        #         )
-        #     )
-        #
-        # if len(X_default) != len(y_default):
-        #     raise (
-        #         Exception(
-        #             f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"
-        #         )
-        #     )
-        #
+        if len(X_train) != len(y_train):
+            raise (
+                Exception(
+                    f"Length of X_train must match length of y_train. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}"
+                )
+            )
+
+        if len(X_default) != len(y_default):
+            raise (
+                Exception(
+                    f"Length of X_default must match length of y_default. X_default shape: {X_default.shape}, y_default shape: {y_default.shape}"
+                )
+            )
+
         self.A = None
 
-        with record_function("my_prepare_default"):
-            X_train, y_train, default_indexes, indexes, attackers_default_mask = (
-                self.__prepare_default(X_train, y_train, X_default, y_default)
-            )
-        with record_function("my_prepare_casebase"):
-            X_attackers, X_targets, y_attackers, y_targets = self.__prepare_casebase(
-                X_train, y_train
-            )
+        X_train, y_train, default_indexes, indexes, attackers_default_mask = (
+            self.__prepare_default(X_train, y_train, X_default, y_default)
+        )
+        X_attackers, X_targets, y_attackers, y_targets = self.__prepare_casebase(
+            X_train, y_train
+        )
 
         train_size = len(X_train)
-        with record_function("my_casebase_ew_s"):
-            edge_weights_strict = self.__casebase_edge_weights_strict(
-                X_attackers, X_targets, train_size
+        edge_weights_strict = self.__casebase_edge_weights_strict(
+            X_attackers, X_targets, train_size
+        )
+
+        if self.defaults_not_attack:
+            edge_weights_strict = torch.where(
+                attackers_default_mask, 0, edge_weights_strict
             )
 
-        with record_function("my_defaults_not_attack"):
-            if self.defaults_not_attack:
-                edge_weights_strict = torch.where(
-                    attackers_default_mask, 0, edge_weights_strict
-                )
+        attacks, differing_labels = self.__potential_attacks(
+            edge_weights_strict, y_attackers, y_targets, train_size
+        )
 
-        with record_function("my_potential_attackers"):
-            attacks, differing_labels = self.__potential_attacks(
-                edge_weights_strict, y_attackers, y_targets, train_size
-            )
-
-        with record_function("my_blocked_attackers"):
-            blocked_attacks = self.__minimal_attacks(
-                y_train, edge_weights_strict, attacks, indexes, batch_size
-            )
+        blocked_attacks = self.__minimal_attacks(
+            y_train, edge_weights_strict, attacks, indexes, batch_size
+        )
 
         if self.use_supports:
-            with record_function("my_potential_suppoersts"):
-                supports, _ = self.__potential_supports(
-                    edge_weights_strict, y_attackers, y_targets, train_size
-                )
-            with record_function("my_blocked_supports"):
-                blocked_supports = self.__minimal_supports(
-                    edge_weights_strict, batch_size
-                )
-            with record_function("my_compute_supports"):
-                self.B = torch.mul(supports, blocked_supports)
+            supports, _ = self.__potential_supports(
+                edge_weights_strict, y_attackers, y_targets, train_size
+            )
+            blocked_supports = self.__minimal_supports(edge_weights_strict, batch_size)
+            self.B = torch.mul(supports, blocked_supports)
         else:
             self.B = torch.zeros_like(edge_weights_strict)
 
-        with record_function("my_compute_symmetric"):
-            symmetric_attacks = self.__symmetric_attacks(
-                X_attackers,
-                X_targets,
-                attackers_default_mask,
-                train_size,
-                differing_labels,
-            )
+        symmetric_attacks = self.__symmetric_attacks(
+            X_attackers,
+            X_targets,
+            attackers_default_mask,
+            train_size,
+            differing_labels,
+        )
 
-        with record_function("my_compute_A"):
-            self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks)
-            self.A = self.A + self.B
+        self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks)
+        self.A = self.A + self.B
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
@@ -333,32 +318,16 @@ class GradualAACBR(torch.nn.Module):
             result = result * term
         return result
 
-    # def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
-    #     A = A.unsqueeze(1)  # Shape (n, 1, n)
-    #     B = B.unsqueeze(0)  # Shape (1, n, n)
-    #     # result = torch.prod(1 - (A * B), dim=2)
-    #     eps = 1e-10
-    #     term = 1 - (A * B)
-    #
-    #     # P = exp( sum( log(x) ) )
-    #     result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
-    #     return result
     def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
-        # A shape: (N, N) -> Wrap as LazyTensor (N, 1, N)
-        A_lazy = LazyTensor(A.unsqueeze(1))
+        A = A.unsqueeze(1)  # Shape (n, 1, n)
+        B = B.unsqueeze(0)  # Shape (1, n, n)
+        # result = torch.prod(1 - (A * B), dim=2)
+        eps = 1e-10
+        term = 1 - (A * B)
 
-        # B shape: (N, N) -> Wrap as LazyTensor (1, N, N)
-        B_lazy = LazyTensor(B.unsqueeze(0))
-
-        # Symbolic math - no memory allocated yet!
-        # We want sum( log( 1 - A*B ) ) over dim 2
-        term = (1 - A_lazy * B_lazy) + 1e-10
-
-        # KeOps supports .log() and .sum() natively
-        # This creates a custom fused CUDA kernel compiled on the fly
-        result_log_sum = term.log().sum(dim=2)
-
-        return torch.exp(result_log_sum)
+        # P = exp( sum( log(x) ) )
+        result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
+        return result
 
     def __minimal_supports(
         self, edge_weights_strict: Tensor, batch_size: int | None
@@ -466,19 +435,13 @@ class GradualAACBR(torch.nn.Module):
             raise (Exception("Ensure the model has been fit first."))
         batch_size = new_cases.shape[0]
 
-        with record_function("my_compute_base_scores"):
-            base_scores = self.compute_base_scores(self.X_train)  # (n)
-        with record_function("my_batch_base_scores"):
-            base_scores = self.__batch_base_scores(base_scores, batch_size)
-        with record_function("my_new_case_influence"):
-            base_scores = self.__new_case_influence(
-                self.X_train, base_scores, new_cases
-            )
+        base_scores = self.compute_base_scores(self.X_train)  # (n)
+        base_scores = self.__batch_base_scores(base_scores, batch_size)
+        base_scores = self.__new_case_influence(self.X_train, base_scores, new_cases)
 
         A = self.post_process_func(self.A)
         assert A.shape == self.A.shape
-        with record_function("my_gradual_semantics"):
-            strengths = self.gradual_semantics(A, base_scores)
+        strengths = self.gradual_semantics(A, base_scores)
 
         # TODO: Check if this is necessary:
         # final_strengths = strengths[-1].squeeze()
@@ -489,11 +452,7 @@ class GradualAACBR(torch.nn.Module):
         if return_all_strengths:
             return final_strengths
 
-        with record_function("my_return_final_strength"):
-            # start = torch.min(self.default_indexes)
-            # end = torch.max(self.default_indexes) + 1
-
-            return final_strengths[:, self.default_indexes]
+        return final_strengths[:, self.default_indexes]
 
     def __batch_base_scores(self, base_scores: Tensor, batch_size: int) -> Tensor:
         base_scores = torch.tile(

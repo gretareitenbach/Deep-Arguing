@@ -11,8 +11,6 @@ from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
 
-from torch.profiler import record_function
-
 
 class SimpleTrainer(Trainer):
 
@@ -43,6 +41,7 @@ class SimpleTrainer(Trainer):
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
+        log_gradients: bool = False,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
@@ -50,54 +49,45 @@ class SimpleTrainer(Trainer):
         n_samples = X_new_cases.shape[0]
 
         batch_size = batch_size if batch_size is not None else n_samples
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-            on_trace_ready=torch.profiler.tensorboard_trace_handler("./profiler_logs"),
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=False,  # since with_stack=True caused segfault
-        ) as prof:
-            for epoch in pbar:
-                permutation = torch.randperm(n_samples, device=model.device)
+        for epoch in pbar:
+            permutation = torch.randperm(n_samples, device=model.device)
 
-                for i in range(0, n_samples, batch_size):
-                    with record_function("my_index_batch"):
-                        indices = permutation[i : i + batch_size]
-                        batch_X_new_cases = X_new_cases[indices]
-                        batch_y_new_cases = y_new_cases[indices]
-                    with record_function("my_train_step"):
-                       loss = self._train_step(
-                           model,
-                           X_casebase,
-                           y_casebase,
-                           batch_X_new_cases,
-                           batch_y_new_cases,
-                           X_default,
-                           y_default,
-                           optimizer,
-                           criterion,
-                           regulariser=regulariser,
-                           scheduler=scheduler,
-                           gradient_max_norm=gradient_max_norm,
-                       )
+            for i in range(0, n_samples, batch_size):
+                indices = permutation[i : i + batch_size]
+                batch_X_new_cases = X_new_cases[indices]
+                batch_y_new_cases = y_new_cases[indices]
+                loss = self._train_step(
+                    model,
+                    X_casebase,
+                    y_casebase,
+                    batch_X_new_cases,
+                    batch_y_new_cases,
+                    X_default,
+                    y_default,
+                    optimizer,
+                    criterion,
+                    regulariser=regulariser,
+                    scheduler=scheduler,
+                    gradient_max_norm=gradient_max_norm,
+                    log_gradients=log_gradients,
+                )
 
-                prof.step()
-            # assert loss
+            assert loss
 
-            # pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
+            pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(loss.item(), 6)}")
 
-            # if log_val_loss and X_val is not None and y_val is not None:
-            #     val_loss_avg = self.log_validation_loss(
-            #         model, batch_size, X_val, y_val, criterion, regulariser
-            #     )
-            #     ExperimentLogger.current().log_metrics(
-            #         {
-            #             "loss_per_epoch": float(loss.item()),
-            #             "epoch": epoch,
-            #             "val_loss_per_epoch": float(val_loss_avg),
-            #         }
-            #     )
-            # else:
-            #     ExperimentLogger.current().log_metrics(
-            #         {"loss_per_epoch": float(loss.item()), "epoch": epoch}
-            #     )
+            if log_val_loss and X_val is not None and y_val is not None:
+                val_loss_avg = self.log_validation_loss(
+                    model, batch_size, X_val, y_val, criterion, regulariser
+                )
+                ExperimentLogger.current().log_metrics(
+                    {
+                        "loss_per_epoch": float(loss.item()),
+                        "epoch": epoch,
+                        "val_loss_per_epoch": float(val_loss_avg),
+                    }
+                )
+            else:
+                ExperimentLogger.current().log_metrics(
+                    {"loss_per_epoch": float(loss.item()), "epoch": epoch}
+                )

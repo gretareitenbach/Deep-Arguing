@@ -123,6 +123,7 @@ def run(project: str = "gradual-aa-cbr"):
                 X_val=X_val,
                 y_val=y_val,
                 log_val_loss=args.log_val_loss,
+                log_gradients=args.log_gradients,
             )
 
             batch_size = train_settings.get("batch_size", None)

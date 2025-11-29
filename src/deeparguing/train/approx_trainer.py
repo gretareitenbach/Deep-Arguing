@@ -41,6 +41,7 @@ class ApproximateTrainer(Trainer):
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
+        log_gradients: bool = False,
     ):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
@@ -49,35 +50,31 @@ class ApproximateTrainer(Trainer):
 
         batch_size = batch_size if batch_size is not None else n_samples
 
-
         for epoch in pbar:
             permutation = torch.randperm(n_samples)
             total_loss = None
-
 
             optimizer.zero_grad()
             model.fit(X_casebase, y_casebase, X_default, y_default)
 
             for i in range(0, n_samples, batch_size):
-                # print(f"BATCH {i/batch_size} out of {n_samples/batch_size}")
                 indices = permutation[i : i + batch_size]
                 batch_X_new_cases = X_new_cases[indices]
                 batch_y_new_cases = y_new_cases[indices]
-
 
                 predictions = model(batch_X_new_cases).squeeze()
 
                 y_target = torch.argmax(batch_y_new_cases, dim=1)
                 loss: Tensor = criterion(predictions, y_target) + regulariser(model)
-                
+
                 if total_loss is None:
                     total_loss = loss
                 else:
-                    total_loss = total_loss + loss.item()
+                    total_loss = total_loss + loss
 
-            assert(total_loss)
+            assert total_loss
             total_loss = total_loss / (n_samples / batch_size)
-            
+
             total_loss.backward()
 
             optimizer.step()
@@ -85,34 +82,29 @@ class ApproximateTrainer(Trainer):
             if scheduler is not None:
                 scheduler.step()
 
-
-
             if gradient_max_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=gradient_max_norm, error_if_nonfinite=False
+                    model.parameters(),
+                    max_norm=gradient_max_norm,
+                    error_if_nonfinite=False,
                 )
 
-            # grads: list[Tensor] = []
-            # for param in model.parameters():
-            #     if param.grad is not None:
-            #         grads.append(param.grad.view(-1))
-            # grads = torch.cat(grads).detach().cpu()  # shape: (5 + 1) if bias is included
-            # self.grads_over_time.append(grads)
+            if log_gradients:
+                ExperimentLogger.current().log_metrics(
+                    {
+                        f"Gradient {n}": torch.norm(p.grad.cpu())
+                        for n, p in model.named_parameters()
+                    }
+                )
 
-            ExperimentLogger.current().log_metrics(
-                {
-                    f"Gradient {n}": torch.norm(p.grad.cpu())
-                    for n, p in model.named_parameters()
-                }
+            pbar.set_description(
+                f"Epoch {epoch + 1}, Loss: {round(total_loss.item(), 6)}"
             )
 
-
-
-
-            pbar.set_description(f"Epoch {epoch + 1}, Loss: {round(total_loss.item(), 6)}")
-
             if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg = self.log_validation_loss(model, batch_size, X_val, y_val, criterion, regulariser)
+                val_loss_avg = self.log_validation_loss(
+                    model, batch_size, X_val, y_val, criterion, regulariser
+                )
                 ExperimentLogger.current().log_metrics(
                     {
                         "loss_per_epoch": total_loss.item(),
