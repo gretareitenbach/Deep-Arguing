@@ -12,8 +12,15 @@ class SimpleCNN(FeatureExtractor):
 
     # Code adpated from https://github.com/pytorch/examples/blob/main/mnist/main.py
 
-    def __init__(self, in_channels: int = 1, out_channels: int = 1):
-        super(SimpleCNN, self).__init__(no_features=out_channels)
+    def __init__(
+        self,
+        in_channels: int = 1,
+        output_features: int = 1,
+        weights_path: str | None = None,
+        freeze_weights: bool = False,
+        dropout: float = 0.2
+    ):
+        super(SimpleCNN, self).__init__(no_features=output_features)
 
         self.conv1 = nn.Conv2d(
             in_channels=in_channels, out_channels=32 * 2, kernel_size=3, padding=1
@@ -48,12 +55,20 @@ class SimpleCNN(FeatureExtractor):
         self.bn3 = nn.BatchNorm2d(256 * 2)
 
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.dropout = nn.Dropout2d(0.2)
+        self.dropout = nn.Dropout2d(dropout)
 
         self.fc1 = nn.Linear(4096 * 2, 4096 * 2)
         self.fc2 = nn.Linear(4096 * 2, 2048 * 2)
-        self.fc3 = nn.Linear(2048 * 2, out_channels)
-        # self.relu = nn.ReLU()
+        self.fc3 = nn.Linear(2048 * 2, output_features)
+
+
+        if weights_path is not None:
+            self.load_state_dict(torch.load(weights_path))
+
+        if freeze_weights:
+            for param in self.parameters():
+                param.requires_grad = False
+
 
     @override
     def forward(self, case: Tensor) -> Tensor:
@@ -65,7 +80,7 @@ class SimpleCNN(FeatureExtractor):
             B, H, W, C = case.shape
             case = case.reshape(B, C, H, W)
         x = case
-        x = F.relu(self.bn1(self.conv1(x))) 
+        x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = self.maxpool(x)
@@ -76,7 +91,7 @@ class SimpleCNN(FeatureExtractor):
         x = self.maxpool(x)
         x = self.dropout(x)
 
-        x = F.relu(self.bn3(self.conv7(x))) # This is where it was crashing
+        x = F.relu(self.bn3(self.conv7(x)))  # This is where it was crashing
         x = F.relu(self.conv8(x))
         x = F.relu(self.conv9(x))
         x = self.maxpool(x)
