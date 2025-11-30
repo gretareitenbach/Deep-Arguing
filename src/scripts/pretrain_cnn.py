@@ -14,14 +14,15 @@ from deeparguing.helper import load_torch_images, split_data
 # ------------------------------
 config = {
     "dataset": "CIFAR10",
-    "batch_size": 256,
+    "batch_size": 128,
+    "dropout": 0.4,
     "output_features": 10,
     "seed": 42,
-    "epochs": 30,
-    "lr": 0.0005,
+    "epochs": 15,
+    "lr": 0.00016,
     "weight_decay": 0.001,
     "label_smoothing": 0.05,
-    "grad_clip": 1.0,
+    "grad_clip": 0.5,
 }
 
 wandb.init(project="deeparguing-cnn", config=config)
@@ -40,7 +41,7 @@ batch_size = config["batch_size"]
 # ------------------------------
 # Model setup
 # ------------------------------
-model = SimpleCNN(in_channels=3, output_features=config["output_features"]).to(device)
+model = SimpleCNN(in_channels=3, output_features=config["output_features"], dropout = config["dropout"]).to(device)
 classification_head = nn.Linear(config["output_features"], 10).to(device)
 
 all_params = list(model.parameters()) + list(classification_head.parameters())
@@ -82,9 +83,19 @@ for epoch in pbar:
         optimizer.step()
 
     # Log training loss
-    wandb.log({"train_loss": loss.item()})
+    with torch.no_grad():
+        total_loss = 0
+        for i in range(0, X_val.shape[0], batch_size):
+            xb = X_val[i : i + batch_size]
+            yb = y_val[i : i + batch_size]
+    
+            out = classification_head(F.relu(model(xb)))
+            total_loss += criterion(out, yb).item() * len(xb)
+        avg_loss = total_loss / len(X_val)
 
-    pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}")
+    wandb.log({"train_loss": loss.item(), "val_loss": avg_loss})
+
+    pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val loss: {round(avg_loss, 6)}")
 
 print("Finished Training")
 
@@ -103,7 +114,6 @@ with torch.no_grad():
         yb = y_val[i : i + batch_size]
 
         out = classification_head(F.relu(model(xb)))
-        loss = criterion(out, yb)
 
         preds = torch.argmax(out, dim=1).cpu().numpy()
         labs = torch.argmax(yb, dim=1).cpu().numpy()

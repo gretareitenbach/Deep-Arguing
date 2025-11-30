@@ -1,4 +1,4 @@
-from typing import override
+from typing import Optional, override
 
 import torch
 import torch.nn as nn
@@ -10,98 +10,89 @@ from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
 
 class SimpleCNN(FeatureExtractor):
 
-    # Code adpated from https://github.com/pytorch/examples/blob/main/mnist/main.py
-
     def __init__(
         self,
         in_channels: int = 1,
         output_features: int = 1,
-        weights_path: str | None = None,
+        dropout: float = 0.2,
+        weights_path: Optional[str] = None,
         freeze_weights: bool = False,
-        dropout: float = 0.2
     ):
         super(SimpleCNN, self).__init__(no_features=output_features)
 
-        self.conv1 = nn.Conv2d(
-            in_channels=in_channels, out_channels=32 * 2, kernel_size=3, padding=1
-        )
-        self.conv2 = nn.Conv2d(
-            in_channels=32 * 2, out_channels=64 * 2, kernel_size=3, padding=1
-        )
-        self.conv3 = nn.Conv2d(
-            in_channels=64 * 2, out_channels=64 * 2, kernel_size=3, padding=1
-        )
-        self.conv4 = nn.Conv2d(
-            in_channels=64 * 2, out_channels=128 * 2, kernel_size=3, padding=1
-        )
-        self.conv5 = nn.Conv2d(
-            in_channels=128 * 2, out_channels=128 * 2, kernel_size=3, padding=1
-        )
-        self.conv6 = nn.Conv2d(
-            in_channels=128 * 2, out_channels=128 * 2, kernel_size=3, padding=1
-        )
-        self.conv7 = nn.Conv2d(
-            in_channels=128 * 2, out_channels=256 * 2, kernel_size=3, padding=1
-        )
-        self.conv8 = nn.Conv2d(
-            in_channels=256 * 2, out_channels=256 * 2, kernel_size=3, padding=1
-        )
-        self.conv9 = nn.Conv2d(
-            in_channels=256 * 2, out_channels=256 * 2, kernel_size=3, padding=1
-        )
+        # ----------------------
+        # Convolutional feature extractor
+        # ----------------------
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
 
-        self.bn1 = nn.BatchNorm2d(32 * 2)
-        self.bn2 = nn.BatchNorm2d(128 * 2)
-        self.bn3 = nn.BatchNorm2d(256 * 2)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.conv5 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
+        self.conv6 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
 
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(256)
+
+        self.maxpool = nn.MaxPool2d(2, 2)
         self.dropout = nn.Dropout2d(dropout)
 
-        self.fc1 = nn.Linear(4096 * 2, 4096 * 2)
-        self.fc2 = nn.Linear(4096 * 2, 2048 * 2)
-        self.fc3 = nn.Linear(2048 * 2, output_features)
+        # ----------------------
+        # Final conv before GAP
+        # ----------------------
+        self.conv_final = nn.Conv2d(256, 512, kernel_size=3, padding=1)
+        self.bn_final = nn.BatchNorm2d(512)
 
+        # ----------------------
+        # Global Average Pooling + Linear Projection
+        # ----------------------
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc_out = nn.Linear(512, output_features)
 
+        # ----------------------
+        # Load & freeze
+        # ----------------------
         if weights_path is not None:
             self.load_state_dict(torch.load(weights_path))
 
         if freeze_weights:
-            for param in self.parameters():
-                param.requires_grad = False
-
+            for p in self.parameters():
+                p.requires_grad = False
 
     @override
     def forward(self, case: Tensor) -> Tensor:
-        # if case.ndim == 3:
-        #     B, H, W = case.shape
-        #     case = case.unsqueeze(1)
 
-        if case.ndim == 4:
+        # Support both NHWC and NCHW
+        if case.ndim == 4 and case.shape[-1] in [1, 3]:
             B, H, W, C = case.shape
             case = case.reshape(B, C, H, W)
+
         x = case
+
+        # Block 1
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = self.maxpool(x)
 
+        # Block 2
         x = F.relu(self.bn2(self.conv4(x)))
         x = F.relu(self.conv5(x))
         x = F.relu(self.conv6(x))
         x = self.maxpool(x)
         x = self.dropout(x)
 
-        x = F.relu(self.bn3(self.conv7(x)))  # This is where it was crashing
-        x = F.relu(self.conv8(x))
-        x = F.relu(self.conv9(x))
-        x = self.maxpool(x)
+        # Final conv block
+        x = F.relu(self.bn_final(self.conv_final(x)))
         x = self.dropout(x)
 
-        x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
+        # Global Average Pooling → [B, 512]
+        x = self.gap(x)
+        x = torch.flatten(x, 1)
+
+        # Linear projection
+        x = self.fc_out(x)
+
         return x.squeeze()
 
     @override

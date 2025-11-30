@@ -137,13 +137,13 @@ if __name__ == "__main__":
         "method": "bayes",
         "metric": {"name": "final_accuracy", "goal": "maximize"},
         "parameters": {
-            "lr": {"min": 0.0001, "max": 0.002},
+            "lr": {"min": 0.0001, "max": 0.0005},
             "weight_decay": {"values": [0.0005, 0.001, 0.01]},
             "batch_size": {"values": [128, 256]},
             "dropout": {"values": [0.2, 0.3, 0.4]},
-            "epochs": {"values": [20, 30, 50]},
+            "epochs": {"values": [15, 20, 30, 50, 100]},
             "label_smoothing": {"values": [0.0, 0.05]},
-            "grad_clip": {"values": [0.5, 1.0]},
+            "grad_clip": {"values": [0.5, 1.0, 5.0]},
         },
     }
 
