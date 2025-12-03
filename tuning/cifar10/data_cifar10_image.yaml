@@ -32,4 +32,4 @@ data_pre_process:
   value:
     pre_process_func:
       type: function
-      value: "normalize_data"
+      value: "no_normalize"

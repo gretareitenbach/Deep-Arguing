@@ -14,15 +14,15 @@ from deeparguing.helper import load_torch_images, split_data
 # ------------------------------
 config = {
     "dataset": "CIFAR10",
-    "batch_size": 128,
+    "batch_size": 256,
     "dropout": 0.4,
-    "output_features": 10,
+    "output_features": 64,
     "seed": 42,
     "epochs": 15,
-    "lr": 0.00016,
+    "lr": 0.00026,
     "weight_decay": 0.001,
     "label_smoothing": 0.05,
-    "grad_clip": 0.5,
+    "grad_clip": 5.0,
 }
 
 wandb.init(project="deeparguing-cnn", config=config)
@@ -143,7 +143,7 @@ wandb.log({"confusion_matrix": wandb.plot.confusion_matrix(
 )})
 
 
-save_path = "simple_cnn.pt"
+save_path = "simple_cnn_64.pt"
 torch.save(model.state_dict(), save_path)
 
 wandb.finish()

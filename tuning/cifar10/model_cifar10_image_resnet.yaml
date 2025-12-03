@@ -77,20 +77,11 @@ train_settings:
 
 feature_weights:
   type: class
-  class_name: "SimpleCNN"
+  class_name: "ResNetCIFAR"
   params:
-    in_channels:
-      type: value
-      value: 3
-    output_features:
-      type: value
-      value: 64
-    dropout:
-      type: value
-      value: 0.0
     weights_path:
       type: value
-      value: "simple_cnn_64.pt"
+      value: "resnet_30.pt"
     freeze_weights:
       type: value
       value: True
@@ -106,7 +97,7 @@ feature_weights_1:
       type: list
       value:
         [
-          { type: value, value: 32 },
+          # { type: value, value: 32 },
           # { type: value, value: 32 },
           # { type: value, value: 32 },
         ]
@@ -125,7 +116,7 @@ feature_weights_2:
       type: list
       value:
         [
-          { type: value, value: 32 },
+          # { type: value, value: 32 },
           # { type: value, value: 32 },
           # { type: value, value: 32 },
         ]

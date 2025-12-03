@@ -62,10 +62,8 @@ class SimpleCNN(FeatureExtractor):
     @override
     def forward(self, case: Tensor) -> Tensor:
 
-        # Support both NHWC and NCHW
         if case.ndim == 4 and case.shape[-1] in [1, 3]:
-            B, H, W, C = case.shape
-            case = case.reshape(B, C, H, W)
+            case = case.permute(0, 3, 1, 2).contiguous()
 
         x = case
 

@@ -6,6 +6,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from torch import Tensor
+from torchvision import transforms
 from torchvision.datasets import *
 
 
@@ -107,6 +108,16 @@ def load_torch_images(
         X = torch.from_numpy(X)
     X = X.float()
 
+    if len(labels) > 0:
+        mask = torch.isin(y, torch.tensor(labels, device=y.device))
+        X = X[mask]
+        y = y[mask]
+
+    X = X.permute(0, 3, 1, 2).float() / 255.0
+    X = (
+        X - torch.tensor([0.4914, 0.4822, 0.4465])[None, :, None, None]
+    ) / torch.tensor([0.2470, 0.2435, 0.2616])[None, :, None, None]
+
     if as_vector:
         X = X.view(X.size(0), -1)
 
@@ -115,11 +126,6 @@ def load_torch_images(
         indices = torch.randperm(X.size(0))
         X = X[indices]
         y = y[indices]
-
-    if len(labels) > 0:
-        mask = torch.isin(y, torch.tensor(labels, device=y.device))
-        X = X[mask]
-        y = y[mask]
 
     y = torch.nn.functional.one_hot(y, num_classes=len(torch.unique(y))).float()
 

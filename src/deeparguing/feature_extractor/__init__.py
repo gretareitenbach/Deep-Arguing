@@ -4,6 +4,7 @@ from .mlp_extractor import MLPExtractor
 from .scaler import Scaler
 from .simple_cnn import SimpleCNN
 from .threshold_extractor import ThresholdFeatureExtractor
+from .resnet import Resnet32, ResNetCIFAR
 
 __all__ = [
     "FeatureExtractor",
@@ -12,4 +13,6 @@ __all__ = [
     "Scaler",
     "SimpleCNN",
     "ThresholdFeatureExtractor",
+    "Resnet32",
+    "ResNetCIFAR"
 ]
