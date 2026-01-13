@@ -29,6 +29,7 @@ class GradualAACBR(torch.nn.Module):
         use_blockers: bool = True,
         use_supports: bool = False,
         post_process_func: Callable[[Tensor], Tensor] = lambda x: x,
+        dimensions: int = 1,
     ):
         """
          Gradual AACBR Model
@@ -73,6 +74,8 @@ class GradualAACBR(torch.nn.Module):
         self.use_blockers = use_blockers
         self.use_supports = use_supports
         self.post_process_func = post_process_func
+        self.dimensions = dimensions
+        self.W = torch.nn.Parameter(torch.ones((self.dimensions), dtype=torch.float32))
         self.A = None
 
     @property
@@ -135,6 +138,8 @@ class GradualAACBR(torch.nn.Module):
 
         self.A = None
 
+        device = X_train.device
+
         X_train, y_train, default_indexes, indexes, attackers_default_mask = (
             self.__prepare_default(X_train, y_train, X_default, y_default)
         )
@@ -147,9 +152,13 @@ class GradualAACBR(torch.nn.Module):
             X_attackers, X_targets, train_size
         )
 
+        no_heads = edge_weights_strict.shape[-1]
+
         if self.defaults_not_attack:
             edge_weights_strict = torch.where(
-                attackers_default_mask, 0, edge_weights_strict
+                attackers_default_mask.unsqueeze(-1),
+                torch.zeros_like(edge_weights_strict, device=device),
+                edge_weights_strict,
             )
 
         attacks, differing_labels = self.__potential_attacks(
@@ -175,6 +184,7 @@ class GradualAACBR(torch.nn.Module):
             attackers_default_mask,
             train_size,
             differing_labels,
+            no_heads,
         )
 
         self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks)
@@ -187,8 +197,8 @@ class GradualAACBR(torch.nn.Module):
         self, attacker: Tensor, target: Tensor, train_size: int
     ) -> Tensor:
         edge_weights = self.casebase_edge_weights(attacker, target)
-        edge_weights = edge_weights.reshape((train_size, train_size))
-        return edge_weights * (1 - (edge_weights.T))
+        edge_weights = edge_weights.reshape((train_size, train_size, -1))
+        return edge_weights * (1 - (torch.transpose(edge_weights, 0, 1)))
 
     def __casebase_edge_weights_equal(
         self, attacker: Tensor, target: Tensor, train_size: int
@@ -239,11 +249,11 @@ class GradualAACBR(torch.nn.Module):
         same_labels = torch.any(y_attackers == y_targets, dim=-1)
         same_labels = torch.reshape(same_labels, (train_size, train_size))
 
-        supports = torch.where(same_labels, edge_weights_strict, 0)
+        supports = torch.where(same_labels.unsqueeze(-1), edge_weights_strict, 0)
         # Prevent argument from supporting itself
         mask_self = 1 - torch.diag(
             torch.ones((len(edge_weights_strict)), device=supports.device)
-        )
+        ).unsqueeze(-1)
         supports = torch.mul(supports, mask_self)
 
         return supports, same_labels
@@ -257,7 +267,9 @@ class GradualAACBR(torch.nn.Module):
     ) -> Tuple[Tensor, Tensor]:
 
         differing_labels = torch.any(y_attackers != y_targets, dim=-1)
-        differing_labels = torch.reshape(differing_labels, (train_size, train_size))
+        differing_labels = torch.reshape(
+            differing_labels, (train_size, train_size)
+        ).unsqueeze(-1)
 
         attacks = torch.where(differing_labels, edge_weights_strict, 0)
 
@@ -270,6 +282,7 @@ class GradualAACBR(torch.nn.Module):
         attackers_default_mask: Tensor,
         train_size: int,
         differing_labels: Tensor,
+        no_heads: int,
     ) -> Tensor:
 
         if self.use_symmetric_attacks:
@@ -284,7 +297,7 @@ class GradualAACBR(torch.nn.Module):
 
         else:
             symmetric_attacks = torch.zeros(
-                (train_size, train_size), device=X_attackers.device
+                (train_size, train_size, no_heads), device=X_attackers.device
             )
         return symmetric_attacks
 
@@ -319,8 +332,8 @@ class GradualAACBR(torch.nn.Module):
         return result
 
     def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
-        A = A.unsqueeze(1)  # Shape (n, 1, n)
-        B = B.unsqueeze(0)  # Shape (1, n, n)
+        A = A.unsqueeze(1)  # Shape (n, 1, n, k)
+        B = B.unsqueeze(0)  # Shape (1, n, n, k)
         # result = torch.prod(1 - (A * B), dim=2)
         eps = 1e-10
         term = 1 - (A * B)
@@ -341,7 +354,7 @@ class GradualAACBR(torch.nn.Module):
         """
         if self.use_blockers:
             A = edge_weights_strict
-            B = edge_weights_strict.T
+            B = torch.transpose(edge_weights_strict, 0, 1)
             if batch_size is not None:
                 blocked_supports = self._compute_blocked_product_batched(
                     A, B, batch_size
@@ -374,10 +387,12 @@ class GradualAACBR(torch.nn.Module):
         if self.use_blockers:
             i_indices = indexes.unsqueeze(1)
             j_indices = indexes.unsqueeze(0)
-            same_labels = torch.all(y_train[i_indices] == y_train[j_indices], dim=-1)
+            same_labels = torch.all(
+                y_train[i_indices] == y_train[j_indices], dim=-1
+            ).unsqueeze(-1)
 
             A = torch.where(same_labels, edge_weights_strict, 0)
-            B = attacks.T
+            B = torch.transpose(attacks, 0, 1)
             if batch_size is not None:
                 blocked_attacks = self._compute_blocked_product_batched(
                     A, B, batch_size
@@ -436,7 +451,7 @@ class GradualAACBR(torch.nn.Module):
         batch_size = new_cases.shape[0]
 
         base_scores = self.compute_base_scores(self.X_train)  # (n)
-        base_scores = self.__batch_base_scores(base_scores, batch_size)
+        base_scores = self.__batch_base_scores(base_scores, batch_size)  # B x n x d
         base_scores = self.__new_case_influence(self.X_train, base_scores, new_cases)
 
         A = self.post_process_func(self.A)
@@ -452,34 +467,35 @@ class GradualAACBR(torch.nn.Module):
         if return_all_strengths:
             return final_strengths
 
+        final_strengths = torch.matmul(final_strengths, self.W)
+
         return final_strengths[:, self.default_indexes]
 
     def __batch_base_scores(self, base_scores: Tensor, batch_size: int) -> Tensor:
         base_scores = torch.tile(
-            base_scores.unsqueeze(dim=0), (batch_size, 1)
-        )  # (B x n)
-        base_scores = base_scores.unsqueeze(2)  # (B x n x 1)
+            base_scores.unsqueeze(dim=0), (batch_size, 1, 1)
+        )  # B x n x d
         return base_scores
 
     def __new_case_influence(
         self, X_train: Tensor, base_scores: Tensor, new_cases: Tensor
     ) -> Tensor:
-        new_cases_base_scores = (
-            self.compute_base_scores(new_cases).unsqueeze(-1).unsqueeze(-1)
-        )  # (B x 1 x 1)
+        new_cases_base_scores = self.compute_base_scores(new_cases).unsqueeze(
+            -1
+        )  # (B x d)
 
         new_cases_attacks_adjacency = self.irrelevance_edge_weights(
             new_cases, X_train
-        )  # B x n
+        )  # B x n x d
         new_cases_attacks_adjacency = -new_cases_attacks_adjacency
 
-        # B x 1 x n
-        new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(-2)
+        new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(
+            1
+        )  # B x 1 x n x d
 
         # We compute the aggregations *only* for the attacks by the new cases.
         # As new cases are unattacked, this can be computed in a single pass of
         # aggregation/influence function
-        # b x n x 1
         aggregations = self.gradual_semantics.aggregation_func(
             new_cases_attacks_adjacency, new_cases_base_scores
         )

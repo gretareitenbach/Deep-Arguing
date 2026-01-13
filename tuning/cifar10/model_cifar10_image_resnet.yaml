@@ -65,6 +65,28 @@ train_settings:
         weight_decay:
           type: ref
           value: "weight_decay"
+    scheduler:
+      type: class
+      class_name: "LinearLR"
+      sub_type: scheduler
+      optimizer: "optimizer"
+      params:
+        start_factor:
+          type: value
+          value: 0.05 
+        total_iters:
+          type: value
+          value: 20
+      # class_name: "CosineAnnealingLR"
+      # sub_type: scheduler
+      # optimizer: "optimizer"
+      # params:
+      #   T_max:
+      #     type: value
+      #     value: 16
+      #   eta_min:
+      #     type: value
+      #     value: 0.00005
     regulariser:
       type: ref
       value: "regularisers"
@@ -97,40 +119,40 @@ feature_weights_1:
       type: list
       value:
         [
-          # { type: value, value: 32 },
-          # { type: value, value: 32 },
-          # { type: value, value: 32 },
+          { type: value, value: 32 },
+          { type: value, value: 16 },
+          # { type: value, value: 8 },
         ]
     output_size:
-      type: value
-      value: 1
+      type: ref
+      value: dimensions 
 
-feature_weights_2:
-  type: class
-  class_name: "MLPExtractor"
-  params:
-    input_size:
-      type: value
-      value: 64
-    hidden_sizes:
-      type: list
-      value:
-        [
-          # { type: value, value: 32 },
-          # { type: value, value: 32 },
-          # { type: value, value: 32 },
-        ]
-    output_size:
-      type: value
-      value: 1
+# feature_weights_2:
+#   type: class
+#   class_name: "MLPExtractor"
+#   params:
+#     input_size:
+#       type: value
+#       value: 64
+#     hidden_sizes:
+#       type: list
+#       value:
+#         [
+#           # { type: value, value: 32 },
+#           # { type: value, value: 32 },
+#           # { type: value, value: 32 },
+#         ]
+#     output_size:
+#       type: value
+#       value: 1
 
-scaler:
-  type: class
-  class_name: "Scaler"
-  params:
-    no_features:
-      type: data_ref
-      value: "no_features"
+# scaler:
+#   type: class
+#   class_name: "Scaler"
+#   params:
+#     no_features:
+#       type: data_ref
+#       value: "no_features"
 
 semantics:
   type: class
@@ -170,20 +192,31 @@ irrelevance:
       type: ref
       value: "partial_order"
 
-base_score:
+constant_base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: "ConstantBaseScore"
   params:
-    feature_extractors:
-      type: list
-      value: [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "feature_weights_2" },
-          # { type: ref, value: "scaler" },
-        ]
-    activation:
-      type: function
-      value: "sigmoid"
+    constant:
+      type: value
+      value: 0.5
+    dim:
+      type: ref
+      value: dimensions
+
+# base_score:
+#   type: class
+#   class_name: "LearnedBaseScore"
+#   params:
+#     feature_extractors:
+#       type: list
+#       value: [
+#           { type: ref, value: "feature_weights" },
+#           { type: ref, value: "feature_weights_2" },
+#           # { type: ref, value: "scaler" },
+#         ]
+#     activation:
+#       type: function
+#       value: "sigmoid"
 
 model:
   type: class
@@ -194,7 +227,7 @@ model:
       value: "semantics"
     compute_base_score:
       type: ref
-      value: "base_score"
+      value: "constant_base_score"
     irrelevance_edge_weights:
       type: ref
       value: "irrelevance"
@@ -216,3 +249,6 @@ model:
     post_process_func:
       type: function
       value: "identity"
+    dimensions:
+      type: ref
+      value: dimensions

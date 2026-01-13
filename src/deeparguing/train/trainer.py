@@ -42,7 +42,7 @@ class Trainer(metaclass=ABCMeta):
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
-        log_val_loss: bool =False,
+        log_val_loss: bool = False,
         log_gradients: bool = False,
     ):
         pass
@@ -109,7 +109,11 @@ class Trainer(metaclass=ABCMeta):
         if log_gradients:
             ExperimentLogger.current().log_metrics(
                 {
-                    f"Gradient {n}": float(torch.norm(p.grad.detach().cpu()))
+                    f"Gradient {n}": (
+                        float(torch.norm(p.grad.detach().cpu()))
+                        if p.grad is not None
+                        else None
+                    )
                     for n, p in model.named_parameters()
                 }
             )

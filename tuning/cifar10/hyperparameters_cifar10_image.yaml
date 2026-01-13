@@ -1,23 +1,25 @@
 epochs:
   type: value
-  value: 20
+  value: 32
 
 lr:
   type: value
-  # value: 0.02
-  value: 0.0008
+  value: 0.010
+  # value: 0.025
+  # value: 0.0008
 
 gamma_dag:
   type: value
-  value: 0.0000831233806698
+  value: 0.008
 
 max_iters:
   type: value
-  value: 24
+  value: 60
 
 temperature:
   type: value
-  value: 0.02
+  value: 5
+  # value: 0.02
 
 dag_alpha:
   type: value
@@ -30,20 +32,26 @@ cluster_size:
 batch_size:
   type: value
   # value: 1500
-  value: 512
+  value: 1024
+  # value: 512
   # value: 4000
   # value: 7680
 
 gradient_max_norm:
   type: value
-  value: 1.0
+  value: 10.0
+  # value: 0.1
 
 weight_decay:
   type: value
-  value: 0.0008
+  value: 0.004
+  # value: 0.0008
 
 label_smoothing:
   type: value
-  value: 0.10
+  value: 0.1
 
+dimensions:
+  type: value
+  value: 24
 
