@@ -1,19 +1,13 @@
 epochs:
-  type: tune
-  tune_type: int
-  params:
-    name: { type: "value", value: "epochs" }
-    low: { type: "value", value: 10 }
-    high: { type: "value", value: 200 }
-    step: { type: "value", value: 10 }
-    log: { type: "value", value: False }
+  type: value
+  value: 32
 
 lr:
   type: tune
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.0001 }
+    low: { type: "value", value: 0.001 }
     high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
@@ -40,21 +34,15 @@ max_iters:
   tune_type: int
   params:
     name: { type: "value", value: "max_iters" }
-    low: { type: "value", value: 10 }
+    low: { type: "value", value: 30 }
     high: { type: "value", value: 60 }
-    step: { type: "value", value: 1 }
+    step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
 batch_size:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "batch_size" }
-    choices:
-      {
-        type: "list",
-        value: [{ type: value, value: 128 }, { type: value, value: 256 }],
-      }
+  type: value
+  value: 1024
+
 
 temperature:
   type: tune
@@ -93,7 +81,11 @@ gradient_max_norm:
   tune_type: float
   params:
     name: { type: "value", value: "gradient_max_norm" }
-    low: { type: "value", value: 0.1 }
-    high: { type: "value", value: 5.0 }
+    low: { type: "value", value: 0.5 }
+    high: { type: "value", value: 15.0 }
     step: { type: "value", value: 0.5 }
     log: { type: "value", value: False }
+
+dimensions:
+  type: value
+  value: 32

@@ -4,6 +4,9 @@ data/
 *.egg-info/
 build/
 temp/
+tmp/
 wandb/
 *.e*
 *.o*
+*.pt
+profiler_logs*/
