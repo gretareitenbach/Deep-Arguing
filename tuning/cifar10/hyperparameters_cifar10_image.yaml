@@ -19,6 +19,7 @@ max_iters:
 
 temperature:
   type: value
+  # value: 1
   value: 5
   # value: 0.009894506620972531
   # value: 0.02
@@ -37,6 +38,7 @@ batch_size:
   # value: 1500
   value: 1024
   # value: 512
+  # value: 256
   # value: 4000
   # value: 7680
 
@@ -62,3 +64,6 @@ dimensions:
   # value: 32
   value: 24
 
+batch_norm:
+  type: value
+  value: False

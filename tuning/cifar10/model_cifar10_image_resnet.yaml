@@ -6,6 +6,10 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
+# sparsity_regulariser:
+#   type: class
+#   class_name: SparsityRegulariser
+
 regularisers:
   type: class
   class_name: "RegulariserList"
@@ -22,6 +26,14 @@ regularisers:
                 { type: ref, value: gamma_dag },
               ],
           },
+          # {
+          #   type: list,
+          #   value:
+          #     [
+          #       { type: ref, value: "sparsity_regulariser" },
+          #       { type: value, value: 0.0008 },
+          #     ],
+          # },
         ]
 
 trainer:
@@ -67,6 +79,19 @@ train_settings:
           value: "weight_decay"
     scheduler:
       type: class
+      # class_name: "CosineAnnealingWarmRestarts"
+      # sub_type: scheduler
+      # optimizer: "optimizer"
+      # params:
+      #   T_0:
+      #     type: value
+      #     value: 8  # Restart every 8 epochs
+      #   T_mult:
+      #     type: value
+      #     value: 1  # Keep restart period constant
+      #   eta_min:
+      #     type: value
+      #     value: 0.0001
       class_name: "LinearLR"
       sub_type: scheduler
       optimizer: "optimizer"
@@ -82,8 +107,8 @@ train_settings:
       # optimizer: "optimizer"
       # params:
       #   T_max:
-      #     type: value
-      #     value: 16
+      #     type: ref
+      #     value: epochs
       #   eta_min:
       #     type: value
       #     value: 0.00005
@@ -96,6 +121,9 @@ train_settings:
     gradient_max_norm:
       type: ref
       value: "gradient_max_norm"
+    scheduler_step_per:
+      type: value
+      value: "batch"
 
 feature_weights:
   type: class
@@ -115,6 +143,9 @@ feature_weights_1:
     input_size:
       type: value
       value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
     hidden_sizes:
       type: list
       value:
@@ -150,24 +181,24 @@ feature_weights_1:
 #       value: dimensions
 
 
-feature_weights_2:
-  type: class
-  class_name: "MLPExtractor"
-  params:
-    input_size:
-      type: value
-      value: 64
-    hidden_sizes:
-      type: list
-      value:
-        [
-          { type: value, value: 32 },
-          { type: value, value: 16 },
-          # { type: value, value: 8 },
-        ]
-    output_size:
-      type: ref
-      value: dimensions 
+# feature_weights_2:
+#   type: class
+#   class_name: "MLPExtractor"
+#   params:
+#     input_size:
+#       type: value
+#       value: 64
+#     hidden_sizes:
+#       type: list
+#       value:
+#         [
+#           { type: value, value: 32 },
+#           { type: value, value: 16 },
+#           # { type: value, value: 8 },
+#         ]
+#     output_size:
+#       type: ref
+#       value: dimensions 
 
 # scaler:
 #   type: class
@@ -215,31 +246,31 @@ irrelevance:
       type: ref
       value: "partial_order"
 
-# constant_base_score:
-#   type: class
-#   class_name: "ConstantBaseScore"
-#   params:
-#     constant:
-#       type: value
-#       value: 0.5
-#     dim:
-#       type: ref
-#       value: dimensions
-
 base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: "ConstantBaseScore"
   params:
-    feature_extractors:
-      type: list
-      value: [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "feature_weights_1" },
-          # { type: ref, value: "scaler" },
-        ]
-    activation:
-      type: function
-      value: "sigmoid"
+    constant:
+      type: value
+      value: 0.5
+    dim:
+      type: ref
+      value: dimensions
+
+# base_score:
+#   type: class
+#   class_name: "LearnedBaseScore"
+#   params:
+#     feature_extractors:
+#       type: list
+#       value: [
+#           { type: ref, value: "feature_weights" },
+#           { type: ref, value: "feature_weights_1" },
+#           # { type: ref, value: "scaler" },
+#         ]
+#     activation:
+#       type: function
+#       value: "sigmoid"
 
 model:
   type: class

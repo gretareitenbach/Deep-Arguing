@@ -1,6 +1,11 @@
 epochs:
-  type: value
-  value: 32
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "epochs" }
+    low: { type: "value", value: 32 }
+    high: { type: "value", value: 128 }
+    log: { type: "value", value: True }
 
 lr:
   type: tune
@@ -8,7 +13,7 @@ lr:
   params:
     name: { type: "value", value: "lr" }
     low: { type: "value", value: 0.001 }
-    high: { type: "value", value: 0.01 }
+    high: { type: "value", value: 0.05 }
     log: { type: "value", value: True }
 
 dag_alpha:
@@ -87,5 +92,22 @@ gradient_max_norm:
     log: { type: "value", value: False }
 
 dimensions:
-  type: value
-  value: 32
+  type: tune
+  tune_type: int
+  params:
+    name: { type: "value", value: "dimensions" }
+    low: { type: "value", value: 2 }
+    high: { type: "value", value: 32 }
+    log: { type: "value", value: True }
+
+batch_norm:
+  type: tune
+  tune_type: categorical
+  params:
+    name: { type: "value", value: "batch_norm" }
+    choices:
+      type: list
+      value: [
+        {type: value, value: True},
+        {type: value, value: False},
+      ]

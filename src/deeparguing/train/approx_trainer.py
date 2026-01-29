@@ -37,12 +37,24 @@ class ApproximateTrainer(Trainer):
         disable_tqdm: bool = False,
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
+        scheduler_step_per: str | None = None,
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
     ):
+        # Validate scheduler_step_per when scheduler is provided
+        if scheduler is not None:
+            if scheduler_step_per is None:
+                raise ValueError(
+                    "scheduler_step_per must be specified when using a scheduler. "
+                    "Valid values: 'epoch' or 'batch'"
+                )
+            if scheduler_step_per not in ("epoch", "batch"):
+                raise ValueError(
+                    f"scheduler_step_per must be 'epoch' or 'batch', got '{scheduler_step_per}'"
+                )
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
 
@@ -72,6 +84,10 @@ class ApproximateTrainer(Trainer):
                 else:
                     total_loss = total_loss + loss
 
+                # Step scheduler per batch if configured
+                if scheduler is not None and scheduler_step_per == "batch":
+                    scheduler.step()
+
             assert total_loss
             total_loss = total_loss / (n_samples / batch_size)
 
@@ -79,7 +95,8 @@ class ApproximateTrainer(Trainer):
 
             optimizer.step()
 
-            if scheduler is not None:
+            # Step scheduler per epoch if configured
+            if scheduler is not None and scheduler_step_per == "epoch":
                 scheduler.step()
 
             if gradient_max_norm is not None:

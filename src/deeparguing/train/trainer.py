@@ -39,6 +39,7 @@ class Trainer(metaclass=ABCMeta):
         disable_tqdm: bool = False,
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
+        scheduler_step_per: str | None = None,
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
@@ -76,7 +77,6 @@ class Trainer(metaclass=ABCMeta):
         optimizer: Optimizer,
         criterion: Callable[[Tensor, Tensor], Tensor],
         regulariser: RegulariserType = lambda _: 0,
-        scheduler: LRScheduler | None = None,
         gradient_max_norm: float | None = None,
         log_gradients: bool = False,
     ) -> Tensor:
@@ -119,9 +119,6 @@ class Trainer(metaclass=ABCMeta):
             )
 
         optimizer.step()
-
-        if scheduler is not None:
-            scheduler.step()
 
         return loss
 

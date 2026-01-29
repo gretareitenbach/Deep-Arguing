@@ -17,6 +17,7 @@ class MLPExtractor(FeatureExtractor):
         output_activation: torch.nn.Module | None = None,
         bias: bool = True,
         dropout: None | float = None,
+        batch_norm: bool = False,
     ):
         super(MLPExtractor, self).__init__(output_size)
         hidden_sizes = [i for i in hidden_sizes if i > 0]
@@ -29,6 +30,8 @@ class MLPExtractor(FeatureExtractor):
             
             # Add activation and dropout for hidden layers only
             if i < len(layer_sizes) - 2:
+                if batch_norm:
+                    layers[f"batchnorm_{i}"] = torch.nn.BatchNorm1d(layer_sizes[i + 1])
                 layers[f"relu_{i}"] = torch.nn.ReLU()
                 if dropout:
                     layers[f"dropout_{i}"] = torch.nn.Dropout(p=dropout)
