@@ -132,12 +132,14 @@ class Trainer(metaclass=ABCMeta):
         y_val: Tensor,
         criterion: torch.nn.Module,
         regulariser: RegulariserType,
-    ):
+    ) -> tuple[float, float]:
         n_samples = X_val.shape[0]
         batch_size = batch_size if batch_size is not None else n_samples
         model.eval()
         val_loss_total = 0.0
         num_batches = 0
+        correct = 0
+        total = 0
 
         with torch.no_grad():
             for i in range(0, len(X_val), batch_size):
@@ -151,7 +153,13 @@ class Trainer(metaclass=ABCMeta):
                 val_loss_total += batch_loss.item()
                 num_batches += 1
 
-        val_loss_avg = val_loss_total / num_batches if num_batches > 0 else float("nan")
+                predicted_classes = torch.argmax(predictions, dim=1)
+                correct += (predicted_classes == y_target).sum().item()
+                total += y_target.size(0)
 
-        model.train()  # restore training mode
-        return val_loss_avg
+        val_loss_avg = val_loss_total / num_batches if num_batches > 0 else float("nan")
+        accuracy = correct / total if total > 0 else float("nan")
+
+        model.train()
+        return val_loss_avg, accuracy
+

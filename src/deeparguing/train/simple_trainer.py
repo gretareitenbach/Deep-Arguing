@@ -93,20 +93,26 @@ class SimpleTrainer(Trainer):
             if scheduler is not None and scheduler_step_per == "epoch":
                 scheduler.step()
 
+            _, train_acc = self.log_validation_loss(
+                model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
+            )
+
             if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg = self.log_validation_loss(
+                val_loss_avg, val_acc = self.log_validation_loss(
                     model, batch_size, X_val, y_val, criterion, regulariser
                 )
                 ExperimentLogger.current().log_metrics(
                     {
                         "loss_per_epoch": float(loss.item()),
                         "epoch": epoch,
+                        "train_accuracy_per_epoch": train_acc,
                         "val_loss_per_epoch": float(val_loss_avg),
+                        "val_accuracy_per_epoch": val_acc,
                     }
                 )
                 pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}")
             else:
                 ExperimentLogger.current().log_metrics(
-                    {"loss_per_epoch": float(loss.item()), "epoch": epoch}
+                    {"loss_per_epoch": float(loss.item()), "epoch": epoch, "train_accuracy_per_epoch": train_acc}
                 )
                 pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}")

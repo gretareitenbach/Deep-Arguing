@@ -1,11 +1,12 @@
 import logging
 import os
 
-# This will ensure determism of the KMEANS Clustering if used
+# This will ensure determinism of KMEANS Clustering and GPU/CUDA operations
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import uuid
 
@@ -33,6 +34,11 @@ from deeparguing.train import Trainer
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")
+
+# Ensure determinism for GPU/cuDNN operations
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.use_deterministic_algorithms(True)
 
 def run(project: str = "gradual-aa-cbr"):
     def objective(trial: Trial | None = None):
@@ -70,6 +76,8 @@ def run(project: str = "gradual-aa-cbr"):
             logging.info("=" * 100)
             logging.info(f"Running With Torch Seed: {seed}")
             torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
 
             data_dict, instances = parse_model_config(
                 model_config, trial, device=device

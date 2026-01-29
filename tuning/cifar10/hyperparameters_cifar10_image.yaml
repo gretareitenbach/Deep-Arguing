@@ -5,6 +5,7 @@ epochs:
 lr:
   type: value
   value: 0.025
+  # value: 0.0001
   # value: 0.001560075763220978
   # value: 0.0008
 

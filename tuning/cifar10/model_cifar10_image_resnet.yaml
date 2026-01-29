@@ -31,7 +31,7 @@ regularisers:
           #   value:
           #     [
           #       { type: ref, value: "sparsity_regulariser" },
-          #       { type: value, value: 0.0008 },
+          #       { type: value, value: 0.008 },
           #     ],
           # },
         ]
@@ -79,19 +79,19 @@ train_settings:
           value: "weight_decay"
     scheduler:
       type: class
-      # class_name: "CosineAnnealingWarmRestarts"
-      # sub_type: scheduler
-      # optimizer: "optimizer"
-      # params:
-      #   T_0:
-      #     type: value
-      #     value: 8  # Restart every 8 epochs
-      #   T_mult:
-      #     type: value
-      #     value: 1  # Keep restart period constant
-      #   eta_min:
-      #     type: value
-      #     value: 0.0001
+    #   class_name: "CosineAnnealingWarmRestarts"
+    #   sub_type: scheduler
+    #   optimizer: "optimizer"
+    #   params:
+    #     T_0:
+    #       type: value
+    #       value: 8  # Restart every 8 epochs
+    #     T_mult:
+    #       type: value
+    #       value: 1  # Keep restart period constant
+    #     eta_min:
+    #       type: value
+    #       value: 0.0001
       class_name: "LinearLR"
       sub_type: scheduler
       optimizer: "optimizer"
@@ -124,6 +124,7 @@ train_settings:
     scheduler_step_per:
       type: value
       value: "batch"
+      # value: "epoch"
 
 feature_weights:
   type: class
@@ -150,6 +151,7 @@ feature_weights_1:
       type: list
       value:
         [
+          # { type: value, value: 48 },
           { type: value, value: 32 },
           { type: value, value: 16 },
           # { type: value, value: 8 },
