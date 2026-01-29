@@ -197,16 +197,52 @@ class GradualAACBR(torch.nn.Module):
         self, attacker: Tensor, target: Tensor, train_size: int
     ) -> Tensor:
         edge_weights = self.casebase_edge_weights(attacker, target)
+
+        # Normalize shape: handle various edge weight output formats
+        # Expected final shape: (train_size, train_size, d)
+        if edge_weights.ndim == 1:
+            # Scalar per pair flattened: (n*n,) -> (n, n, 1)
+            if edge_weights.shape[0] == train_size * train_size:
+                edge_weights = edge_weights.reshape((train_size, train_size, 1))
+            # One scalar per argument (n,) -> broadcast not supported, error
+            else:
+                raise Exception(
+                    f"edge_weights has shape {edge_weights.shape}, expected "
+                    f"({train_size * train_size},) or ({train_size}, {train_size}) "
+                    f"or ({train_size}, {train_size}, d)"
+                )
+        elif edge_weights.ndim == 2:
+            # Shape (n, n) -> (n, n, 1)
+            edge_weights = edge_weights.unsqueeze(-1)
+        # else: already 3D (n, n, d)
+
         edge_weights = edge_weights.reshape((train_size, train_size, -1))
         return edge_weights * (1 - (torch.transpose(edge_weights, 0, 1)))
 
     def __casebase_edge_weights_equal(
         self, attacker: Tensor, target: Tensor, train_size: int
     ):
-        edge_weights = self.casebase_edge_weights(attacker, target).reshape(
-            (train_size, train_size)
-        )
-        return edge_weights * edge_weights.T
+        edge_weights = self.casebase_edge_weights(attacker, target)
+
+        # Normalize shape: handle various edge weight output formats
+        # Expected final shape: (train_size, train_size, d)
+        if edge_weights.ndim == 1:
+            # Scalar per pair flattened: (n*n,) -> (n, n, 1)
+            if edge_weights.shape[0] == train_size * train_size:
+                edge_weights = edge_weights.reshape((train_size, train_size, 1))
+            else:
+                raise Exception(
+                    f"edge_weights has shape {edge_weights.shape}, expected "
+                    f"({train_size * train_size},) or ({train_size}, {train_size}) "
+                    f"or ({train_size}, {train_size}, d)"
+                )
+        elif edge_weights.ndim == 2:
+            # Shape (n, n) -> (n, n, 1)
+            edge_weights = edge_weights.unsqueeze(-1)
+        # else: already 3D (n, n, d)
+
+        edge_weights = edge_weights.reshape((train_size, train_size, -1))
+        return edge_weights * torch.transpose(edge_weights, 0, 1)
 
     def __prepare_default(
         self, X_train: Tensor, y_train: Tensor, X_default: Tensor, y_default: Tensor
@@ -292,7 +328,7 @@ class GradualAACBR(torch.nn.Module):
             symmetric_attacks = torch.where(differing_labels, symmetric_attacks, 0)
             if self.defaults_not_attack:
                 symmetric_attacks = torch.where(
-                    attackers_default_mask, 0, symmetric_attacks
+                    attackers_default_mask.unsqueeze(-1), 0, symmetric_attacks
                 )
 
         else:
@@ -306,39 +342,48 @@ class GradualAACBR(torch.nn.Module):
     ) -> Tensor:
         """
         Compute elementwise:
-            result[i, j] = ∏ₖ (1 - A[i, k] * B[j, k])
+            result[i, j, d] = ∏ₖ (1 - A[i, k, d] * B[j, k, d])
 
         Parameters:
-        A: Tensor of shape (n_rows, n)
-        B: Tensor of shape (m, n)
+        A: Tensor of shape (n_rows, n, d)
+        B: Tensor of shape (m, n, d)
         batch_size: Number of k indices to process at once.
 
         Returns:
-        result: Tensor of shape (n_rows, m)
+        result: Tensor of shape (n_rows, m, d)
         """
-        n_rows, n = A.shape
+        n_rows, n, d = A.shape
         m = B.shape[0]
-        result = torch.ones(n_rows, m, device=A.device, dtype=A.dtype)
+        result = torch.ones(n_rows, m, d, device=A.device, dtype=A.dtype)
         for k in range(0, n, batch_size):
             # Process a chunk of the k-dimension.
-            A_chunk = A[:, k : k + batch_size]  # Shape: (n_rows, batch_size)
-            B_chunk = B[:, k : k + batch_size]  # Shape: (m, batch_size)
+            A_chunk = A[:, k : k + batch_size, :]  # Shape: (n_rows, batch_size, d)
+            B_chunk = B[:, k : k + batch_size, :]  # Shape: (m, batch_size, d)
             # Expand dimensions to broadcast:
-            # A_chunk -> (n_rows, 1, batch_size)
-            # B_chunk -> (1, m, batch_size)
+            # A_chunk -> (n_rows, 1, batch_size, d)
+            # B_chunk -> (1, m, batch_size, d)
             # Then compute the product over the chunk dimension.
             term = self._compute_blocked_product(A_chunk, B_chunk)
             result = result * term
         return result
 
     def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
-        A = A.unsqueeze(1)  # Shape (n, 1, n, k)
-        B = B.unsqueeze(0)  # Shape (1, n, n, k)
-        # result = torch.prod(1 - (A * B), dim=2)
+        """
+        Compute blocked product for 3D tensors.
+
+        Parameters:
+        A: Tensor of shape (n, n, d)
+        B: Tensor of shape (n, n, d)
+
+        Returns:
+        result: Tensor of shape (n, n, d)
+        """
+        A = A.unsqueeze(1)  # Shape (n, 1, n, d)
+        B = B.unsqueeze(0)  # Shape (1, n, n, d)
         eps = 1e-10
         term = 1 - (A * B)
 
-        # P = exp( sum( log(x) ) )
+        # P = exp( sum( log(x) ) ) - sum over k dimension (dim=2)
         result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
         return result
 
@@ -467,7 +512,13 @@ class GradualAACBR(torch.nn.Module):
         if return_all_strengths:
             return final_strengths
 
-        final_strengths = torch.matmul(final_strengths, self.W)
+        # Only apply linear combination when d > 1
+        if self.dimensions > 1:
+            final_strengths = torch.matmul(
+                final_strengths, self.W
+            )  # (B, n, d) -> (B, n)
+        else:
+            final_strengths = final_strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
 
         return final_strengths[:, self.default_indexes]
 

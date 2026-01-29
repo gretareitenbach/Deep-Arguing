@@ -13,7 +13,13 @@ class ReluSemantics(GradualSemantics):
 
     @override
     def aggregation_func(self, A: Tensor, strengths: Tensor):
-        if A.ndim == 3:
+        if A.ndim == 2:
+            # Original d=1 case: A has shape (n, n), strengths has shape (n,) or (b, n)
+            if strengths.ndim == 1:
+                return torch.matmul(A.T, strengths)
+            else:
+                return torch.einsum("ji,bi->bi", A, strengths)
+        elif A.ndim == 3:
             # A has shape (n, n, d)
             # Strengths has shape (b, n, d)
             return torch.einsum("jid,bjd->bid", A, strengths)

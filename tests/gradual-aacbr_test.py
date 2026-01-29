@@ -7,12 +7,12 @@ from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 # Semantics is tested separately, we just have to have one to
 # initalise/test gradual aa-cbr
 mock_gradual_semantics = SigmoidSemantics(max_iters=0, epsilon=0)
-mock_compute_base_score = lambda _: torch.tensor(0.5)
+mock_compute_base_score = lambda x: torch.full((x.shape[0], 1), 0.5)
 mock_casebase_edge_weights = lambda a, b: torch.where(
-    torch.all(a >= b, dim=-1),
+    torch.all(a.unsqueeze(1) >= b.unsqueeze(0), dim=-1),
     1.0,
     0.0,
-)
+).unsqueeze(-1)  # (n, n) -> (n, n, 1)
 mock_irrelevance_edge_weights = lambda a, b: 1 - mock_casebase_edge_weights(a, b)
 
 model = GradualAACBR(
@@ -43,9 +43,9 @@ def test_gradual_aacbr_simple():
 
     expected_attacks = torch.tensor(
         [
-            [0.0, -1.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
+            [[0.0], [-1.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
         ]
     )
     model.use_blockers = False
@@ -56,9 +56,9 @@ def test_gradual_aacbr_simple():
 
     expected_supports = torch.tensor(
         [
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
+            [[0.0], [0.0], [1.0]],
+            [[0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
         ]
     )
 
@@ -94,10 +94,10 @@ def test_gradual_aacbr_minimal():
 
     expected_attacks_no_blockers = torch.tensor(
         [
-            [0.0, 0.0, -1.0, 0.0],
-            [0.0, 0.0, -1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [0.0], [-1.0], [0.0]],
+            [[0.0], [0.0], [-1.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
     model.use_blockers = False
@@ -110,10 +110,10 @@ def test_gradual_aacbr_minimal():
 
     expected_supports_no_blockers = torch.tensor(
         [
-            [0.0, 0.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [0.0], [0.0], [1.0]],
+            [[1.0], [0.0], [0.0], [1.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
 
@@ -127,10 +127,10 @@ def test_gradual_aacbr_minimal():
 
     expected_attacks = torch.tensor(
         [
-            [0.0, 0.0, -1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [0.0], [-1.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
 
@@ -138,23 +138,23 @@ def test_gradual_aacbr_minimal():
     model.use_supports = False
     model.fit(X_train, y_train, X_default, y_default)
     A = model.A
-    assert torch.all(A == expected_attacks), (
+    assert torch.allclose(A, expected_attacks, atol=1e-9), (
         "Minimal: attacks with blockers are wrong",
     )
 
     expected_supports = torch.tensor(
         [
-            [0.0, 0.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [0.0], [0.0], [1.0]],
+            [[1.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
     model.use_blockers = True
     model.use_supports = True
     model.fit(X_train, y_train, X_default, y_default)
     A = model.A
-    assert torch.all(A == (expected_attacks + expected_supports)), (
+    assert torch.allclose(A, expected_attacks + expected_supports, atol=1e-9), (
         "Minimal: supports with blockers are wrong",
     )
 
@@ -179,10 +179,10 @@ def test_gradual_aacbr_symmetric():
 
     expected_attacks = torch.tensor(
         [
-            [0.0, -1.0, -1.0, 0.0],
-            [-1.0, 0.0, 0.0, -1.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [-1.0], [-1.0], [0.0]],
+            [[-1.0], [0.0], [0.0], [-1.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
     model.use_supports = False
@@ -193,10 +193,10 @@ def test_gradual_aacbr_symmetric():
 
     expected_supports = torch.tensor(
         [
-            [0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
+            [[0.0], [0.0], [0.0], [1.0]],
+            [[0.0], [0.0], [1.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
         ]
     )
 
@@ -232,9 +232,9 @@ def test_gradual_aacbr_batching(batch_size):
 
     expected_attacks = torch.tensor(
         [
-            [0.0, -1.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
+            [[0.0], [-1.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
         ]
     )
     model.use_supports = False
@@ -251,9 +251,9 @@ def test_gradual_aacbr_batching(batch_size):
 
     expected_supports = torch.tensor(
         [
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
+            [[0.0], [0.0], [1.0]],
+            [[0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0]],
         ]
     )
 
@@ -292,9 +292,23 @@ def test_gradual_aacbr_has_correct_logic(use_supports, N):
     y_default = torch.tensor([[0]], dtype=torch.float32)
 
     def edge_weights_test(attacker, target):
-        attacker = attacker.to(dtype=torch.int)
-        target = target.to(dtype=torch.int)
-        return edge_weights[attacker, target]
+        # Handle both GradualAACBR (2D input: n x features) and
+        # SlowGradualAACBR (3D input: n x n x features) calling conventions
+        if attacker.ndim == 2:
+            # Fast model: attacker/target are (n, features)
+            # Return (n, n) pairwise edge weights
+            attacker = attacker.to(dtype=torch.int).squeeze(-1)  # (n,)
+            target = target.to(dtype=torch.int).squeeze(-1)  # (n,)
+            return edge_weights[attacker.unsqueeze(1), target.unsqueeze(0)]  # (n, n)
+        else:
+            # Slow model: attacker/target are (n, n, features)
+            # Return scalar per pair, shape matches input grid
+            attacker = attacker.to(dtype=torch.int)
+            target = target.to(dtype=torch.int)
+            # Extract first feature (the index value)
+            attacker_idx = attacker[..., 0]  # (n, n)
+            target_idx = target[..., 0]  # (n, n)
+            return edge_weights[attacker_idx, target_idx]  # (n, n)
 
     model = GradualAACBR(
         mock_gradual_semantics,
@@ -317,8 +331,9 @@ def test_gradual_aacbr_has_correct_logic(use_supports, N):
     model.use_supports = use_supports
     model.fit(X_train, y_train, X_default, y_default)
 
-    assert torch.all(
-        model.A == slow_model.A
+    # Squeeze model.A to compare with slow_model.A (which is 2D for d=1)
+    assert torch.allclose(
+        model.A.squeeze(-1), slow_model.A, atol=1e-9
     ), "Logic: Gradual AA-CBR's adjacency matrix does not match Slow Gradual AA-CBR"
 
 
@@ -378,19 +393,23 @@ def test_semantics():
     bs = torch.tensor([0.5, 0.5, 0.7, 0.8, 0.9, 0.5, 0.5, 0.5])
 
     def base_score_test(case):
-        case = case.to(dtype=torch.int)
-        return bs[case].squeeze()
+        # case is (n, 1) tensor, want to return (n, d) = (n, 1)
+        case = case.to(dtype=torch.int).squeeze(-1)  # (n, 1) -> (n,)
+        return bs[case].unsqueeze(-1)  # (n,) -> (n, 1)
 
     def edge_weights_test(attacker, target):
-        attacker = attacker.to(dtype=torch.int)
-        target = target.to(dtype=torch.int)
-        return edge_weights[attacker, target]
+        # attacker and target are (n, 1) tensors
+        # We need to return (n, n) pairwise edge weights
+        attacker = attacker.to(dtype=torch.int).squeeze(-1)  # (n,)
+        target = target.to(dtype=torch.int).squeeze(-1)  # (n,)
+        # Compute pairwise: edge_weights[attacker[i], target[j]] for all i,j
+        return edge_weights[attacker.unsqueeze(1), target.unsqueeze(0)]  # (n, n)
 
     def irrelevance_test(new_cases, casebase):
         new_cases = new_cases.unsqueeze(1).to(dtype=torch.int)  # (B, 1, no_features)
         casebase = casebase.unsqueeze(0).to(dtype=torch.int)  # (1, n, no_features)
-        r = edge_weights[new_cases, casebase].squeeze()
-        return r
+        r = edge_weights[new_cases, casebase].squeeze(-1)  # Squeeze features, not d
+        return r.unsqueeze(-1)  # Add dimension for d=1
 
     semantics = SigmoidSemantics(max_iters=5, epsilon=0)
     model = GradualAACBR(

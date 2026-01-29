@@ -51,7 +51,7 @@ class LearnedPartialOrder(ComputePartialOrder):
         attacker_emb = attacker_emb.unsqueeze(1)
         target_emb = target_emb.unsqueeze(0)
 
-        result = self.comparison_func(attacker_emb, target_emb).squeeze()
+        result = self.comparison_func(attacker_emb, target_emb)
 
         return result
 
