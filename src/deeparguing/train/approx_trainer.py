@@ -11,6 +11,8 @@ from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
 
+from torch.utils.checkpoint import checkpoint
+
 
 class ApproximateTrainer(Trainer):
 
@@ -74,7 +76,7 @@ class ApproximateTrainer(Trainer):
                 batch_X_new_cases = X_new_cases[indices]
                 batch_y_new_cases = y_new_cases[indices]
 
-                predictions = model(batch_X_new_cases).squeeze()
+                predictions = checkpoint(model, batch_X_new_cases).squeeze()
 
                 y_target = torch.argmax(batch_y_new_cases, dim=1)
                 loss: Tensor = criterion(predictions, y_target) + regulariser(model)
@@ -118,6 +120,11 @@ class ApproximateTrainer(Trainer):
                 f"Epoch {epoch + 1}, Loss: {round(total_loss.item(), 6)}"
             )
 
+            model.eval()
+            with torch.no_grad():
+                model.fit(X_casebase, y_casebase, X_default, y_default)
+            model.train()
+
             _, train_acc = self.log_validation_loss(
                 model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
             )
@@ -132,7 +139,7 @@ class ApproximateTrainer(Trainer):
                         "epoch": epoch,
                         "train_accuracy_per_epoch": train_acc,
                         "val_loss_per_epoch": val_loss_avg,
-                        "val_accuracy": val_acc,
+                        "val_accuracy_per_epoch": val_acc,
                     }
                 )
             else:

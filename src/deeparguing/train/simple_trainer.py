@@ -93,6 +93,11 @@ class SimpleTrainer(Trainer):
             if scheduler is not None and scheduler_step_per == "epoch":
                 scheduler.step()
 
+            model.eval()
+            with torch.no_grad():
+                model.fit(X_casebase, y_casebase, X_default, y_default)
+            model.train()
+
             _, train_acc = self.log_validation_loss(
                 model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
             )

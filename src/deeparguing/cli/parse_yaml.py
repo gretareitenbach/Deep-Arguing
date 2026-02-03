@@ -26,7 +26,7 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "filter_to_attacks": filter_to_attacks,
     "filter_to_supports": filter_to_supports,
     "uni_directional": lambda A: torch.where(
-        torch.abs(A) > torch.abs(A.T), A, 0
+        torch.abs(A) > torch.abs(torch.transpose(A, 0, 1)), A, 0
     ),  # todo move to own file?
     "identity": lambda A: A,
     "normalize_data": normalize_data,

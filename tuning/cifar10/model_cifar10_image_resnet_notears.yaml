@@ -1,0 +1,413 @@
+# CIFAR-10 ResNet model configuration using NOTEARS augmented Lagrangian method
+# Use with TwoLevelTrainer for proper lambda/rho updates
+#
+# Architecture:
+#   - Shared ResNet (frozen to save memory) for feature extraction
+#   - Separate MLPs for partial order and base scores
+#   - LearnedBaseScore for argument-specific intrinsic strengths
+#   - NOTEARS + Sparsity + Connectivity regularisation
+#
+# Memory-optimized for RTX 3070 (8GB VRAM)
+#
+# Two-level training structure:
+#   Total training = outer_iterations * epochs (inner)
+#   25 * 12 = 300 total epochs
+
+# =============================================================================
+# Hyperparameters
+# =============================================================================
+
+# Inner epochs per outer iteration
+epochs:
+  type: value
+  value: 12
+
+# Number of outer iterations (lambda/rho updates)
+outer_iterations:
+  type: value
+  value: 25 
+
+# Learning rate (higher since ResNet is frozen)
+lr:
+  type: value
+  value: 0.008
+
+max_iters:
+  type: value
+  value: 60
+
+temperature:
+  type: value
+  value: 5
+
+cluster_size:
+  type: value
+  value: 5
+
+# Reduced batch size for memory efficiency
+batch_size:
+  type: value
+  value: 256
+
+gradient_max_norm:
+  type: value
+  value: 5.0
+
+weight_decay:
+  type: value
+  value: 0.004
+
+label_smoothing:
+  type: value
+  value: 0.1
+
+# Reduced dimensions for smaller adjacency matrices
+dimensions:
+  type: value
+  value: 16
+
+# Enable batch normalization for MLPs
+batch_norm:
+  type: value
+  value: True
+
+# Dropout rate for regularization
+dropout:
+  type: value
+  value: 0.15
+
+# Scheduler minimum learning rate
+eta_min:
+  type: value
+  value: 0.0001
+
+# Scheduler warm restart period
+scheduler_t0:
+  type: value
+  value: 5
+
+# Scheduler period multiplier after each restart
+scheduler_t_mult:
+  type: value
+  value: 2
+
+# =============================================================================
+# Regularisers
+# =============================================================================
+
+notears_regulariser:
+  type: class
+  class_name: NOTEARSRegulariser
+  params:
+    lambda_init:
+      type: value
+      value: 0.0
+    rho_init:
+      type: value
+      value: 0.1
+    rho_max:
+      type: value
+      value: 1.0e+16
+    rho_factor:
+      type: value
+      value: 2.0
+    gamma:
+      type: value
+      value: 0.25
+    h_tolerance:
+      type: value
+      value: 1.0e-5
+
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+
+connectivity_regulariser:
+  type: class
+  class_name: ConnectivityRegulariser
+
+regularisers:
+  type: class
+  class_name: "RegulariserList"
+  params:
+    regularisers:
+      type: list
+      value:
+        [
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "notears_regulariser" },
+                { type: value, value: 1.0 },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "sparsity_regulariser" },
+                { type: value, value: 0.002 },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "connectivity_regulariser" },
+                { type: value, value: 0.0005 },
+              ],
+          },
+        ]
+
+# =============================================================================
+# Trainer
+# =============================================================================
+
+trainer:
+  type: class
+  class_name: "TwoLevelTrainer"
+
+build_casebase:
+  type: class
+  class_name: "kMeansCluster"
+  params:
+    cluster_size:
+      type: ref
+      value: cluster_size
+
+build_new_cases:
+  type: function
+  value: "use_train"
+
+train_settings:
+  type: dict
+  value:
+    criterion:
+      type: class
+      class_name: "CrossEntropyLoss"
+      params:
+        label_smoothing:
+          type: ref
+          value: "label_smoothing"
+    epochs:
+      type: ref
+      value: epochs
+    outer_iterations:
+      type: ref
+      value: outer_iterations
+    optimizer:
+      type: class
+      sub_type: optim
+      class_name: "AdamW"
+      model: "model"
+      params:
+        lr:
+          type: ref
+          value: lr
+        weight_decay:
+          type: ref
+          value: "weight_decay"
+    scheduler:
+      type: class
+      class_name: "CosineAnnealingWarmRestarts"
+      sub_type: scheduler
+      optimizer: "optimizer"
+      params:
+        T_0:
+          type: ref
+          value: scheduler_t0
+        T_mult:
+          type: ref
+          value: scheduler_t_mult
+        eta_min:
+          type: ref
+          value: eta_min
+    regulariser:
+      type: ref
+      value: "regularisers"
+    batch_size:
+      type: ref
+      value: "batch_size"
+    gradient_max_norm:
+      type: ref
+      value: "gradient_max_norm"
+    scheduler_step_per:
+      type: value
+      value: "outer"
+
+# =============================================================================
+# Feature Extractors
+# =============================================================================
+
+# Shared ResNet feature extractor (frozen to save memory)
+feature_weights:
+  type: class
+  class_name: "ResNetCIFAR"
+  params:
+    weights_path:
+      type: value
+      value: "resnet_30.pt"
+    freeze_weights:
+      type: value
+      value: True
+
+# MLP for partial order computation (slimmed down for memory)
+partial_order_mlp:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
+    dropout:
+      type: ref
+      value: dropout
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: value, value: 48 },
+          { type: value, value: 32 },
+        ]
+    output_size:
+      type: ref
+      value: dimensions
+
+# MLP for base score computation (separate from partial order)
+base_score_mlp:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
+    dropout:
+      type: ref
+      value: dropout
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: value, value: 32 },
+        ]
+    output_size:
+      type: ref
+      value: dimensions
+
+# =============================================================================
+# Semantics
+# =============================================================================
+
+semantics:
+  type: class
+  class_name: "ReluSemantics"
+  params:
+    max_iters:
+      type: ref
+      value: max_iters
+
+# =============================================================================
+# Partial Order
+# =============================================================================
+
+partial_order:
+  type: class
+  class_name: "LearnedPartialOrder"
+  params:
+    feature_extractors:
+      type: list
+      value:
+        [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "partial_order_mlp" },
+        ]
+    comparison_func:
+      type: class
+      class_name: "Subtractor"
+      params:
+        temperature:
+          type: ref
+          value: temperature
+        activation:
+          type: function
+          value: "sigmoid"
+
+# =============================================================================
+# Irrelevance
+# =============================================================================
+
+irrelevance:
+  type: class
+  class_name: "RegularIrrelevance"
+  params:
+    compute_partial_order:
+      type: ref
+      value: "partial_order"
+
+# =============================================================================
+# Base Score (Learned)
+# =============================================================================
+
+base_score:
+  type: class
+  class_name: "LearnedBaseScore"
+  params:
+    feature_extractors:
+      type: list
+      value:
+        [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "base_score_mlp" },
+        ]
+    activation:
+      type: function
+      value: "sigmoid"
+    temperature:
+      type: value
+      value: 1.0
+
+# =============================================================================
+# Model
+# =============================================================================
+
+model:
+  type: class
+  class_name: "GradualAACBR"
+  params:
+    gradual_semantics:
+      type: ref
+      value: "semantics"
+    compute_base_score:
+      type: ref
+      value: "base_score"
+    irrelevance_edge_weights:
+      type: ref
+      value: "irrelevance"
+    casebase_edge_weights:
+      type: ref
+      value: "partial_order"
+    use_symmetric_attacks:
+      type: value
+      value: false
+    defaults_not_attack:
+      type: value
+      value: true
+    use_blockers:
+      type: value
+      value: true
+    use_supports:
+      type: value
+      value: true
+    post_process_func:
+      type: function
+      value: "uni_directional"
+    dimensions:
+      type: ref
+      value: dimensions

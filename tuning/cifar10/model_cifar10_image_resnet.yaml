@@ -39,6 +39,7 @@ regularisers:
 trainer:
   type: class
   class_name: "SimpleTrainer"
+  # class_name: "ApproximateTrainer"
 
 build_casebase:
   type: class
@@ -151,9 +152,9 @@ feature_weights_1:
       type: list
       value:
         [
-          # { type: value, value: 48 },
+          { type: value, value: 48 },
           { type: value, value: 32 },
-          { type: value, value: 16 },
+          # { type: value, value: 16 },
           # { type: value, value: 8 },
         ]
     output_size:
@@ -183,32 +184,32 @@ feature_weights_1:
 #       value: dimensions
 
 
-# feature_weights_2:
-#   type: class
-#   class_name: "MLPExtractor"
-#   params:
-#     input_size:
-#       type: value
-#       value: 64
-#     hidden_sizes:
-#       type: list
-#       value:
-#         [
-#           { type: value, value: 32 },
-#           { type: value, value: 16 },
-#           # { type: value, value: 8 },
-#         ]
-#     output_size:
-#       type: ref
-#       value: dimensions 
+feature_weights_2:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: value
+      value: 64
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: value, value: 32 },
+          # { type: value, value: 16 },
+          # { type: value, value: 8 },
+        ]
+    output_size:
+      type: ref
+      value: dimensions 
 
-# scaler:
-#   type: class
-#   class_name: "Scaler"
-#   params:
-#     no_features:
-#       type: data_ref
-#       value: "no_features"
+scaler:
+  type: class
+  class_name: "Scaler"
+  params:
+    no_features:
+      type: ref
+      value: dimensions
 
 semantics:
   type: class
@@ -248,31 +249,31 @@ irrelevance:
       type: ref
       value: "partial_order"
 
-base_score:
-  type: class
-  class_name: "ConstantBaseScore"
-  params:
-    constant:
-      type: value
-      value: 0.5
-    dim:
-      type: ref
-      value: dimensions
-
 # base_score:
 #   type: class
-#   class_name: "LearnedBaseScore"
+#   class_name: "ConstantBaseScore"
 #   params:
-#     feature_extractors:
-#       type: list
-#       value: [
-#           { type: ref, value: "feature_weights" },
-#           { type: ref, value: "feature_weights_1" },
-#           # { type: ref, value: "scaler" },
-#         ]
-#     activation:
-#       type: function
-#       value: "sigmoid"
+#     constant:
+#       type: value
+#       value: 0.5
+#     dim:
+#       type: ref
+#       value: dimensions
+
+base_score:
+  type: class
+  class_name: "LearnedBaseScore"
+  params:
+    feature_extractors:
+      type: list
+      value: [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "feature_weights_2" },
+          { type: ref, value: "scaler" },
+        ]
+    activation:
+      type: function
+      value: "sigmoid"
 
 model:
   type: class

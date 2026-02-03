@@ -133,9 +133,11 @@ class Trainer(metaclass=ABCMeta):
         criterion: torch.nn.Module,
         regulariser: RegulariserType,
     ) -> tuple[float, float]:
+
         n_samples = X_val.shape[0]
         batch_size = batch_size if batch_size is not None else n_samples
         model.eval()
+
         val_loss_total = 0.0
         num_batches = 0
         correct = 0
@@ -162,4 +164,3 @@ class Trainer(metaclass=ABCMeta):
 
         model.train()
         return val_loss_avg, accuracy
-
