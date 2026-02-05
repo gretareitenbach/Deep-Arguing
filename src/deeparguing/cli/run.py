@@ -53,7 +53,6 @@ def run(project: str = "gradual-aa-cbr"):
         trial_id = uuid.uuid4()
 
         for seed_idx, seed in enumerate(args.seed):
-            # TODO: Move this logic to separate function
 
             if trial is not None:
                 experiment_logger.init(
