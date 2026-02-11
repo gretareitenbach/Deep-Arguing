@@ -61,6 +61,7 @@ class SimpleTrainer(Trainer):
         n_samples = X_new_cases.shape[0]
 
         batch_size = batch_size if batch_size is not None else n_samples
+        max_val_acc = 0
         for epoch in pbar:
             permutation = torch.randperm(n_samples, device=model.device)
 
@@ -98,7 +99,7 @@ class SimpleTrainer(Trainer):
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
 
-            _, train_acc = self.log_validation_loss(
+            post_train_loss, train_acc = self.log_validation_loss(
                 model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
             )
 
@@ -109,15 +110,25 @@ class SimpleTrainer(Trainer):
                 ExperimentLogger.current().log_metrics(
                     {
                         "loss_per_epoch": float(loss.item()),
+                        "post_fit_loss_per_epoch": float(post_train_loss),
                         "epoch": epoch,
                         "train_accuracy_per_epoch": train_acc,
                         "val_loss_per_epoch": float(val_loss_avg),
                         "val_accuracy_per_epoch": val_acc,
                     }
                 )
-                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}")
+                pbar.set_description(
+                    f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}"
+                )
+                max_val_acc = max(max_val_acc, val_acc)
             else:
                 ExperimentLogger.current().log_metrics(
-                    {"loss_per_epoch": float(loss.item()), "epoch": epoch, "train_accuracy_per_epoch": train_acc}
+                    {
+                        "loss_per_epoch": float(loss.item()),
+                        "epoch": epoch,
+                        "train_accuracy_per_epoch": train_acc,
+                    }
                 )
                 pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}")
+        ExperimentLogger.current().log_metrics({"max_val_acc": float(max_val_acc)})
+        return max_val_acc

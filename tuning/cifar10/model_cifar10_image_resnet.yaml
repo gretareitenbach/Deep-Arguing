@@ -101,8 +101,8 @@ train_settings:
           type: value
           value: 0.05 
         total_iters:
-          type: value
-          value: 20
+          type: ref
+          value: total_iters
       # class_name: "CosineAnnealingLR"
       # sub_type: scheduler
       # optimizer: "optimizer"

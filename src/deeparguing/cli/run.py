@@ -1,6 +1,8 @@
 import logging
 import os
 
+from optuna.samplers import TPESampler
+
 # This will ensure determinism of KMEANS Clustering and GPU/CUDA operations
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -117,7 +119,7 @@ def run(project: str = "gradual-aa-cbr"):
                 theta_pre = parameters_to_vector(model.parameters()).clone().detach()
 
             model.train()
-            trainer.train(
+            max_val_acc = trainer.train(
                 model,
                 X_casebase,
                 y_casebase,
@@ -238,7 +240,8 @@ def run(project: str = "gradual-aa-cbr"):
         std_f1 = np.std(f1s)
         logging.info(f"Average F1: {average_f1}")
         logging.info(f"F1 STD: {std_f1}")
-        return average_f1
+        # return average_f1
+        return max_val_acc
 
     return objective
 
@@ -265,7 +268,7 @@ if __name__ == "__main__":
         raise ValueError(f"No logger implementation for: {args.experiment_logger}")
 
     if args.tuning:
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(direction="maximize", sampler=TPESampler())
         study.optimize(run(args.project), n_trials=args.n_trials)
         logging.info("\nBest trial:")
         best = study.best_trial
