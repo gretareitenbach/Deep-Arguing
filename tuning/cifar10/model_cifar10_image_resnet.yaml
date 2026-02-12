@@ -103,6 +103,49 @@ train_settings:
         total_iters:
           type: value
           value: 20
+      # class_name: "SequentialLR"
+      # sub_type: scheduler
+      # optimizer: "optimizer"
+      # params:
+      #   milestones:
+      #     type: list
+      #     value:
+      #       - { type: value, value: 26 }
+      #   schedulers:
+      #     type: list
+      #     value:
+      #       - {
+      #           type: class,
+      #           class_name: "ExponentialLR",
+      #           sub_type: scheduler,
+      #           optimizer: optimizer,
+      #           params: { gamma: { type: value, value: 1.05 } },
+      #         }
+      #       - {
+      #           type: class,
+      #           class_name: "ExponentialLR",
+      #           sub_type: scheduler,
+      #           optimizer: optimizer,
+      #           params: { gamma: { type: value, value: 0.5 } },
+      #         }
+            # - {
+            #     type: class,
+            #     class_name: "LinearLR",
+            #     sub_type: scheduler,
+            #     optimizer: optimizer,
+            #     params:
+            #       {
+            #         start_factor: { type: value, value: 0.05 },
+            #         total_iters: { type: value, value: 20 },
+            #       },
+            #   }
+      # class_name: "ExponentialLR"
+      # sub_type: scheduler
+      # optimizer: "optimizer"
+      # params:
+      #   gamma:
+      #     type: value
+      #     value: 1.05
       # class_name: "CosineAnnealingLR"
       # sub_type: scheduler
       # optimizer: "optimizer"
@@ -150,8 +193,7 @@ feature_weights_1:
       value: batch_norm
     hidden_sizes:
       type: list
-      value:
-        [
+      value: [
           # { type: value, value: 48 },
           { type: value, value: 32 },
           { type: value, value: 16 },
@@ -159,7 +201,7 @@ feature_weights_1:
         ]
     output_size:
       type: ref
-      value: dimensions 
+      value: dimensions
 
 # feature_weights_1:
 #   type: class
@@ -178,11 +220,10 @@ feature_weights_1:
 #         ]
 #     output_size:
 #       type: value
-#       value: 1 
+#       value: 1
 #     no_heads:
 #       type: ref
 #       value: dimensions
-
 
 # feature_weights_2:
 #   type: class
@@ -201,7 +242,7 @@ feature_weights_1:
 #         ]
 #     output_size:
 #       type: ref
-#       value: dimensions 
+#       value: dimensions
 
 # scaler:
 #   type: class
