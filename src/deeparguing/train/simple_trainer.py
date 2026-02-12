@@ -117,10 +117,8 @@ class SimpleTrainer(Trainer):
                         "val_accuracy_per_epoch": val_acc,
                     }
                 )
-                pbar.set_description(
-                    f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}"
-                )
                 max_val_acc = max(max_val_acc, val_acc)
+                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}, Train Acc: {round(train_acc, 6)}, Val Acc: {round(val_acc, 6)}")
             else:
                 ExperimentLogger.current().log_metrics(
                     {
@@ -129,6 +127,6 @@ class SimpleTrainer(Trainer):
                         "train_accuracy_per_epoch": train_acc,
                     }
                 )
-                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}")
+                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Train Acc: {round(train_acc, 6)}")
         ExperimentLogger.current().log_metrics({"max_val_acc": float(max_val_acc)})
         return max_val_acc

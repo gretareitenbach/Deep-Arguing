@@ -95,11 +95,12 @@ class ApproximateTrainer(Trainer):
 
             total_loss.backward()
 
-            optimizer.step()
-
             # Step scheduler per epoch if configured
             if scheduler is not None and scheduler_step_per == "epoch":
                 scheduler.step()
+
+            optimizer.step()
+
 
             if gradient_max_norm is not None:
                 torch.nn.utils.clip_grad_norm_(

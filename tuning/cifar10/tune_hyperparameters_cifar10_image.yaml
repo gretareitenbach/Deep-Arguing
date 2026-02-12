@@ -1,6 +1,6 @@
 epochs:
   type: value
-  value: 256
+  value: 128
   # type: tune
   # tune_type: int
   # params:
