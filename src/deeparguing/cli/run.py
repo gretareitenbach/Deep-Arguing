@@ -33,6 +33,7 @@ from deeparguing.irrelevance_edge_weights import *
 from deeparguing.regulariser import *
 from deeparguing.semantics import *
 from deeparguing.train import Trainer
+from deeparguing.losses import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")

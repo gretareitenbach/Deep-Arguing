@@ -30,6 +30,7 @@ class GradualAACBR(torch.nn.Module):
         use_supports: bool = False,
         post_process_func: Callable[[Tensor], Tensor] = lambda x: x,
         dimensions: int = 1,
+        no_classes: int = 1,
     ):
         """
          Gradual AACBR Model
@@ -75,7 +76,7 @@ class GradualAACBR(torch.nn.Module):
         self.use_supports = use_supports
         self.post_process_func = post_process_func
         self.dimensions = dimensions
-        self.W = torch.nn.Parameter(torch.ones((self.dimensions), dtype=torch.float32))
+        self.W = torch.nn.Parameter(torch.ones((no_classes, self.dimensions), dtype=torch.float32))
         self.A = None
 
     @property
@@ -514,9 +515,14 @@ class GradualAACBR(torch.nn.Module):
 
         # Only apply linear combination when d > 1
         if self.dimensions > 1:
-            final_strengths = torch.matmul(
-                final_strengths, self.W
-            )  # (B, n, d) -> (B, n)
+            # final_strengths = torch.matmul(
+            #     final_strengths, self.W
+            # )  # (B, n, d) -> (B, n)
+
+            default_strengths = final_strengths[:, self.default_indexes, :] # (B, n, d) -> (B, c, d)
+            predictions = torch.einsum('bcd,cd->bc', default_strengths, self.W) # (B, c, d) -> (B, c)
+            return predictions
+
         else:
             final_strengths = final_strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
 

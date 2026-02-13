@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
+from deeparguing.losses.loss import Loss
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
 
@@ -33,7 +34,7 @@ class ApproximateTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,

@@ -45,6 +45,15 @@ gamma_dag:
     high: { type: "value", value: 0.001 }
     log: { type: "value", value: True }
 
+gamma_batch_entropy:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "gamma_batch_entropy" }
+    low: { type: "value", value: 0.00001 }
+    high: { type: "value", value: 0.1 }
+    log: { type: "value", value: True }
+
 max_iters:
   type: tune
   tune_type: int

@@ -15,7 +15,6 @@ gamma_dag:
 
 max_iters:
   type: value
-  # value: 40
   value: 40
 
 temperature:
@@ -38,7 +37,7 @@ batch_size:
   # value: 1500
   # value: 1024
   # value: 512
-  value: 1024
+  value: 256
   # value: 4000
   # value: 7680
 
@@ -56,7 +55,6 @@ weight_decay:
 
 label_smoothing:
   type: value
-  # value: 0.15
   value: 0.15
   # value: 0.05
 
@@ -72,3 +70,7 @@ batch_norm:
 total_iters:
   type: value
   value: 8
+
+gamma_batch_entropy:
+  type: value
+  value: 0.1

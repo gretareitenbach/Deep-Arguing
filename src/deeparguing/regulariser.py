@@ -329,7 +329,9 @@ def threshold_adjacency(
         max_val = torch.abs(A).max()
         mask = torch.abs(A) >= threshold * max_val
     else:
-        raise ValueError(f"Unknown thresholding mode: {mode}. Use 'absolute' or 'relative'.")
+        raise ValueError(
+            f"Unknown thresholding mode: {mode}. Use 'absolute' or 'relative'."
+        )
 
     return A * mask
 

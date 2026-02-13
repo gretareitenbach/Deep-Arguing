@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
+from deeparguing.losses.loss import Loss
 from deeparguing.regulariser import RegulariserType
 from deeparguing.train import Trainer
 
@@ -31,7 +32,7 @@ class SimpleTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
@@ -118,7 +119,9 @@ class SimpleTrainer(Trainer):
                     }
                 )
                 max_val_acc = max(max_val_acc, val_acc)
-                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}, Train Acc: {round(train_acc, 6)}, Val Acc: {round(val_acc, 6)}")
+                pbar.set_description(
+                    f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Val Loss: {round(val_loss_avg, 6)}, Train Acc: {round(train_acc, 6)}, Val Acc: {round(val_acc, 6)}"
+                )
             else:
                 ExperimentLogger.current().log_metrics(
                     {
@@ -127,6 +130,8 @@ class SimpleTrainer(Trainer):
                         "train_accuracy_per_epoch": train_acc,
                     }
                 )
-                pbar.set_description(f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Train Acc: {round(train_acc, 6)}")
+                pbar.set_description(
+                    f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Train Acc: {round(train_acc, 6)}"
+                )
         ExperimentLogger.current().log_metrics({"max_val_acc": float(max_val_acc)})
         return max_val_acc

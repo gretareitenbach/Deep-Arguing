@@ -20,6 +20,7 @@ from deeparguing.irrelevance_edge_weights import *
 from deeparguing.regulariser import *
 from deeparguing.semantics import *
 from deeparguing.train import *
+from deeparguing.losses import *
 
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,

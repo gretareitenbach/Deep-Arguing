@@ -9,9 +9,8 @@ from torch.optim.lr_scheduler import LRScheduler
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
+from deeparguing.losses.loss import Loss
 from deeparguing.regulariser import RegulariserType
-
-type CriterionFactory = Callable[..., torch.nn.Module]
 
 
 class Trainer(metaclass=ABCMeta):
@@ -33,7 +32,7 @@ class Trainer(metaclass=ABCMeta):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
@@ -75,7 +74,7 @@ class Trainer(metaclass=ABCMeta):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Callable[[Tensor, Tensor], Tensor],
+        criterion: Loss,
         regulariser: RegulariserType = lambda _: 0,
         gradient_max_norm: float | None = None,
         log_gradients: bool = False,
@@ -96,7 +95,6 @@ class Trainer(metaclass=ABCMeta):
         # print("Pred", predictions.shape)
         # print("Y_target", y_target.shape)
         loss: Tensor = criterion(predictions, y_target)
-
         loss += regulariser(model)
 
         loss.backward()
@@ -130,7 +128,7 @@ class Trainer(metaclass=ABCMeta):
         batch_size: int | None,
         X_val: Tensor,
         y_val: Tensor,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         regulariser: RegulariserType,
     ) -> tuple[float, float]:
 
