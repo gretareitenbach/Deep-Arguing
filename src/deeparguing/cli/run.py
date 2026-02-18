@@ -30,7 +30,7 @@ from deeparguing.evals import (evaluate_model, print_results,
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
-from deeparguing.regulariser import *
+from deeparguing.regularisers import *
 from deeparguing.semantics import *
 from deeparguing.train import Trainer
 from deeparguing.losses import *

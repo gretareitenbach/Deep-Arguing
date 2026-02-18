@@ -11,7 +11,7 @@ from torch.types import Number
 from tqdm import tqdm
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regulariser import RegulariserType
+from deeparguing.regularisers import RegulariserType
 
 
 def generate_random_directions(param_vector: Tensor) -> Tuple[Tensor, Tensor]:

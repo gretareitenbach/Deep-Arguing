@@ -6,6 +6,11 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
+
+class_balance_regulariser:
+  type: class
+  class_name: "ClassBalanceRegulariser"
+
 # sparsity_regulariser:
 #   type: class
 #   class_name: SparsityRegulariser
@@ -23,6 +28,14 @@ regularisers:
               [
                 { type: ref, value: "dag_regulariser" },
                 { type: ref, value: gamma_dag },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "class_balance_regulariser" },
+                { type: ref, value: gamma_cbr },
               ],
           },
           # {

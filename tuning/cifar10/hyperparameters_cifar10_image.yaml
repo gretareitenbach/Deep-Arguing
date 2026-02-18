@@ -4,28 +4,39 @@ epochs:
 
 lr:
   type: value
-  value: 0.00013508222452436643
+  # value: 0.005061525956
+  value: 0.0012653814889143442
+  # value: 0.00013508222452436643
   # value: 0.001560075763220978
   # value: 0.0008
 
 gamma_dag:
   type: value
-  value: 0.0004958054350087606
+  value: 0.00009625277354872708
+  # value: 0.0004958054350087606
   # value: 0.00017308453998782466
+#
+gamma_cbr:
+  type: value
+  value: 0.001
+  # value: 0.00009625277354872708
+  # value: 0.0001
 
 max_iters:
   type: value
-  value: 40
+  value: 70
 
 temperature:
   type: value
-  value: 0.008660041797319655
+  value: 0.0039920420428928355
+  # value: 0.008660041797319655
   # value: 0.009894506620972531
   # value: 0.02
 
 dag_alpha:
   type: value
-  value: 0.00003390954315008047
+  value: 0.0005182448496304011
+  # value: 0.00003390954315008047
   # value: 0.00011138226169305043
 
 cluster_size:
@@ -43,25 +54,28 @@ batch_size:
 
 gradient_max_norm:
   type: value
-  value: 8.9
-  # value: 6.0
+  value: 11.3
+  # value: 8.9
+  # value: 1.0
   # value: 0.1
 
 weight_decay:
   type: value
-  value:  0.008722650609019457
+  value: 0.0015803534899068673
+  # value:  0.008722650609019457
   # value: 0.00001566250463452404
   # value: 0.0008
 
 label_smoothing:
   type: value
-  value: 0.15
+  value: 0
+  # value: 0.15
   # value: 0.05
 
 dimensions:
   type: value
   # value: 32
-  value: 28
+  value: 27
 
 batch_norm:
   type: value
@@ -69,8 +83,11 @@ batch_norm:
 
 total_iters:
   type: value
-  value: 8
+  value: 27
+  # value: 108
 
 gamma_batch_entropy:
   type: value
-  value: 0.1
+  value: 0.0009799442312855694
+
+

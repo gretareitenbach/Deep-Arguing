@@ -9,7 +9,7 @@ from tqdm import tqdm
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
-from deeparguing.regulariser import RegulariserType
+from deeparguing.regularisers import RegulariserType
 from deeparguing.train import Trainer
 
 from torch.utils.checkpoint import checkpoint

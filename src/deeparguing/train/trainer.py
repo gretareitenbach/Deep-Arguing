@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
-from deeparguing.regulariser import RegulariserType
+from deeparguing.regularisers import RegulariserType
 
 
 class Trainer(metaclass=ABCMeta):

@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.regulariser import Regulariser, RegulariserType
+from deeparguing.regularisers import Regulariser, RegulariserType
 from deeparguing.train import Trainer
 
 

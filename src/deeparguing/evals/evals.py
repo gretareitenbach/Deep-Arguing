@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -15,7 +16,7 @@ from deeparguing.clustering import *
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
-from deeparguing.regulariser import *
+from deeparguing.regularisers import *
 from deeparguing.semantics import *
 from deeparguing.train import *
 
