@@ -76,7 +76,9 @@ class GradualAACBR(torch.nn.Module):
         self.use_supports = use_supports
         self.post_process_func = post_process_func
         self.dimensions = dimensions
-        self.W = torch.nn.Parameter(torch.ones((no_classes, self.dimensions), dtype=torch.float32))
+        self.W = torch.nn.Parameter(
+            torch.ones((no_classes, self.dimensions), dtype=torch.float32)
+        )
         self.A = None
 
     @property
@@ -188,8 +190,15 @@ class GradualAACBR(torch.nn.Module):
             no_heads,
         )
 
-        self.A = -(torch.mul(attacks, blocked_attacks) + symmetric_attacks)
-        self.A = self.A + self.B
+        no_classes = y_train.shape[1]
+        # TODO: This assumes there is the same number of cases per class in the casebase
+        # which might not always be the case
+        no_per_class = len(y_train) / no_classes
+
+        self.A = torch.mul(attacks, blocked_attacks) + symmetric_attacks
+        self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
+        self.B = (1 / (no_per_class)) * self.B
+        self.A = -self.A + self.B
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
@@ -519,8 +528,12 @@ class GradualAACBR(torch.nn.Module):
             #     final_strengths, self.W
             # )  # (B, n, d) -> (B, n)
 
-            default_strengths = final_strengths[:, self.default_indexes, :] # (B, n, d) -> (B, c, d)
-            predictions = torch.einsum('bcd,cd->bc', default_strengths, self.W) # (B, c, d) -> (B, c)
+            default_strengths = final_strengths[
+                :, self.default_indexes, :
+            ]  # (B, n, d) -> (B, c, d)
+            predictions = torch.einsum(
+                "bcd,cd->bc", default_strengths, self.W
+            )  # (B, c, d) -> (B, c)
             return predictions
 
         else:

@@ -62,7 +62,7 @@ class GradualSemantics(ABC):
         Examples:
             # Example usage:
             base_scores = np.array([0.5, 0.8, 0.6])
-            aggregations = np.array([0.2, 0.4, 0.3])
+            aggregations = np.array([0.2, 0.4, 0.3]r
             result = influence_func(base_scores, aggregations)
         """
         pass
