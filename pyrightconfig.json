@@ -7,6 +7,6 @@
   "reportUnknownMemberType": false,
   "reportUnknownArgumentType": true,
   "reportImplicitOverride": true,
-  "reportIncompatibleMethodOverride": true
+  "reportIncompatibleMethodOverride": true,
+  "reportConstantRedefinition": "none"
 }
-

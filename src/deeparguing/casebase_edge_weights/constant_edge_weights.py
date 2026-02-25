@@ -8,13 +8,14 @@ from deeparguing.casebase_edge_weights.compute_partial_order import \
 
 class ConstantPartialOrder(ComputePartialOrder):
 
-    def __init__(self, edge_weights: int) -> None:
+    def __init__(self, edge_weights: int, dim: int = 1) -> None:
         super(ConstantPartialOrder, self).__init__()
         self.edge_weights = edge_weights
+        self.dim = dim
 
     @override
     def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
-        return torch.ones(attacker.shape[0] * target.shape[0]) * self.edge_weights
+        return torch.ones((attacker.shape[0],  target.shape[0], self.dim), device=attacker.device) * self.edge_weights
 
     @override
     def plot_parameters(self):
