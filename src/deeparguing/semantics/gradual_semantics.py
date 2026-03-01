@@ -6,10 +6,13 @@ from torch import Tensor
 
 class GradualSemantics(ABC):
 
-    def __init__(self, max_iters: int, epsilon: float | None = None) -> None:
+    def __init__(
+        self, max_iters: int, epsilon: float | None = None, damping: float = 1
+    ) -> None:
         super().__init__()
         self.max_iters = max_iters
         self.epsilon = epsilon
+        self.damping = damping
 
     @abstractmethod
     def aggregation_func(self, A: Tensor, strengths: Tensor) -> Tensor:
@@ -74,7 +77,11 @@ class GradualSemantics(ABC):
     def forward_till_convergence(self, A: Tensor, base_scores: Tensor):
         prev_strength = base_scores
         for _ in range(self.max_iters):
-            next_strength = self.forward(A, base_scores, prev_strength)
+            next_strength = (
+                1 - self.damping
+            ) * prev_strength + self.damping * self.forward(
+                A, base_scores, prev_strength
+            )
             if self.epsilon is not None:
                 if torch.allclose(prev_strength, next_strength, atol=self.epsilon):
                     return next_strength

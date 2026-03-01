@@ -8,8 +8,10 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 
 class SigmoidSemantics(GradualSemantics):
 
-    def __init__(self, max_iters: int, epsilon: float | None = None) -> None:
-        super().__init__(max_iters, epsilon)
+    def __init__(
+        self, max_iters: int, epsilon: float | None = None, damping: float = 1
+    ) -> None:
+        super().__init__(max_iters, epsilon, damping)
 
     @override
     def aggregation_func(self, A: Tensor, strengths: Tensor):

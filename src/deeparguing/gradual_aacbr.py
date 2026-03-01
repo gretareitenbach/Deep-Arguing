@@ -31,6 +31,7 @@ class GradualAACBR(torch.nn.Module):
         post_process_func: Callable[[Tensor], Tensor] = lambda x: x,
         dimensions: int = 1,
         no_classes: int = 1,
+        rescale_edges: bool = False,
     ):
         """
          Gradual AACBR Model
@@ -76,10 +77,9 @@ class GradualAACBR(torch.nn.Module):
         self.use_supports = use_supports
         self.post_process_func = post_process_func
         self.dimensions = dimensions
-        self.W = torch.nn.Parameter(
-            torch.ones((no_classes, self.dimensions), dtype=torch.float32)
-        )
+        self.W = torch.nn.Parameter(torch.ones(dimensions, dtype=torch.float32))
         self.A = None
+        self.rescale_edges = rescale_edges
 
     @property
     def device(self):
@@ -139,8 +139,6 @@ class GradualAACBR(torch.nn.Module):
                 )
             )
 
-        self.A = None
-
         device = X_train.device
 
         X_train, y_train, default_indexes, indexes, attackers_default_mask = (
@@ -190,15 +188,16 @@ class GradualAACBR(torch.nn.Module):
             no_heads,
         )
 
-        no_classes = y_train.shape[1]
-        # TODO: This assumes there is the same number of cases per class in the casebase
-        # which might not always be the case
-        no_per_class = len(y_train) / no_classes
-
         self.A = torch.mul(attacks, blocked_attacks) + symmetric_attacks
-        self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
-        self.B = (1 / (no_per_class)) * self.B
+        if self.rescale_edges:
+            # TODO: This assumes there is the same number of cases per class in the casebase
+            # which might not always be the case
+            no_classes = y_train.shape[1]
+            no_per_class = len(y_train) / no_classes
+            self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
+            self.B = (1 / (no_per_class)) * self.B
         self.A = -self.A + self.B
+        # self.A += initial_AF
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
@@ -524,22 +523,15 @@ class GradualAACBR(torch.nn.Module):
 
         # Only apply linear combination when d > 1
         if self.dimensions > 1:
-            # final_strengths = torch.matmul(
-            #     final_strengths, self.W
-            # )  # (B, n, d) -> (B, n)
-
-            default_strengths = final_strengths[
-                :, self.default_indexes, :
-            ]  # (B, n, d) -> (B, c, d)
-            predictions = torch.einsum(
-                "bcd,cd->bc", default_strengths, self.W
-            )  # (B, c, d) -> (B, c)
-            return predictions
+            final_strengths = torch.matmul(
+                final_strengths, self.W
+            )  # (B, n, d) -> (B, n)
 
         else:
             final_strengths = final_strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
 
-        return final_strengths[:, self.default_indexes]
+        default_strengths = final_strengths[:, self.default_indexes]
+        return default_strengths
 
     def __batch_base_scores(self, base_scores: Tensor, batch_size: int) -> Tensor:
         base_scores = torch.tile(

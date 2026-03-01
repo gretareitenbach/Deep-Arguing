@@ -92,8 +92,7 @@ class Trainer(metaclass=ABCMeta):
         predictions = model(X_new_cases).squeeze()
 
         y_target = torch.argmax(y_new_cases, dim=1)
-        # print("Pred", predictions.shape)
-        # print("Y_target", y_target.shape)
+
         loss: Tensor = criterion(predictions, y_target)
         loss += regulariser(model)
 

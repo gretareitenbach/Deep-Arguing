@@ -1,6 +1,7 @@
 from typing import override
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from deeparguing.semantics.gradual_semantics import GradualSemantics
@@ -8,8 +9,15 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 
 class ReluSemantics(GradualSemantics):
 
-    def __init__(self, max_iters: int, epsilon: float | None = None) -> None:
-        super().__init__(max_iters, epsilon)
+    def __init__(
+        self,
+        max_iters: int,
+        epsilon: float | None = None,
+        damping: float = 1,
+        use_soft_relu: bool = False,
+    ) -> None:
+        super().__init__(max_iters, epsilon, damping)
+        self.use_soft_relu = use_soft_relu
 
     @override
     def aggregation_func(self, A: Tensor, strengths: Tensor):
@@ -33,4 +41,5 @@ class ReluSemantics(GradualSemantics):
 
     @override
     def influence_func(self, base_scores: Tensor, aggregations: Tensor):
-        return torch.relu(torch.relu(base_scores) + aggregations)
+        f = F.softplus if self.use_soft_relu else torch.relu
+        return f(f(base_scores) + aggregations)

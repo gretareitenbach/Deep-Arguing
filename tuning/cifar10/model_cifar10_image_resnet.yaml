@@ -7,13 +7,13 @@ dag_regulariser:
       value: dag_alpha
 
 
-class_balance_regulariser:
-  type: class
-  class_name: "ClassBalanceRegulariser"
-
-sparsity_regulariser:
-  type: class
-  class_name: SparsityRegulariser
+# class_balance_regulariser:
+#   type: class
+#   class_name: "ClassBalanceRegulariser"
+#
+# sparsity_regulariser:
+#   type: class
+#   class_name: SparsityRegulariser
 
 regularisers:
   type: class
@@ -22,14 +22,14 @@ regularisers:
     regularisers:
       type: list
       value: [
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "dag_regulariser" },
-          #       { type: ref, value: gamma_dag },
-          #     ],
-          # },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "dag_regulariser" },
+                { type: ref, value: gamma_dag },
+              ],
+          },
           # {
           #   type: list,
           #   value:
@@ -56,9 +56,9 @@ cross_entropy:
       type: ref
       value: "label_smoothing"
 
-batch_entropy:
-  type: class
-  class_name: "BatchEntropyRegularisation"
+# batch_entropy:
+#   type: class
+#   class_name: "BatchEntropyRegularisation"
 
 losses:
   type: class
@@ -122,8 +122,8 @@ train_settings:
         weight_decay:
           type: ref
           value: "weight_decay"
-    # scheduler:
-    #   type: class
+    scheduler:
+      type: class
       #   class_name: "CosineAnnealingWarmRestarts"
       #   sub_type: scheduler
       #   optimizer: "optimizer"
@@ -137,16 +137,16 @@ train_settings:
       #     eta_min:
       #       type: value
       #       value: 0.0001
-      # class_name: "LinearLR"
-      # sub_type: scheduler
-      # optimizer: "optimizer"
-      # params:
-      #   start_factor:
-      #     type: value
-      #     value: 0.05
-      #   total_iters:
-      #     type: ref
-      #     value: total_iters
+      class_name: "LinearLR"
+      sub_type: scheduler
+      optimizer: "optimizer"
+      params:
+        start_factor:
+          type: value
+          value: 0.05
+        total_iters:
+          type: ref
+          value: total_iters
       # class_name: "CosineAnnealingLR"
       # sub_type: scheduler
       # optimizer: "optimizer"
@@ -195,10 +195,10 @@ feature_weights_1:
     hidden_sizes:
       type: list
       value: [
-          { type: value, value: 64 },
-          { type: value, value: 48 },
+          # { type: value, value: 64 },
+          # { type: value, value: 48 },
           { type: value, value: 32 },
-          # { type: value, value: 16 },
+          { type: value, value: 16 },
           # { type: value, value: 8 },
         ]
     output_size:
@@ -227,29 +227,29 @@ feature_weights_1:
 #       type: ref
 #       value: dimensions
 
-feature_weights_2:
-  type: class
-  class_name: "MLPExtractor"
-  params:
-    input_size:
-      type: value
-      value: 64
-    batch_norm:
-      type: ref
-      value: batch_norm
-    hidden_sizes:
-      type: list
-      value:
-        [
-          { type: value, value: 64 },
-          { type: value, value: 48 },
-          { type: value, value: 32 },
-          # { type: value, value: 16 },
-          # { type: value, value: 8 },
-        ]
-    output_size:
-      type: ref
-      value: dimensions
+# feature_weights_2:
+#   type: class
+#   class_name: "MLPExtractor"
+#   params:
+#     input_size:
+#       type: value
+#       value: 64
+#     batch_norm:
+#       type: ref
+#       value: batch_norm
+#     hidden_sizes:
+#       type: list
+#       value:
+#         [
+#           { type: value, value: 64 },
+#           { type: value, value: 48 },
+#           { type: value, value: 32 },
+#           # { type: value, value: 16 },
+#           # { type: value, value: 8 },
+#         ]
+#     output_size:
+#       type: ref
+#       value: dimensions
 
 # scaler:
 #   type: class
@@ -266,6 +266,13 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
+    use_soft_relu:
+      type: value
+      value: False
+    damping:
+      type: value
+      value: 1.0
+
 
 partial_order:
   type: class
@@ -289,6 +296,18 @@ partial_order:
           type: function
           value: "sigmoid"
 
+# partial_order:
+#   type: class
+#   class_name: "ConstantPartialOrder"
+#   params:
+#     edge_weights:
+#       type: value
+#       value: 0.5
+#     dim:
+#       type: ref
+#       value: dimensions
+
+
 irrelevance:
   type: class
   class_name: "RegularIrrelevance"
@@ -297,31 +316,31 @@ irrelevance:
       type: ref
       value: "partial_order"
 
-# base_score:
-#   type: class
-#   class_name: "ConstantBaseScore"
-#   params:
-#     constant:
-#       type: value
-#       value: 0.5
-#     dim:
-#       type: ref
-#       value: dimensions
-
 base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: "ConstantBaseScore"
   params:
-    feature_extractors:
-      type: list
-      value: [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "feature_weights_2" },
-          # { type: ref, value: "scaler" },
-        ]
-    activation:
-      type: function
-      value: "sigmoid"
+    constant:
+      type: value
+      value: 0.5
+    dim:
+      type: ref
+      value: dimensions
+
+# base_score:
+#   type: class
+#   class_name: "LearnedBaseScore"
+#   params:
+#     feature_extractors:
+#       type: list
+#       value: [
+#           { type: ref, value: "feature_weights" },
+#           { type: ref, value: "feature_weights_2" },
+#           # { type: ref, value: "scaler" },
+#         ]
+#     activation:
+#       type: function
+#       value: "sigmoid"
 
 model:
   type: class
@@ -360,3 +379,6 @@ model:
     no_classes:
       type: value
       value: 10
+    rescale_edges:
+      type: value
+      value: False
