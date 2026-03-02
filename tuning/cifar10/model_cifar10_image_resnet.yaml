@@ -6,7 +6,6 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
-
 # class_balance_regulariser:
 #   type: class
 #   class_name: "ClassBalanceRegulariser"
@@ -273,7 +272,6 @@ semantics:
       type: value
       value: 1.0
 
-
 partial_order:
   type: class
   class_name: "LearnedPartialOrder"
@@ -306,7 +304,6 @@ partial_order:
 #     dim:
 #       type: ref
 #       value: dimensions
-
 
 irrelevance:
   type: class
@@ -341,6 +338,10 @@ base_score:
 #     activation:
 #       type: function
 #       value: "sigmoid"
+#
+t_norm:
+  type: class
+  class_name: ProductTNorm
 
 model:
   type: class
@@ -376,9 +377,9 @@ model:
     dimensions:
       type: ref
       value: dimensions
-    no_classes:
-      type: value
-      value: 10
     rescale_edges:
       type: value
       value: False
+    t_norm:
+      type: ref
+      value: t_norm

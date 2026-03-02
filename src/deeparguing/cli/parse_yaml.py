@@ -17,10 +17,11 @@ from deeparguing.clustering import *
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
+from deeparguing.losses import *
 from deeparguing.regularisers import *
 from deeparguing.semantics import *
+from deeparguing.t_norm import *
 from deeparguing.train import *
-from deeparguing.losses import *
 
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,

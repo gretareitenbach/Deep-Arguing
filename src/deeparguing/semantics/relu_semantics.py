@@ -18,6 +18,7 @@ class ReluSemantics(GradualSemantics):
     ) -> None:
         super().__init__(max_iters, epsilon, damping)
         self.use_soft_relu = use_soft_relu
+        self.infl = F.softplus if self.use_soft_relu else torch.relu
 
     @override
     def aggregation_func(self, A: Tensor, strengths: Tensor):
@@ -41,5 +42,4 @@ class ReluSemantics(GradualSemantics):
 
     @override
     def influence_func(self, base_scores: Tensor, aggregations: Tensor):
-        f = F.softplus if self.use_soft_relu else torch.relu
-        return f(f(base_scores) + aggregations)
+        return self.infl(self.infl(base_scores) + aggregations)

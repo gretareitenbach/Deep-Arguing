@@ -30,10 +30,11 @@ from deeparguing.evals import (evaluate_model, print_results,
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
+from deeparguing.losses import *
 from deeparguing.regularisers import *
 from deeparguing.semantics import *
+from deeparguing.t_norm import *
 from deeparguing.train import Trainer
-from deeparguing.losses import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")
@@ -42,6 +43,7 @@ logging.debug(f"Using device: {device}")
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
+
 
 def run(project: str = "gradual-aa-cbr"):
     def objective(trial: Trial | None = None):

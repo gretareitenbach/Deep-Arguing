@@ -14,6 +14,7 @@ from deeparguing.casebase_edge_weights.compute_partial_order import \
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import \
     IrrelevanceType
 from deeparguing.semantics.gradual_semantics import GradualSemantics
+from deeparguing.t_norm import ProductTNorm, TNorm
 
 
 class GradualAACBR(torch.nn.Module):
@@ -30,8 +31,8 @@ class GradualAACBR(torch.nn.Module):
         use_supports: bool = False,
         post_process_func: Callable[[Tensor], Tensor] = lambda x: x,
         dimensions: int = 1,
-        no_classes: int = 1,
         rescale_edges: bool = False,
+        t_norm: TNorm = ProductTNorm(),
     ):
         """
          Gradual AACBR Model
@@ -80,6 +81,7 @@ class GradualAACBR(torch.nn.Module):
         self.W = torch.nn.Parameter(torch.ones(dimensions, dtype=torch.float32))
         self.A = None
         self.rescale_edges = rescale_edges
+        self.t_norm = t_norm
 
     @property
     def device(self):
@@ -197,7 +199,6 @@ class GradualAACBR(torch.nn.Module):
             self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
             self.B = (1 / (no_per_class)) * self.B
         self.A = -self.A + self.B
-        # self.A += initial_AF
         self.X_train = X_train
         self.y_train = y_train
         self.default_indexes = default_indexes
@@ -226,7 +227,9 @@ class GradualAACBR(torch.nn.Module):
         # else: already 3D (n, n, d)
 
         edge_weights = edge_weights.reshape((train_size, train_size, -1))
-        return edge_weights * (1 - (torch.transpose(edge_weights, 0, 1)))
+        return self.t_norm.and_op(
+            edge_weights, self.t_norm.not_op(torch.transpose(edge_weights, 0, 1))
+        )
 
     def __casebase_edge_weights_equal(
         self, attacker: Tensor, target: Tensor, train_size: int
@@ -251,7 +254,8 @@ class GradualAACBR(torch.nn.Module):
         # else: already 3D (n, n, d)
 
         edge_weights = edge_weights.reshape((train_size, train_size, -1))
-        return edge_weights * torch.transpose(edge_weights, 0, 1)
+
+        return self.t_norm.and_op(edge_weights, torch.transpose(edge_weights, 0, 1))
 
     def __prepare_default(
         self, X_train: Tensor, y_train: Tensor, X_default: Tensor, y_default: Tensor
@@ -373,7 +377,7 @@ class GradualAACBR(torch.nn.Module):
             # B_chunk -> (1, m, batch_size, d)
             # Then compute the product over the chunk dimension.
             term = self._compute_blocked_product(A_chunk, B_chunk)
-            result = result * term
+            result = self.t_norm.and_op(result, term)
         return result
 
     def _compute_blocked_product(self, A: Tensor, B: Tensor) -> Tensor:
@@ -389,11 +393,14 @@ class GradualAACBR(torch.nn.Module):
         """
         A = A.unsqueeze(1)  # Shape (n, 1, n, d)
         B = B.unsqueeze(0)  # Shape (1, n, n, d)
-        eps = 1e-10
-        term = 1 - (A * B)
+        # eps = 1e-10
+        term = self.t_norm.and_op(A, B)
+        term = self.t_norm.not_op(term)
+        # term = 1 - (A * B)
 
         # P = exp( sum( log(x) ) ) - sum over k dimension (dim=2)
-        result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
+        # result = torch.exp(torch.sum(torch.log(term + eps), dim=2))
+        result = self.t_norm.aggregate(term, dim=2)
         return result
 
     def __minimal_supports(
