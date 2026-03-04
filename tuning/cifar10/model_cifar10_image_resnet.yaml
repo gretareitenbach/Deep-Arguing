@@ -6,13 +6,21 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
-# class_balance_regulariser:
-#   type: class
-#   class_name: "ClassBalanceRegulariser"
-#
-# sparsity_regulariser:
-#   type: class
-#   class_name: SparsityRegulariser
+class_balance_regulariser:
+  type: class
+  class_name: "ClassBalanceRegulariser"
+
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+
+community_preservation_regulariser:
+  type: class
+  class_name: CommunityPreservationRegulariser
+  params:
+    method:
+      type: value
+      value: "fro"
 
 regularisers:
   type: class
@@ -29,22 +37,30 @@ regularisers:
                 { type: ref, value: gamma_dag },
               ],
           },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "class_balance_regulariser" },
-          #       { type: ref, value: gamma_cbr },
-          #     ],
-          # },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "sparsity_regulariser" },
-          #       { type: value, value: 0.008 },
-          #     ],
-          # },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "class_balance_regulariser" },
+                { type: ref, value: gamma_cbr },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "sparsity_regulariser" },
+                { type: ref, value: gamma_sparsity },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "community_preservation_regulariser" },
+                { type: ref, value: gamma_cp },
+              ],
+          },
         ]
 
 cross_entropy:
@@ -55,9 +71,9 @@ cross_entropy:
       type: ref
       value: "label_smoothing"
 
-# batch_entropy:
-#   type: class
-#   class_name: "BatchEntropyRegularisation"
+batch_entropy:
+  type: class
+  class_name: "BatchEntropyRegularisation"
 
 losses:
   type: class
@@ -74,19 +90,18 @@ losses:
                 { type: value, value: 1 },
               ],
           }
-        # - {
-        #     type: list,
-        #     value:
-        #       [
-        #         { type: ref, value: "batch_entropy" },
-        #         { type: ref, value: gamma_batch_entropy },
-        #       ],
-        #   }
+        - {
+            type: list,
+            value:
+              [
+                { type: ref, value: "batch_entropy" },
+                { type: ref, value: gamma_batch_entropy },
+              ],
+          }
 
 trainer:
   type: class
   class_name: "SimpleTrainer"
-  # class_name: "ApproximateTrainer"
 
 build_casebase:
   type: class
@@ -121,41 +136,41 @@ train_settings:
         weight_decay:
           type: ref
           value: "weight_decay"
-    scheduler:
-      type: class
-      #   class_name: "CosineAnnealingWarmRestarts"
-      #   sub_type: scheduler
-      #   optimizer: "optimizer"
-      #   params:
-      #     T_0:
-      #       type: value
-      #       value: 8  # Restart every 8 epochs
-      #     T_mult:
-      #       type: value
-      #       value: 1  # Keep restart period constant
-      #     eta_min:
-      #       type: value
-      #       value: 0.0001
-      class_name: "LinearLR"
-      sub_type: scheduler
-      optimizer: "optimizer"
-      params:
-        start_factor:
-          type: value
-          value: 0.05
-        total_iters:
-          type: ref
-          value: total_iters
-      # class_name: "CosineAnnealingLR"
-      # sub_type: scheduler
-      # optimizer: "optimizer"
-      # params:
-      #   T_max:
-      #     type: ref
-      #     value: epochs
-      #   eta_min:
-      #     type: value
-      #     value: 0.00005
+    # scheduler:
+    #   type: class
+    #   class_name: "CosineAnnealingWarmRestarts"
+    #   sub_type: scheduler
+    #   optimizer: "optimizer"
+    #   params:
+    #     T_0:
+    #       type: value
+    #       value: 8  # Restart every 8 epochs
+    #     T_mult:
+    #       type: value
+    #       value: 1  # Keep restart period constant
+    #     eta_min:
+    #       type: value
+    #       value: 0.0001
+    # class_name: "LinearLR"
+    # sub_type: scheduler
+    # optimizer: "optimizer"
+    # params:
+    #   start_factor:
+    #     type: value
+    #     value: 0.05
+    #   total_iters:
+    #     type: ref
+    #     value: total_iters
+    # class_name: "CosineAnnealingLR"
+    # sub_type: scheduler
+    # optimizer: "optimizer"
+    # params:
+    #   T_max:
+    #     type: ref
+    #     value: epochs
+    #   eta_min:
+    #     type: value
+    #     value: 0.00005
     regulariser:
       type: ref
       value: "regularisers"
@@ -193,12 +208,11 @@ feature_weights_1:
       value: batch_norm
     hidden_sizes:
       type: list
-      value: [
-          # { type: value, value: 64 },
-          # { type: value, value: 48 },
-          { type: value, value: 32 },
-          { type: value, value: 16 },
-          # { type: value, value: 8 },
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
         ]
     output_size:
       type: ref
@@ -249,14 +263,28 @@ feature_weights_1:
 #     output_size:
 #       type: ref
 #       value: dimensions
-
-# scaler:
-#   type: class
-#   class_name: "Scaler"
-#   params:
-#     no_features:
-#       type: data_ref
-#       value: "no_features"
+#
+feature_weights_2:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
+        ]
+    output_size:
+      type: ref
+      value: dimensions
 
 semantics:
   type: class
@@ -313,35 +341,35 @@ irrelevance:
       type: ref
       value: "partial_order"
 
+# base_score:
+# type: class
+# class_name: "ConstantBaseScore"
+# params:
+#   constant:
+#     type: value
+#     value: 0.5
+#   dim:
+#     type: ref
+#     value: dimensions
+
 base_score:
   type: class
-  class_name: "ConstantBaseScore"
+  class_name: "LearnedBaseScore"
   params:
-    constant:
-      type: value
-      value: 0.5
-    dim:
-      type: ref
-      value: dimensions
+    feature_extractors:
+      type: list
+      value: [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "feature_weights_2" },
+          # { type: ref, value: "scaler" },
+        ]
+    activation:
+      type: function
+      value: "sigmoid"
 
-# base_score:
+# t_norm:
 #   type: class
-#   class_name: "LearnedBaseScore"
-#   params:
-#     feature_extractors:
-#       type: list
-#       value: [
-#           { type: ref, value: "feature_weights" },
-#           { type: ref, value: "feature_weights_2" },
-#           # { type: ref, value: "scaler" },
-#         ]
-#     activation:
-#       type: function
-#       value: "sigmoid"
-#
-t_norm:
-  type: class
-  class_name: ProductTNorm
+#   class_name: ProductTNorm
 
 model:
   type: class
@@ -378,8 +406,8 @@ model:
       type: ref
       value: dimensions
     rescale_edges:
-      type: value
-      value: False
-    t_norm:
       type: ref
-      value: t_norm
+      value: rescale_edges
+    t_norm_str:
+      type: ref
+      value: t_norm_str

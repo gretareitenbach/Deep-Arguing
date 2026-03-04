@@ -28,6 +28,8 @@ class LossList(Loss):
         for i in range(1, len(self.losses)):
             loss_func = self.losses[i][0]
             weight = self.losses[i][1]
+            if weight == 0:
+                continue
             total += weight * loss_func(predictions, targets)
 
         return total

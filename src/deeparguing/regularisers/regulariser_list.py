@@ -20,6 +20,8 @@ class RegulariserList(Regulariser):
         total = torch.zeros(1, device=model.device).squeeze()
 
         for reg_func, weight in self.regularisers:
+            if weight == 0:
+                continue
             total += weight * reg_func(model)
 
         return total

@@ -14,7 +14,8 @@ from deeparguing.casebase_edge_weights.compute_partial_order import \
 from deeparguing.irrelevance_edge_weights.compute_irrelevance import \
     IrrelevanceType
 from deeparguing.semantics.gradual_semantics import GradualSemantics
-from deeparguing.t_norm import ProductTNorm, TNorm
+from deeparguing.t_norm import (GodelTNorm, LukasiewiczTNorm, ProductTNorm,
+                                TNorm)
 
 
 class GradualAACBR(torch.nn.Module):
@@ -32,7 +33,7 @@ class GradualAACBR(torch.nn.Module):
         post_process_func: Callable[[Tensor], Tensor] = lambda x: x,
         dimensions: int = 1,
         rescale_edges: bool = False,
-        t_norm: TNorm = ProductTNorm(),
+        t_norm_str: str = "ProductTNorm",
     ):
         """
          Gradual AACBR Model
@@ -81,7 +82,12 @@ class GradualAACBR(torch.nn.Module):
         self.W = torch.nn.Parameter(torch.ones(dimensions, dtype=torch.float32))
         self.A = None
         self.rescale_edges = rescale_edges
-        self.t_norm = t_norm
+        t_norm_map = {
+            "ProductTNorm": ProductTNorm(),
+            "GodelTNorm": GodelTNorm(),
+            "LukasiewiczTNorm": LukasiewiczTNorm(),
+        }
+        self.t_norm: TNorm = t_norm_map[t_norm_str]
 
     @property
     def device(self):

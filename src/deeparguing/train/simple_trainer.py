@@ -85,6 +85,9 @@ class SimpleTrainer(Trainer):
                     log_gradients=log_gradients,
                 )
 
+                if loss is torch.nan or torch.isnan(loss):
+                    return 0
+
                 # Step scheduler per batch if configured
                 if scheduler is not None and scheduler_step_per == "batch":
                     scheduler.step()
