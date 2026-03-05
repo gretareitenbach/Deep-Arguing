@@ -411,3 +411,6 @@ model:
     t_norm_str:
       type: ref
       value: t_norm_str
+    rand_weight:
+      type: ref
+      value: rand_weight

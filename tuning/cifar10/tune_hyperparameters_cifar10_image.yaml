@@ -7,7 +7,7 @@ lr:
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.0001 }
+    low: { type: "value", value: 0.001 }
     high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
@@ -32,7 +32,9 @@ gamma_cbr:
       value: [
         {type: value, value: 0},
         {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
         {type: value, value: 0.001},
+        {type: value, value: 0.01},
         {type: value, value: 0.1},
       ]
 
@@ -46,7 +48,9 @@ gamma_dag:
       value: [
         {type: value, value: 0},
         {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
         {type: value, value: 0.001},
+        {type: value, value: 0.01},
         {type: value, value: 0.1},
       ]
 
@@ -60,7 +64,9 @@ gamma_batch_entropy:
       value: [
         {type: value, value: 0},
         {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
         {type: value, value: 0.001},
+        {type: value, value: 0.01},
         {type: value, value: 0.1},
       ]
 
@@ -74,7 +80,9 @@ gamma_sparsity:
       value: [
         {type: value, value: 0},
         {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
         {type: value, value: 0.001},
+        {type: value, value: 0.01},
         {type: value, value: 0.1},
       ]
 
@@ -88,7 +96,9 @@ gamma_cp:
       value: [
         {type: value, value: 0},
         {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
         {type: value, value: 0.001},
+        {type: value, value: 0.01},
         {type: value, value: 0.1},
       ]
 
@@ -97,9 +107,9 @@ max_iters:
   tune_type: int
   params:
     name: { type: "value", value: "max_iters" }
-    low: { type: "value", value: 5 }
-    high: { type: "value", value: 100 }
-    step: { type: "value", value: 5 }
+    low: { type: "value", value: 60 }
+    high: { type: "value", value: 80 }
+    step: { type: "value", value: 1 }
     log: { type: "value", value: False }
 
 batch_size:
@@ -112,7 +122,7 @@ batch_size:
       value: [
         {type: value, value: 1024},
         {type: value, value: 512},
-        # {type: value, value: 256},
+        {type: value, value: 256},
         # {type: value, value: 128},
       ]
 
@@ -123,7 +133,7 @@ temperature:
   params:
     name: { type: "value", value: "temperature" }
     low: { type: "value", value: 0.001 }
-    high: { type: "value", value: 10 }
+    high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
 weight_decay:
@@ -131,7 +141,7 @@ weight_decay:
   tune_type: float
   params:
     name: { type: "value", value: "weight_decay" }
-    low: { type: "value", value: 0.00001 }
+    low: { type: "value", value: 0.0001 }
     high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
@@ -141,7 +151,7 @@ label_smoothing:
   params:
     name: { type: "value", value: "label_smoothing" }
     low: { type: "value", value: 0.00 }
-    high: { type: "value", value: 0.3 }
+    high: { type: "value", value: 1.0 }
     step: { type: "value", value: 0.05 }
     log: { type: "value", value: False }
 
@@ -153,11 +163,11 @@ cluster_size:
     choices:
       type: list
       value: [
-        {type: value, value: 5},
-        {type: value, value: 10},
+        # {type: value, value: 5},
+        # {type: value, value: 10},
         {type: value, value: 15},
-        # {type: value, value: 20},
-        # {type: value, value: 25},
+        {type: value, value: 20},
+        {type: value, value: 25},
       ]
 
 gradient_max_norm:
@@ -166,7 +176,7 @@ gradient_max_norm:
   params:
     name: { type: "value", value: "gradient_max_norm" }
     low: { type: "value", value: 0.1 }
-    high: { type: "value", value: 15.0 }
+    high: { type: "value", value: 3.0 }
     step: { type: "value", value: 0.1 }
     log: { type: "value", value: False }
 
@@ -194,10 +204,10 @@ first_layer:
     choices:
       type: list
       value: [
-        {type: value, value: 0},
-        {type: value, value: 128},
+        # {type: value, value: 0},
+        # {type: value, value: 128},
         {type: value, value: 64},
-        {type: value, value: 32},
+        # {type: value, value: 32},
       ]
 
 second_layer:
@@ -208,11 +218,11 @@ second_layer:
     choices:
       type: list
       value: [
-        {type: value, value: 0},
-        {type: value, value: 64},
+        # {type: value, value: 0},
+        # {type: value, value: 64},
         {type: value, value: 48},
-        {type: value, value: 32},
-        {type: value, value: 16},
+        # {type: value, value: 32},
+        # {type: value, value: 16},
       ]
 
 third_layer:
@@ -223,10 +233,10 @@ third_layer:
     choices:
       type: list
       value: [
-        {type: value, value: 0},
-        {type: value, value: 48},
+        # {type: value, value: 0},
+        # {type: value, value: 48},
         {type: value, value: 32},
-        {type: value, value: 16},
+        # {type: value, value: 16},
       ]
 
 t_norm_str:
@@ -238,8 +248,8 @@ t_norm_str:
       type: list
       value: [
         {type: value, value: ProductTNorm},
-        {type: value, value: GodelTNorm},
-        {type: value, value: LukasiewiczTNorm},
+        # {type: value, value: GodelTNorm},
+        # {type: value, value: LukasiewiczTNorm},
       ]
 
 rescale_edges:
@@ -250,6 +260,15 @@ rescale_edges:
     choices:
       type: list
       value: [
-        {type: value, value: True},
+        # {type: value, value: True},
         {type: value, value: False},
       ]
+
+rand_weight:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "rand_weight" }
+    low: { type: "value", value: 0.00001 }
+    high: { type: "value", value: 1 }
+    log: { type: "value", value: True }

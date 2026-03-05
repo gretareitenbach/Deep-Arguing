@@ -34,6 +34,7 @@ class GradualAACBR(torch.nn.Module):
         dimensions: int = 1,
         rescale_edges: bool = False,
         t_norm_str: str = "ProductTNorm",
+        rand_weight: float = 0.0,
     ):
         """
          Gradual AACBR Model
@@ -88,6 +89,7 @@ class GradualAACBR(torch.nn.Module):
             "LukasiewiczTNorm": LukasiewiczTNorm(),
         }
         self.t_norm: TNorm = t_norm_map[t_norm_str]
+        self.rand_weight = rand_weight
 
     @property
     def device(self):
@@ -204,6 +206,12 @@ class GradualAACBR(torch.nn.Module):
             no_per_class = len(y_train) / no_classes
             self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
             self.B = (1 / (no_per_class)) * self.B
+
+            
+        if self.training:
+            noise = self.rand_weight * (torch.rand_like(self.A) * 0.25 + 0.5)
+            self.A = self.A + noise
+            self.B = self.B + noise
 
         self.A = -self.A + self.B
         self.X_train = X_train
