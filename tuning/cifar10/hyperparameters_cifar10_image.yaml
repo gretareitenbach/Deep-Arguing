@@ -1,6 +1,6 @@
 epochs:
   type: value
-  value: 10
+  value: 16
 
 lr:
   type: value
@@ -36,8 +36,7 @@ temperature:
 
 dag_alpha:
   type: value
-  # value: 0.0005182448496304011
-  value: 0.0006
+  value: 0.001
 
 cluster_size:
   type: value
@@ -69,10 +68,10 @@ batch_norm:
   type: value
   value: False
 
-total_iters:
-  type: value
+# total_iters:
+#   type: value
   # value: 27
-  value: 20
+  # value: 20
 
 rescale_edges:
   type: value

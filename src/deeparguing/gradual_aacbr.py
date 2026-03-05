@@ -204,6 +204,7 @@ class GradualAACBR(torch.nn.Module):
             no_per_class = len(y_train) / no_classes
             self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
             self.B = (1 / (no_per_class)) * self.B
+
         self.A = -self.A + self.B
         self.X_train = X_train
         self.y_train = y_train

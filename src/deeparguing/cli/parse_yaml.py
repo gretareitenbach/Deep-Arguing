@@ -25,6 +25,7 @@ from deeparguing.train import *
 
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,
+    "relu": torch.relu,
     "filter_to_attacks": filter_to_attacks,
     "filter_to_supports": filter_to_supports,
     "uni_directional": lambda A: torch.where(

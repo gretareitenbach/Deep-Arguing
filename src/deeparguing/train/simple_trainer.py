@@ -86,6 +86,7 @@ class SimpleTrainer(Trainer):
                 )
 
                 if loss is torch.nan or torch.isnan(loss):
+                    print("WARNING: LOSS IS NAN")
                     return 0
 
                 # Step scheduler per batch if configured
