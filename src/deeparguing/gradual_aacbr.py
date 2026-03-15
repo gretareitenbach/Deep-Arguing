@@ -208,7 +208,7 @@ class GradualAACBR(torch.nn.Module):
             self.B = (1 / (no_per_class)) * self.B
 
             
-        if self.training:
+        if self.training and self.rand_weight != 0:
             noise = self.rand_weight * (torch.rand_like(self.A) * 0.25 + 0.5)
             self.A = self.A + noise
             self.B = self.B + noise
@@ -310,7 +310,7 @@ class GradualAACBR(torch.nn.Module):
         train_size: int,
     ) -> Tuple[Tensor, Tensor]:
 
-        same_labels = torch.any(y_attackers == y_targets, dim=-1)
+        same_labels = torch.all(y_attackers == y_targets, dim=-1)
         same_labels = torch.reshape(same_labels, (train_size, train_size))
 
         supports = torch.where(same_labels.unsqueeze(-1), edge_weights_strict, 0)
