@@ -99,6 +99,7 @@ def run(project: str = "gradual-aa-cbr"):
 
             trainer: Trainer = instances["trainer"]
             train_settings = instances["train_settings"]
+            batch_size = train_settings.get("batch_size", None)
 
             labels = data_dict["labels"]
 
@@ -112,10 +113,24 @@ def run(project: str = "gradual-aa-cbr"):
             tile_shape[0] = len(labels)
             X_defaults = X_train.mean(dim=0).tile(tile_shape)
             y_defaults = labels.flip([0])
+             
+            # acc, prec, rec, f1, cm = evaluate_model(
+            #     model,
+            #     X_casebase,
+            #     y_casebase,
+            #     X_defaults,
+            #     y_defaults,
+            #     X_val,
+            #     y_val,
+            #     batch_size=batch_size,
+            # )
+            # print_results(acc, prec, rec, f1, cm, "VALIDATION PRE TRAINING", labels)
 
             if plot_matrix_before:
+                model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
                 model.show_matrix()
             if plot_graph_before:
+                model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
                 model.show_graph()
 
             if args.visualise_loss_landscape:
@@ -138,7 +153,6 @@ def run(project: str = "gradual-aa-cbr"):
                 log_gradients=args.log_gradients,
             )
 
-            batch_size = train_settings.get("batch_size", None)
 
             model.eval()
 
