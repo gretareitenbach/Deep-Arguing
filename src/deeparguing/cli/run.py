@@ -271,7 +271,7 @@ def run(project: str = "gradual-aa-cbr"):
                 image_mean = data_dict.get("image_mean", None)
                 image_std = data_dict.get("image_std", None)
                 model.export_to_json(
-                    f"{OUT_DIR}/pre_training_{args.json_out}.json",
+                    f"{OUT_DIR}/post_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
                 )
