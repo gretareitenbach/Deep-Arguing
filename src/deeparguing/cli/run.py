@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from optuna.samplers import TPESampler
 
@@ -113,7 +114,7 @@ def run(project: str = "gradual-aa-cbr"):
             tile_shape[0] = len(labels)
             X_defaults = X_train.mean(dim=0).tile(tile_shape)
             y_defaults = labels.flip([0])
-             
+
             # acc, prec, rec, f1, cm = evaluate_model(
             #     model,
             #     X_casebase,
@@ -136,6 +137,18 @@ def run(project: str = "gradual-aa-cbr"):
             if args.visualise_loss_landscape:
                 theta_pre = parameters_to_vector(model.parameters()).clone().detach()
 
+            if args.json_out:
+                OUT_DIR = "graphs"
+                Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+                model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
+                image_mean = data_dict.get("image_mean", None)
+                image_std = data_dict.get("image_std", None)
+                model.export_to_json(
+                    f"{OUT_DIR}/pre_training_{args.json_out}.json",
+                    image_mean=image_mean,
+                    image_std=image_std,
+                )
+
             model.train()
             max_val_acc = trainer.train(
                 model,
@@ -152,7 +165,6 @@ def run(project: str = "gradual-aa-cbr"):
                 log_val_loss=args.log_val_loss,
                 log_gradients=args.log_gradients,
             )
-
 
             model.eval()
 
@@ -253,6 +265,17 @@ def run(project: str = "gradual-aa-cbr"):
                     steps=30,
                 )
             ExperimentLogger.current().finish()
+
+            if args.json_out:
+                model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
+                image_mean = data_dict.get("image_mean", None)
+                image_std = data_dict.get("image_std", None)
+                model.export_to_json(
+                    f"{OUT_DIR}/pre_training_{args.json_out}.json",
+                    image_mean=image_mean,
+                    image_std=image_std,
+                )
+
         average_f1 = np.mean(f1s)
         std_f1 = np.std(f1s)
         logging.info(f"Average F1: {average_f1}")

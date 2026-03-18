@@ -81,7 +81,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(config["seed"])
 
-    X, y = load_torch_images(config["dataset"], device, shuffle=True)
+    X, y, _, _ = load_torch_images(config["dataset"], device, shuffle=True)
     X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=config["seed"])
     batch_size = config["batch_size"]
 

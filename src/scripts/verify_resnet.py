@@ -197,7 +197,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
 
-    X, y = load_torch_images(args.dataset, device, shuffle=True, seed=args.seed)
+    X, y, _, _ = load_torch_images(args.dataset, device, shuffle=True, seed=args.seed)
     X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=args.seed)
 
     num_classes = y.shape[1]

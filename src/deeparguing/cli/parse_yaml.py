@@ -77,8 +77,12 @@ def load_data_dict(
     }
     if entry["sub_type"] == "tabular":
         X, y = load_tabular_data(device=device, **params)
+        image_mean, image_std = None, None
     elif entry["sub_type"] == "torch_imaging":
-        X, y = load_torch_images(device=device, **params)
+        # We store the image_mean and image_std so we can unnormalise in the visualizer
+        X, y, image_mean, image_std = load_torch_images(device=device, **params)
+        data_dict["image_mean"] = image_mean
+        data_dict["image_std"] = image_std
     else:
         raise ValueError(f"Unknown data subtype: {entry['sub_type']}")
 

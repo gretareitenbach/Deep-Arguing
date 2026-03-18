@@ -85,6 +85,13 @@ def parse_command_line():
     )
 
     parser.add_argument(
+        "--json_out",
+        type=str,
+        default=None,
+        help=("Output name for the JSON representation of the model"),
+    )
+
+    parser.add_argument(
         "--tuning", "-ht", action="store_true", help="Run hyperparameter tuning"
     )
 
@@ -132,17 +139,14 @@ def parse_command_line():
     )
 
     parser.add_argument(
-        "--log_val_loss",
-        "-lv",
-        action="store_true",
-        help="Log the validation loss"
+        "--log_val_loss", "-lv", action="store_true", help="Log the validation loss"
     )
 
     parser.add_argument(
         "--log_gradients",
         "-lg",
         action="store_true",
-        help="Log the gradients during training"
+        help="Log the gradients during training",
     )
 
     return parser.parse_args()

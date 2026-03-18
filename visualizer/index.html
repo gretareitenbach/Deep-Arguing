@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gradual AA-CBR Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Cytoscape.js -->
+    <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+    
+    <!-- Dagre Layout for Graphviz-like appearance -->
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Visualizer Controls</h2>
+        
+        <div class="control-group">
+            <label for="json-upload">Upload JSON:</label>
+            <input type="file" id="json-upload" accept=".json">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <label for="graph-slider" id="graph-label">Graph: 0 / 0</label>
+            </div>
+            <input type="range" id="graph-slider" min="0" max="0" step="1" value="0" disabled>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <label for="threshold-slider" id="threshold-label">Edge Threshold: 0.50</label>
+            </div>
+            <input type="range" id="threshold-slider" min="0" max="1" step="0.05" value="0.5" disabled>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <label for="base-score-slider" id="base-score-label">Base Score &ge; 0.50</label>
+            </div>
+            <input type="range" id="base-score-slider" min="0" max="1" step="0.05" value="0.5" disabled>
+        </div>
+
+        <div class="control-group" style="margin-top: 5px;">
+            <div class="checkbox-row" id="image-toggle-container" style="display: none; margin-bottom: 15px;">
+                <input type="checkbox" id="show-images-checkbox" disabled>
+                <label for="show-images-checkbox" style="font-weight: bold;">Show Node Images</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="transparent-nodes-checkbox" checked disabled>
+                <label for="transparent-nodes-checkbox">Transparent Nodes</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="supports-checkbox" checked disabled>
+                <label for="supports-checkbox">Show Supports (Green)</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="attacks-checkbox" checked disabled>
+                <label for="attacks-checkbox">Show Attacks (Red)</label>
+            </div>
+        </div>
+
+        <div class="control-group legend-container" id="legend-container" style="display: none;">
+            <h3>Legend</h3>
+            <div id="legend-items"></div>
+        </div>
+    </div>
+    
+    <div id="cy"></div>
+
+    <!-- Tooltip for Base Score -->
+    <div id="node-tooltip" class="hidden"></div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <div id="loading-text">Processing...</div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

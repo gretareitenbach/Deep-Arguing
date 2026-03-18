@@ -1,3 +1,4 @@
+import json
 from typing import Callable, Tuple, override
 
 import matplotlib.pyplot as plt
@@ -207,7 +208,6 @@ class GradualAACBR(torch.nn.Module):
             self.A = (1 / ((no_classes - 1) * no_per_class)) * self.A
             self.B = (1 / (no_per_class)) * self.B
 
-            
         if self.training and self.rand_weight != 0:
             noise = self.rand_weight * (torch.rand_like(self.A) * 0.25 + 0.5)
             self.A = self.A + noise
@@ -719,3 +719,60 @@ class GradualAACBR(torch.nn.Module):
         logger(f)
         if not prevent_show:
             plt.show()
+
+    def export_to_json(
+        self,
+        filepath: str,
+        image_mean: Tensor | None = None,
+        image_std: Tensor | None = None,
+    ) -> None:
+        """
+        Exports the base scores of the casebase (X_train) and the adjacency matrix to a JSON file.
+
+        Parameters
+        ----------
+        filepath : str
+            The destination path for the JSON file.
+        image_mean : Tensor | None
+            Optional mean tensor used for image normalization.
+        image_std : Tensor | None
+            Optional std tensor used for image normalization.
+        """
+        if self.A is None:
+            raise Exception("Ensure the model has been fit first.")
+
+        # Compute base scores for the training cases
+        base_scores = self.compute_base_scores(self.X_train)
+
+        # Convert tensors to nested python lists for JSON serialization
+        base_scores_list = base_scores.detach().cpu().numpy().tolist()
+        adjacency_list = self.A.detach().cpu().numpy().tolist()
+
+        # Handle y_train: if one-hot encoded (shape[-1] > 1), take argmax to get class indices
+        y_train_np = self.y_train.detach().cpu().numpy()
+        if len(y_train_np.shape) > 1 and y_train_np.shape[-1] > 1:
+            y_train_list = np.argmax(y_train_np, axis=1).tolist()
+        else:
+            y_train_list = y_train_np.squeeze().tolist()
+
+        # Extract default indexes
+        default_indexes_list = self.default_indexes.detach().cpu().numpy().tolist()
+
+        # Extract raw X_train
+        x_train_list = self.X_train.detach().cpu().numpy().tolist()
+
+        data = {
+            "base_scores": base_scores_list,
+            "adjacency_matrix": adjacency_list,
+            "y_train": y_train_list,
+            "default_indexes": default_indexes_list,
+            "X_train": x_train_list,
+        }
+
+        if image_mean is not None:
+            data["normalization_mean"] = image_mean.detach().cpu().numpy().tolist()
+        if image_std is not None:
+            data["normalization_std"] = image_std.detach().cpu().numpy().tolist()
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)

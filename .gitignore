@@ -10,3 +10,4 @@ wandb/
 *.o*
 *.pt
 profiler_logs*/
+graphs/

@@ -29,7 +29,7 @@ def train_sweep(config=None):
         # ------------------------------
         # Load dataset
         # ------------------------------
-        X, y = load_torch_images("CIFAR10", device, shuffle=True)
+        X, y, _, _ = load_torch_images("CIFAR10", device, shuffle=True)
         X_train, y_train, X_val, y_val, _, _ = split_data(X, y, seed=42)
 
         batch_size = config.batch_size

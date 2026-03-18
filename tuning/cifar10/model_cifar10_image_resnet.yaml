@@ -110,6 +110,9 @@ build_casebase:
     cluster_size:
       type: ref
       value: cluster_size
+    nearest_sample:
+      type: value
+      value: True
 
 build_new_cases:
   type: function

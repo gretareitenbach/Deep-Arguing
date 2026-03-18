@@ -78,7 +78,7 @@ def load_torch_images(
     labels: list[int] = [],
     shuffle: bool = False,
     seed: float = 42,
-) -> Tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """
     Loads an image dataset (e.g., MNIST, CIFAR10) directly as torch tensors.
 
@@ -101,8 +101,8 @@ def load_torch_images(
     if size == -1 or size > len(dataset):
         size = len(dataset)
 
-    X = dataset.data[:size]
-    y = torch.tensor(dataset.targets[:size], dtype=torch.long)
+    X = dataset.data
+    y = torch.tensor(dataset.targets, dtype=torch.long)
 
     if isinstance(X, np.ndarray):
         X = torch.from_numpy(X)
@@ -113,10 +113,18 @@ def load_torch_images(
         X = X[mask]
         y = y[mask]
 
+    X = X[:size]
+    y = y[:size]
+
     X = X.permute(0, 3, 1, 2).float() / 255.0
-    X = (
-        X - torch.tensor([0.4914, 0.4822, 0.4465])[None, :, None, None]
-    ) / torch.tensor([0.2470, 0.2435, 0.2616])[None, :, None, None]
+
+    mean = X.mean(dim=(0, 2, 3), keepdim=True)
+    std = X.std(dim=(0, 2, 3), keepdim=True)
+
+    X = (X - mean) / std
+
+    mean_out = mean.view(-1)
+    std_out = std.view(-1)
 
     if as_vector:
         X = X.view(X.size(0), -1)
@@ -133,7 +141,7 @@ def load_torch_images(
     X = X.to(device)
     y = y.to(device)
 
-    return X, y
+    return X, y, mean_out, std_out
 
 
 def split_data(

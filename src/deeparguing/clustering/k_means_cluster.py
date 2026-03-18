@@ -3,6 +3,7 @@ from typing import Tuple, override
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin
 from torch import Tensor
 
 from deeparguing.clustering import Cluster
@@ -10,9 +11,10 @@ from deeparguing.clustering import Cluster
 
 class kMeansCluster(Cluster):
 
-    def __init__(self, cluster_size: int) -> None:
+    def __init__(self, cluster_size: int, nearest_sample: bool = False) -> None:
         super().__init__()
         self.cluster_size = cluster_size
+        self.nearest_sample = nearest_sample
 
     @override
     def cluster_data(self, X: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
@@ -46,7 +48,6 @@ class kMeansCluster(Cluster):
         X_ = X.cpu().numpy()
         y_ = y.cpu().numpy()
 
-
         original_shape = list(X_.shape)
 
         X_all_centroids = []
@@ -66,6 +67,11 @@ class kMeansCluster(Cluster):
             kmeans.fit_predict(group)
 
             X_centroids_group = kmeans.cluster_centers_
+
+            if self.nearest_sample:
+                nearest_indices = pairwise_distances_argmin(X_centroids_group, group)
+                X_centroids_group = group[nearest_indices]
+
             y_centroids_group = np.tile(selected_y, (self.cluster_size, 1))
 
             X_all_centroids.append(X_centroids_group)
