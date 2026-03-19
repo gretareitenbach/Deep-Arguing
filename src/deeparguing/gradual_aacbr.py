@@ -741,12 +741,14 @@ class GradualAACBR(torch.nn.Module):
         if self.A is None:
             raise Exception("Ensure the model has been fit first.")
 
+        self.eval()
+
         # Compute base scores for the training cases
         base_scores = self.compute_base_scores(self.X_train)
 
         # Convert tensors to nested python lists for JSON serialization
         base_scores_list = base_scores.detach().cpu().numpy().tolist()
-        adjacency_list = self.A.detach().cpu().numpy().tolist()
+        adjacency_list = self.post_process_func(self.A).detach().cpu().numpy().tolist()
 
         # Handle y_train: if one-hot encoded (shape[-1] > 1), take argmax to get class indices
         y_train_np = self.y_train.detach().cpu().numpy()

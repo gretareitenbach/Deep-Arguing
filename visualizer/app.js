@@ -5,11 +5,11 @@ cytoscape.use(cytoscapeDagre);
 let numNodes = 0;           // n
 let numGraphs = 0;          // d
 let currentGraphIndex = 0;
-let currentThreshold = 0.3; // Edge Threshold
+let currentThreshold = 0.1; // Edge Threshold
 let currentBaseScoreThreshold = 0; // Node Base Score Threshold
 let cy = null;
-let baseNodePositions = null; // Cache original layout coordinates
-let currentSpacing = 0.8;     // Initial node spacing scale
+let currentHorizontalSpacing = 30; // nodeSep in dagre
+let currentVerticalSpacing = 80;   // rankSep in dagre
 let showSupports = true;
 let showAttacks = true;
 let useTransparentNodes = true; // Toggle for node opacity based on score
@@ -33,6 +33,10 @@ const jsonUpload = document.getElementById('json-upload');
 const graphSlider = document.getElementById('graph-slider');
 const thresholdSlider = document.getElementById('threshold-slider');
 const baseScoreSlider = document.getElementById('base-score-slider');
+const hSpacingSlider = document.getElementById('h-spacing-slider');
+const vSpacingSlider = document.getElementById('v-spacing-slider');
+const hSpacingLabel = document.getElementById('h-spacing-label');
+const vSpacingLabel = document.getElementById('v-spacing-label');
 const supportsCheckbox = document.getElementById('supports-checkbox');
 const attacksCheckbox = document.getElementById('attacks-checkbox');
 const transparentNodesCheckbox = document.getElementById('transparent-nodes-checkbox');
@@ -381,14 +385,14 @@ jsonUpload.addEventListener('change', (event) => {
                         
                         // Reset states
                         currentGraphIndex = 0;
-                        currentThreshold = 0.3;
+                        currentThreshold = 0.1;
                         currentBaseScoreThreshold = 0.0;
-                        currentSpacing = 0.8;
+                        currentHorizontalSpacing = 30;
+                        currentVerticalSpacing = 80;
                         showSupports = true;
                         showAttacks = true;
                         useTransparentNodes = true;
                         showImages = false;
-                        baseNodePositions = null;
                         
                         // Update UI Controls
                         graphSlider.min = 0;
@@ -396,11 +400,17 @@ jsonUpload.addEventListener('change', (event) => {
                         graphSlider.value = 0;
                         graphSlider.disabled = false;
                         
-                        thresholdSlider.value = 0.3;
+                        thresholdSlider.value = 0.1;
                         thresholdSlider.disabled = false;
 
                         baseScoreSlider.value = 0.0;
                         baseScoreSlider.disabled = false;
+
+                        hSpacingSlider.value = 30;
+                        hSpacingSlider.disabled = false;
+
+                        vSpacingSlider.value = 80;
+                        vSpacingSlider.disabled = false;
 
                         supportsCheckbox.checked = true;
                         supportsCheckbox.disabled = false;
@@ -465,6 +475,29 @@ baseScoreSlider.addEventListener('input', (e) => {
     if (precomputedEdges.length > 0) handleSliderChange();
 });
 
+function handleSpacingChange() {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = setTimeout(() => {
+        showLoading("Updating layout...");
+        setTimeout(() => {
+            runLayout();
+            hideLoading();
+        }, 10);
+    }, 150);
+}
+
+hSpacingSlider.addEventListener('input', (e) => {
+    currentHorizontalSpacing = parseInt(e.target.value, 10);
+    updateLabels();
+    if (precomputedEdges.length > 0) handleSpacingChange();
+});
+
+vSpacingSlider.addEventListener('input', (e) => {
+    currentVerticalSpacing = parseInt(e.target.value, 10);
+    updateLabels();
+    if (precomputedEdges.length > 0) handleSpacingChange();
+});
+
 supportsCheckbox.addEventListener('change', (e) => {
     showSupports = e.target.checked;
     if (precomputedEdges.length > 0) handleSliderChange();
@@ -489,6 +522,8 @@ function updateLabels() {
     graphLabel.textContent = `Graph: ${currentGraphIndex} / ${Math.max(0, numGraphs - 1)}`;
     thresholdLabel.textContent = `Edge Threshold: ${currentThreshold.toFixed(2)}`;
     baseScoreLabel.textContent = `Base Score \u2265 ${currentBaseScoreThreshold.toFixed(2)}`;
+    hSpacingLabel.textContent = `Horizontal Spacing: ${currentHorizontalSpacing}`;
+    vSpacingLabel.textContent = `Vertical Spacing: ${currentVerticalSpacing}`;
 }
 
 /**
@@ -650,25 +685,14 @@ function initCytoscape() {
         layout: {
             name: 'dagre',
             rankDir: 'TB',
-            nodeSep: 30, // tighter default horizontal spacing
-            rankSep: 40, // tighter default vertical spacing
+            nodeSep: currentHorizontalSpacing,
+            rankSep: currentVerticalSpacing,
             padding: 20
         }
     });
 
-    // Save initial positions and apply default scale
     cy.on('layoutstop', () => {
-        if (!baseNodePositions) {
-            baseNodePositions = {};
-            cy.nodes().forEach(node => {
-                baseNodePositions[node.id()] = { ...node.position() };
-            });
-            
-            // Prevent user from dragging nodes around, but allow API movement
-            cy.nodes().ungrabify();
-            
-            updateNodePositions(); // Apply the default 0.8x spacing immediately
-        }
+        // Layout finished, nodes are free to be dragged
     });
 
     // Tooltip logic
@@ -702,36 +726,18 @@ function initCytoscape() {
 }
 
 /**
- * Applies the spacing scale to the frozen node layout
+ * Re-runs the Dagre layout with current spacing settings
  */
-function updateNodePositions() {
-    if (!cy || !baseNodePositions) return;
-
-    // Calculate center of graph to scale from
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const pos of Object.values(baseNodePositions)) {
-        if (pos.x < minX) minX = pos.x;
-        if (pos.x > maxX) maxX = pos.x;
-        if (pos.y < minY) minY = pos.y;
-        if (pos.y > maxY) maxY = pos.y;
-    }
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    // Apply scale relative to center
-    cy.batch(() => {
-        cy.nodes().forEach(node => {
-            const base = baseNodePositions[node.id()];
-            if (base) {
-                node.position({
-                    x: centerX + (base.x - centerX) * currentSpacing,
-                    y: centerY + (base.y - centerY) * currentSpacing
-                });
-            }
-        });
-    });
-
-    cy.fit(cy.nodes(), 30);
+function runLayout() {
+    if (!cy) return;
+    
+    cy.layout({
+        name: 'dagre',
+        rankDir: 'TB',
+        nodeSep: currentHorizontalSpacing,
+        rankSep: currentVerticalSpacing,
+        padding: 20
+    }).run();
 }
 
 /**

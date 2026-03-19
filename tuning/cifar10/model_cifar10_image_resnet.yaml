@@ -28,7 +28,8 @@ regularisers:
   params:
     regularisers:
       type: list
-      value: [
+      value:
+        [
           {
             type: list,
             value:
@@ -139,41 +140,6 @@ train_settings:
         weight_decay:
           type: ref
           value: "weight_decay"
-    # scheduler:
-    #   type: class
-    #   class_name: "CosineAnnealingWarmRestarts"
-    #   sub_type: scheduler
-    #   optimizer: "optimizer"
-    #   params:
-    #     T_0:
-    #       type: value
-    #       value: 8  # Restart every 8 epochs
-    #     T_mult:
-    #       type: value
-    #       value: 1  # Keep restart period constant
-    #     eta_min:
-    #       type: value
-    #       value: 0.0001
-    # class_name: "LinearLR"
-    # sub_type: scheduler
-    # optimizer: "optimizer"
-    # params:
-    #   start_factor:
-    #     type: value
-    #     value: 0.05
-    #   total_iters:
-    #     type: ref
-    #     value: total_iters
-    # class_name: "CosineAnnealingLR"
-    # sub_type: scheduler
-    # optimizer: "optimizer"
-    # params:
-    #   T_max:
-    #     type: ref
-    #     value: epochs
-    #   eta_min:
-    #     type: value
-    #     value: 0.00005
     regulariser:
       type: ref
       value: "regularisers"
@@ -183,10 +149,6 @@ train_settings:
     gradient_max_norm:
       type: ref
       value: "gradient_max_norm"
-    scheduler_step_per:
-      type: value
-      value: "batch"
-      # value: "epoch"
 
 feature_weights:
   type: class
@@ -218,55 +180,9 @@ feature_weights_1:
           { type: ref, value: third_layer },
         ]
     output_size:
-      type: ref
-      value: dimensions
+      type: value
+      value: 64
 
-# feature_weights_1:
-#   type: class
-#   class_name: "MultiHeadMLPExtractor"
-#   params:
-#     input_size:
-#       type: value
-#       value: 64
-#     hidden_sizes:
-#       type: list
-#       value:
-#         [
-#           { type: value, value: 16 },
-#           # { type: value, value: 16 },
-#           # { type: value, value: 8 },
-#         ]
-#     output_size:
-#       type: value
-#       value: 1
-#     no_heads:
-#       type: ref
-#       value: dimensions
-
-# feature_weights_2:
-#   type: class
-#   class_name: "MLPExtractor"
-#   params:
-#     input_size:
-#       type: value
-#       value: 64
-#     batch_norm:
-#       type: ref
-#       value: batch_norm
-#     hidden_sizes:
-#       type: list
-#       value:
-#         [
-#           { type: value, value: 64 },
-#           { type: value, value: 48 },
-#           { type: value, value: 32 },
-#           # { type: value, value: 16 },
-#           # { type: value, value: 8 },
-#         ]
-#     output_size:
-#       type: ref
-#       value: dimensions
-#
 feature_weights_2:
   type: class
   class_name: "MLPExtractor"
@@ -286,8 +202,8 @@ feature_weights_2:
           { type: ref, value: third_layer },
         ]
     output_size:
-      type: ref
-      value: dimensions
+      type: value
+      value: 1
 
 semantics:
   type: class
@@ -316,25 +232,11 @@ partial_order:
         ]
     comparison_func:
       type: class
-      class_name: "Subtractor"
+      class_name: "SoftCoordinateDominance"
       params:
         temperature:
           type: ref
           value: temperature
-        activation:
-          type: function
-          value: "sigmoid"
-
-# partial_order:
-#   type: class
-#   class_name: "ConstantPartialOrder"
-#   params:
-#     edge_weights:
-#       type: value
-#       value: 0.5
-#     dim:
-#       type: ref
-#       value: dimensions
 
 irrelevance:
   type: class
@@ -343,17 +245,6 @@ irrelevance:
     compute_partial_order:
       type: ref
       value: "partial_order"
-
-# base_score:
-# type: class
-# class_name: "ConstantBaseScore"
-# params:
-#   constant:
-#     type: value
-#     value: 0.5
-#   dim:
-#     type: ref
-#     value: dimensions
 
 base_score:
   type: class
@@ -364,15 +255,10 @@ base_score:
       value: [
           { type: ref, value: "feature_weights" },
           { type: ref, value: "feature_weights_2" },
-          # { type: ref, value: "scaler" },
         ]
     activation:
       type: function
       value: "sigmoid"
-
-# t_norm:
-#   type: class
-#   class_name: ProductTNorm
 
 model:
   type: class
@@ -405,9 +291,6 @@ model:
     post_process_func:
       type: function
       value: "identity"
-    dimensions:
-      type: ref
-      value: dimensions
     rescale_edges:
       type: ref
       value: rescale_edges

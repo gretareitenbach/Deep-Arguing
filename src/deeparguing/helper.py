@@ -130,8 +130,8 @@ def load_torch_images(
         X = X.view(X.size(0), -1)
 
     if shuffle:
-        torch.manual_seed(int(seed))
-        indices = torch.randperm(X.size(0))
+        g = torch.Generator().manual_seed(seed)
+        indices = torch.randperm(X.size(0), generator = g)
         X = X[indices]
         y = y[indices]
 

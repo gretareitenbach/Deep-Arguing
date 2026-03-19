@@ -32,6 +32,9 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
         torch.abs(A) > torch.abs(torch.transpose(A, 0, 1)), A, 0
     ),  # todo move to own file?
     "identity": lambda A: A,
+    "threshold": lambda A: torch.where(
+        torch.abs(A) > 0.10, A, 0
+    ),  # todo move to own file?
     "normalize_data": normalize_data,
     "no_normalize": lambda a, b, c: a,
     "use_train": lambda X_train, y_train, X_casebase, y_casebase: (X_train, y_train),
