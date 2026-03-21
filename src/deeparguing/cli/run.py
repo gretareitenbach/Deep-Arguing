@@ -182,10 +182,10 @@ def run(project: str = "gradual-aa-cbr"):
             ExperimentLogger.current().log_metrics(
                 {
                     "seed": seed,
-                    "val_accuracy": acc,
-                    "val_precision": prec,
-                    "val_recall": rec,
-                    "val_f1": f1,
+                    "evals/val_accuracy": acc,
+                    "evals/val_precision": prec,
+                    "evals/val_recall": rec,
+                    "evals/val_f1": f1,
                 },
             )
 

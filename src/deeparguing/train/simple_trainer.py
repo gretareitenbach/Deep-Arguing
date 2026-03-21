@@ -44,7 +44,7 @@ class SimpleTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ):
+    ) -> float:
         # Validate scheduler_step_per when scheduler is provided
         if scheduler is not None:
             if scheduler_step_per is None:
@@ -62,9 +62,11 @@ class SimpleTrainer(Trainer):
         n_samples = X_new_cases.shape[0]
 
         batch_size = batch_size if batch_size is not None else n_samples
-        max_val_acc = 0
+        max_val_acc = 0.0
+        
         for epoch in pbar:
             permutation = torch.randperm(n_samples, device=model.device)
+            loss: Tensor | None = None
 
             for i in range(0, n_samples, batch_size):
                 indices = permutation[i : i + batch_size]
@@ -87,13 +89,13 @@ class SimpleTrainer(Trainer):
 
                 if loss is torch.nan or torch.isnan(loss):
                     print("WARNING: LOSS IS NAN")
-                    return 0
+                    return 0.0
 
                 # Step scheduler per batch if configured
                 if scheduler is not None and scheduler_step_per == "batch":
                     scheduler.step()
 
-            assert loss
+            assert loss is not None
 
             # Step scheduler per epoch if configured
             if scheduler is not None and scheduler_step_per == "epoch":
@@ -114,12 +116,12 @@ class SimpleTrainer(Trainer):
                 )
                 ExperimentLogger.current().log_metrics(
                     {
-                        "loss_per_epoch": float(loss.item()),
-                        "post_fit_loss_per_epoch": float(post_train_loss),
+                        "loss/loss_per_epoch": float(loss.item()),
+                        "loss/post_fit_loss_per_epoch": float(post_train_loss),
                         "epoch": epoch,
-                        "train_accuracy_per_epoch": train_acc,
-                        "val_loss_per_epoch": float(val_loss_avg),
-                        "val_accuracy_per_epoch": val_acc,
+                        "accuracy/train_accuracy_per_epoch": train_acc,
+                        "loss/val_loss_per_epoch": float(val_loss_avg),
+                        "accuracy/val_accuracy_per_epoch": val_acc,
                     }
                 )
                 max_val_acc = max(max_val_acc, val_acc)
@@ -129,13 +131,13 @@ class SimpleTrainer(Trainer):
             else:
                 ExperimentLogger.current().log_metrics(
                     {
-                        "loss_per_epoch": float(loss.item()),
+                        "loss/loss_per_epoch": float(loss.item()),
                         "epoch": epoch,
-                        "train_accuracy_per_epoch": train_acc,
+                        "accuracy/train_accuracy_per_epoch": train_acc,
                     }
                 )
                 pbar.set_description(
                     f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Train Acc: {round(train_acc, 6)}"
                 )
-        ExperimentLogger.current().log_metrics({"max_val_acc": float(max_val_acc)})
-        return max_val_acc
+        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
+        return float(max_val_acc)

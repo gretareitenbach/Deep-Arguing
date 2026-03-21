@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
+from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import RegulariserType
 from deeparguing.train import Trainer
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
@@ -186,7 +187,7 @@ class CurriculumTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         regulariser: RegulariserType,
         gradient_max_norm: float | None,
         log_gradients: bool,
@@ -227,7 +228,7 @@ class CurriculumTrainer(Trainer):
             for n, p in model.named_parameters():
                 if p.grad is not None:
                     grad_norm = cast(Tensor, torch.norm(p.grad.detach().cpu()))
-                    grad_metrics[f"Gradient {n}"] = grad_norm.item()
+                    grad_metrics[f"gradients/Gradient {n}"] = grad_norm.item()
             ExperimentLogger.current().log_metrics(grad_metrics)
 
         optimizer.step()
@@ -245,7 +246,7 @@ class CurriculumTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         epochs: int,
         regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
@@ -257,7 +258,7 @@ class CurriculumTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ) -> None:
+    ) -> float:
         # Validation
         self._validate_epochs(epochs)
         if scheduler is not None:
@@ -282,6 +283,7 @@ class CurriculumTrainer(Trainer):
         logging.info(f"Curriculum: starting with classes {active_classes}")
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
+        max_val_acc = 0.0
 
         for epoch in pbar:
             # Store active classes for training step
@@ -342,9 +344,9 @@ class CurriculumTrainer(Trainer):
             # Prepare metrics
             metrics: dict[str, Any] = {
                 "epoch": epoch,
-                "loss": float(loss.item()),
-                "curriculum_accuracy": curr_acc,
-                "curriculum_loss": curr_loss,
+                "loss/loss_per_epoch": float(loss.item()),
+                "accuracy/curriculum_accuracy": curr_acc,
+                "loss/curriculum_loss": curr_loss,
                 "num_active_classes": len(active_classes),
                 "active_classes": str(active_classes),  # For clarity in logs
                 "phase_epoch": phase_epoch,
@@ -357,8 +359,9 @@ class CurriculumTrainer(Trainer):
                     full_loss, full_acc = self.log_validation_loss(
                         model, batch_size, X_val, y_val, criterion, regulariser
                     )
-                metrics["full_val_accuracy"] = full_acc
-                metrics["full_val_loss"] = full_loss
+                metrics["accuracy/full_val_accuracy"] = full_acc
+                metrics["loss/full_val_loss"] = full_loss
+                max_val_acc = max(max_val_acc, full_acc)
 
             ExperimentLogger.current().log_metrics(metrics)
 
@@ -386,13 +389,16 @@ class CurriculumTrainer(Trainer):
 
         logging.info(f"Curriculum complete. Final active classes: {active_classes}")
 
+        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
+        return float(max_val_acc)
+
     def _log_curriculum_validation(
         self,
         model: GradualAACBR,
         batch_size: int | None,
         X_val: Tensor,
         y_val: Tensor,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         regulariser: RegulariserType,
         active_classes: list[int],
     ) -> tuple[float, float]:
@@ -446,7 +452,7 @@ class CurriculumTrainer(Trainer):
         y_default: Tensor,
         sample_weights: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         regulariser: RegulariserType,
         batch_size: int | None,
         scheduler: LRScheduler | None,

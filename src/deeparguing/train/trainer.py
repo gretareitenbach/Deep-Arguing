@@ -44,7 +44,7 @@ class Trainer(metaclass=ABCMeta):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ):
+    ) -> float:
         pass
 
     def plot_loss_curve(self):
@@ -108,10 +108,10 @@ class Trainer(metaclass=ABCMeta):
         if log_gradients:
             ExperimentLogger.current().log_metrics(
                 {
-                    f"Gradient {n}": (
+                    f"gradients/Gradient {n}": (
                         float(torch.norm(p.grad.detach().cpu()))
                         if p.grad is not None
-                        else None
+                        else 0.0
                     )
                     for n, p in model.named_parameters()
                 }

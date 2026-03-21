@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
+from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import Regulariser, RegulariserType
 from deeparguing.train import Trainer
 
@@ -47,7 +48,7 @@ class TwoLevelTrainer(Trainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         epochs: int,
         outer_iterations: int,
         regulariser: RegulariserType = lambda _: 0,
@@ -60,7 +61,7 @@ class TwoLevelTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ):
+    ) -> float:
         """
         Train with a two-level optimization loop.
 
@@ -130,6 +131,7 @@ class TwoLevelTrainer(Trainer):
 
         # Track loss for reporting
         loss: Tensor | None = None
+        max_val_acc = 0.0
 
         # Outer loop
         outer_pbar = tqdm(
@@ -197,7 +199,7 @@ class TwoLevelTrainer(Trainer):
             with torch.no_grad():
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
-            self._log_outer_iteration(
+            val_acc = self._log_outer_iteration(
                 regulariser,
                 outer_iter,
                 loss,
@@ -210,6 +212,7 @@ class TwoLevelTrainer(Trainer):
                 criterion,
                 log_val_loss,
             )
+            max_val_acc = max(max_val_acc, val_acc)
 
             # Update outer progress bar
             outer_pbar.set_description(
@@ -219,6 +222,9 @@ class TwoLevelTrainer(Trainer):
             # Early stopping
             if converged:
                 break
+
+        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
+        return float(max_val_acc)
 
     def _step_regulariser(
         self, regulariser: RegulariserType, model: GradualAACBR
@@ -244,18 +250,18 @@ class TwoLevelTrainer(Trainer):
         y_train: Tensor,
         X_val: Tensor | None,
         y_val: Tensor | None,
-        criterion: torch.nn.Module,
+        criterion: Loss,
         log_val_loss: bool,
-    ) -> None:
-        """Log metrics after each outer iteration."""
+    ) -> float:
+        """Log metrics after each outer iteration. Returns validation accuracy or 0.0"""
         _, train_acc = self.log_validation_loss(
             model, batch_size, X_train, y_train, criterion, regulariser
         )
 
         metrics: dict[str, float | int | bool] = {
-            "loss_per_outer": float(loss.item()),
+            "loss/loss_per_outer": float(loss.item()),
             "outer_iteration": outer_iter,
-            "train_accuracy_per_outer": train_acc,
+            "accuracy/train_accuracy_per_outer": train_acc,
         }
 
         # Log NOTEARS-specific metrics if available
@@ -269,11 +275,14 @@ class TwoLevelTrainer(Trainer):
             if hasattr(regulariser, "converged"):
                 metrics["notears/converged"] = regulariser.converged
 
+        val_acc_to_return = 0.0
         if log_val_loss and X_val is not None and y_val is not None:
             val_loss, val_acc = self.log_validation_loss(
                 model, batch_size, X_val, y_val, criterion, regulariser
             )
-            metrics["val_loss_per_outer"] = float(val_loss)
-            metrics["val_accuracy_per_outer"] = val_acc
+            metrics["loss/val_loss_per_outer"] = float(val_loss)
+            metrics["accuracy/val_accuracy_per_outer"] = val_acc
+            val_acc_to_return = val_acc
 
         ExperimentLogger.current().log_metrics(metrics)
+        return float(val_acc_to_return)
