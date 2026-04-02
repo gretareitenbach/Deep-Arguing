@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gradual AA-CBR Visualizer</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     
     <!-- Cytoscape.js -->
@@ -14,75 +16,99 @@
     <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
 </head>
 <body>
-    <div id="sidebar">
-        <h2>Visualizer Controls</h2>
+    <button id="sidebar-open" class="btn btn-light shadow-sm" style="position: fixed; top: 15px; left: 15px; z-index: 1050; padding: 4px 10px; display: none;">☰</button>
+
+    <div id="sidebar" class="d-flex flex-column p-3 bg-white border-end shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
+            <h2 class="mb-0 fs-5">Deep Arguing Visualiser</h2>
+            <button id="sidebar-toggle" class="btn btn-light shadow-sm btn-sm px-2 py-1">◀</button>
+        </div>
         
-        <div class="control-group">
-            <label for="json-upload">Upload JSON:</label>
-            <input type="file" id="json-upload" accept=".json">
+        <div class="mb-3">
+            <label for="json-upload" class="form-label">Upload JSON:</label>
+            <input type="file" id="json-upload" class="form-control form-control-sm" accept=".json">
         </div>
 
-        <div class="control-group">
-            <div class="label-row">
-                <label for="graph-slider" id="graph-label">Graph: 0 / 0</label>
+        <button id="btn-open-new-cases" class="btn btn-light border shadow-sm w-100 mb-3" data-bs-toggle="modal" data-bs-target="#newCasesModal" style="display: none;">
+            Select new case
+        </button>
+
+        <div id="graph-slider-container" class="mb-3">
+            <div class="d-flex justify-content-between">
+                <label for="graph-slider" id="graph-label" class="form-label mb-0">Graph: 0 / 0</label>
             </div>
-            <input type="range" id="graph-slider" min="0" max="0" step="1" value="0" disabled>
+            <input type="range" class="form-range" id="graph-slider" min="0" max="0" step="1" value="0" disabled>
         </div>
 
-        <div class="control-group">
-            <div class="label-row">
-                <label for="threshold-slider" id="threshold-label">Edge Threshold: 0.50</label>
+        <div class="mb-3">
+            <div class="d-flex justify-content-between">
+                <label for="threshold-slider" id="threshold-label" class="form-label mb-0">Edge Threshold: 0.50</label>
             </div>
-            <input type="range" id="threshold-slider" min="0" max="1" step="0.05" value="0.5" disabled>
+            <input type="range" class="form-range" id="threshold-slider" min="0" max="1" step="0.05" value="0.5" disabled>
         </div>
 
-        <div class="control-group">
-            <div class="label-row">
-                <label for="base-score-slider" id="base-score-label">Base Score &ge; 0.50</label>
+        <div class="mb-3">
+            <div class="d-flex justify-content-between">
+                <label for="base-score-slider" id="base-score-label" class="form-label mb-0">Base Score &ge; 0.50</label>
             </div>
-            <input type="range" id="base-score-slider" min="0" max="1" step="0.05" value="0.5" disabled>
+            <input type="range" class="form-range" id="base-score-slider" min="0" max="1" step="0.05" value="0.5" disabled>
         </div>
 
-        <div class="control-group">
-            <div class="label-row">
-                <label for="h-spacing-slider" id="h-spacing-label">Horizontal Spacing: 30</label>
+        <div id="final-strength-controls" class="mb-3" style="display: none;">
+            <div class="mb-2">
+                <div class="d-flex justify-content-between">
+                    <label for="final-strength-slider" id="final-strength-label" class="form-label text-purple fw-bold mb-0">Final Strength &ge; 0.00</label>
+                </div>
+                <input type="range" class="form-range" id="final-strength-slider" min="0" max="1" step="0.05" value="0.0">
             </div>
-            <input type="range" id="h-spacing-slider" min="10" max="500" step="5" value="30" disabled>
-        </div>
-
-        <div class="control-group">
-            <div class="label-row">
-                <label for="v-spacing-slider" id="v-spacing-label">Vertical Spacing: 80</label>
-            </div>
-            <input type="range" id="v-spacing-slider" min="10" max="500" step="5" value="80" disabled>
-        </div>
-
-        <div class="control-group" style="margin-top: 5px;">
-            <div class="checkbox-row" id="image-toggle-container" style="display: none; margin-bottom: 15px;">
-                <input type="checkbox" id="show-images-checkbox" disabled>
-                <label for="show-images-checkbox" style="font-weight: bold;">Show Node Images</label>
-            </div>
-            <div class="checkbox-row">
-                <input type="checkbox" id="transparent-nodes-checkbox" checked disabled>
-                <label for="transparent-nodes-checkbox">Transparent Nodes</label>
-            </div>
-            <div class="checkbox-row">
-                <input type="checkbox" id="supports-checkbox" checked disabled>
-                <label for="supports-checkbox">Show Supports (Green)</label>
-            </div>
-            <div class="checkbox-row">
-                <input type="checkbox" id="attacks-checkbox" checked disabled>
-                <label for="attacks-checkbox">Show Attacks (Red)</label>
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="transparent-final-strength-checkbox" checked>
+                <label class="form-check-label text-purple fw-bold" for="transparent-final-strength-checkbox">Opacity matches Final Strength</label>
             </div>
         </div>
 
-        <div class="control-group legend-container" id="legend-container" style="display: none;">
-            <h3>Legend</h3>
-            <div id="legend-items"></div>
+        <div class="mb-3">
+            <div class="d-flex justify-content-between">
+                <label for="h-spacing-slider" id="h-spacing-label" class="form-label mb-0">Horizontal Spacing: 30</label>
+            </div>
+            <input type="range" class="form-range" id="h-spacing-slider" min="10" max="500" step="5" value="30" disabled>
+        </div>
+
+        <div class="mb-3">
+            <div class="d-flex justify-content-between">
+                <label for="v-spacing-slider" id="v-spacing-label" class="form-label mb-0">Vertical Spacing: 80</label>
+            </div>
+            <input type="range" class="form-range" id="v-spacing-slider" min="10" max="500" step="5" value="80" disabled>
+        </div>
+
+        <div class="mb-3 mt-1">
+            <div class="form-check mb-2" id="image-toggle-container" style="display: none;">
+                <input class="form-check-input" type="checkbox" id="show-images-checkbox" disabled>
+                <label class="form-check-label" for="show-images-checkbox">Show Node Images</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="border-base-score-checkbox" checked disabled>
+                <label class="form-check-label" for="border-base-score-checkbox">Border matches Base Score</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="supports-checkbox" checked disabled>
+                <label class="form-check-label" for="supports-checkbox">Show Supports (Green)</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="attacks-checkbox" checked disabled>
+                <label class="form-check-label" for="attacks-checkbox">Show Attacks (Red)</label>
+            </div>
         </div>
     </div>
     
     <div id="cy"></div>
+
+    <div class="legend-container bg-white border shadow-sm p-3 rounded" id="legend-container" style="display: none; position: fixed; top: 20px; right: 20px; z-index: 1000; min-width: 150px;">
+        <h3 id="legend-header" class="fs-6 mb-0 text-secondary d-flex justify-content-between align-items-center" style="cursor: pointer;">
+            Legend <span id="legend-icon" class="ms-2">▼</span>
+        </h3>
+        <div id="legend-items" class="gap-2 mt-3"></div>
+    </div>
 
     <!-- Tooltip for Base Score -->
     <div id="node-tooltip" class="hidden"></div>
@@ -93,6 +119,23 @@
         <div id="loading-text">Processing...</div>
     </div>
 
+    <!-- New Cases Modal -->
+    <div class="modal fade" id="newCasesModal" tabindex="-1" aria-labelledby="newCasesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newCasesModalLabel">New Cases</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="new-cases-list" class="d-flex flex-column gap-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

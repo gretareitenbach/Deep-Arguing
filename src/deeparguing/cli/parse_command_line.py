@@ -92,6 +92,13 @@ def parse_command_line():
     )
 
     parser.add_argument(
+        "--num_new_vis",
+        type=int,
+        default=5,
+        help=("Number of new cases to export to JSON for visualization (default: 5)"),
+    )
+
+    parser.add_argument(
         "--tuning", "-ht", action="store_true", help="Run hyperparameter tuning"
     )
 

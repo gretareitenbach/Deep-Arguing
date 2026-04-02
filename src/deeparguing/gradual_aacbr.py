@@ -534,23 +534,17 @@ class GradualAACBR(torch.nn.Module):
         assert A.shape == self.A.shape
         strengths = self.gradual_semantics(A, base_scores)
 
-        # TODO: Check if this is necessary:
-        # final_strengths = strengths[-1].squeeze()
-        final_strengths = strengths.squeeze()
-        if final_strengths.dim() == 1:
-            final_strengths = final_strengths.unsqueeze(0)
-
         if return_all_strengths:
-            return final_strengths
+            return strengths
 
         # Only apply linear combination when d > 1
         if self.dimensions > 1:
             final_strengths = torch.matmul(
-                final_strengths, self.W
+                strengths, self.W
             )  # (B, n, d) -> (B, n)
 
         else:
-            final_strengths = final_strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
+            final_strengths = strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
 
         default_strengths = final_strengths[:, self.default_indexes]
         return default_strengths
@@ -567,11 +561,13 @@ class GradualAACBR(torch.nn.Module):
         new_cases_base_scores = self.compute_base_scores(new_cases).unsqueeze(
             -1
         )  # (B x d)
+        self.new_cases_base_scores = new_cases_base_scores
 
         new_cases_attacks_adjacency = self.irrelevance_edge_weights(
             new_cases, X_train
         )  # B x n x d
         new_cases_attacks_adjacency = -new_cases_attacks_adjacency
+        self.new_cases_attacks_adjacency = new_cases_attacks_adjacency
 
         new_cases_attacks_adjacency = new_cases_attacks_adjacency.unsqueeze(
             1
@@ -725,6 +721,8 @@ class GradualAACBR(torch.nn.Module):
         filepath: str,
         image_mean: Tensor | None = None,
         image_std: Tensor | None = None,
+        new_cases: Tensor | None = None,
+        new_cases_labels: Tensor | None = None,
     ) -> None:
         """
         Exports the base scores of the casebase (X_train) and the adjacency matrix to a JSON file.
@@ -737,6 +735,10 @@ class GradualAACBR(torch.nn.Module):
             Optional mean tensor used for image normalization.
         image_std : Tensor | None
             Optional std tensor used for image normalization.
+        new_cases : Tensor | None
+            Optional tensor of new cases.
+        new_cases_labels : Tensor | None
+            Optional tensor of new cases labels.
         """
         if self.A is None:
             raise Exception("Ensure the model has been fit first.")
@@ -775,6 +777,20 @@ class GradualAACBR(torch.nn.Module):
             data["normalization_mean"] = image_mean.detach().cpu().numpy().tolist()
         if image_std is not None:
             data["normalization_std"] = image_std.detach().cpu().numpy().tolist()
+
+        if new_cases is not None:
+            final_strengths = self(new_cases, return_all_strengths=True)
+            data["new_cases"] = new_cases.detach().cpu().numpy().tolist()
+            if new_cases_labels is not None:
+                new_cases_labels_np = new_cases_labels.detach().cpu().numpy()
+                if len(new_cases_labels_np.shape) > 1 and new_cases_labels_np.shape[-1] > 1:
+                    data["new_cases_labels"] = np.argmax(new_cases_labels_np, axis=1).tolist()
+                else:
+                    data["new_cases_labels"] = new_cases_labels_np.squeeze().tolist()
+            
+            data["new_cases_base_scores"] = self.new_cases_base_scores.detach().cpu().numpy().tolist()
+            data["new_cases_adjacency"] = self.new_cases_attacks_adjacency.detach().cpu().numpy().tolist()
+            data["final_strengths"] = final_strengths.detach().cpu().numpy().tolist()
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)

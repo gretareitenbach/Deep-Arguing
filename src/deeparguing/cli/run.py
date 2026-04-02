@@ -147,6 +147,8 @@ def run(project: str = "gradual-aa-cbr"):
                     f"{OUT_DIR}/pre_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
+                    new_cases=X_new_cases[:args.num_new_vis],
+                    new_cases_labels=y_new_cases[:args.num_new_vis],
                 )
 
             model.train()
@@ -274,6 +276,8 @@ def run(project: str = "gradual-aa-cbr"):
                     f"{OUT_DIR}/post_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
+                    new_cases=X_new_cases[:5],
+                    new_cases_labels=y_new_cases[:5],
                 )
 
         average_f1 = np.mean(f1s)
