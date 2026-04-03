@@ -7,8 +7,8 @@ lr:
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.0001 }
-    high: { type: "value", value: 0.01 }
+    low: { type: "value", value: 0.001 }
+    high: { type: "value", value: 0.1 }
     log: { type: "value", value: True }
 
 dag_alpha:
@@ -132,8 +132,8 @@ temperature:
   tune_type: float
   params:
     name: { type: "value", value: "temperature" }
-    low: { type: "value", value: 0.001 }
-    high: { type: "value", value: 0.01 }
+    low: { type: "value", value: 0.0001 }
+    high: { type: "value", value: 0.1 }
     log: { type: "value", value: True }
 
 weight_decay:
@@ -178,8 +178,8 @@ gradient_max_norm:
   params:
     name: { type: "value", value: "gradient_max_norm" }
     low: { type: "value", value: 0.1 }
-    high: { type: "value", value: 5.0 }
-    step: { type: "value", value: 0.1 }
+    high: { type: "value", value: 15.1 }
+    step: { type: "value", value: 1 }
     log: { type: "value", value: False }
 
 dimensions::

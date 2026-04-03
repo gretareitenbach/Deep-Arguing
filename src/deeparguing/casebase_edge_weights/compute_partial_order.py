@@ -53,20 +53,32 @@ class SoftCoordinateDominance(CompareCases):
         super(SoftCoordinateDominance, self).__init__()
         self.temperature = temperature
         self.use_noise = noise_value != 0
-        self.distribution = torch.distributions.gumbel.Gumbel(torch.tensor([0.0]), torch.tensor([noise_value]))
+        self.distribution = torch.distributions.gumbel.Gumbel(torch.tensor([0.0]), torch.tensor([noise_value])) if self.use_noise else None
 
     @override
     def forward(self, attacker: Tensor, target: Tensor) -> Tensor:
 
         d = attacker.shape[-1]
 
+        diff = attacker - target
+
         if self.use_noise:
-            noise = self.distribution.sample().to(device=attacker.device)
+            assert self.distribution
+            noise = self.distribution.sample(sample_shape = diff.shape[:-1]).to(device=attacker.device)
+            # noise = torch.rand_like(diff) - 0.25
         else:
-            noise = torch.zeros_like(attacker, device=attacker.device)
+            noise = torch.zeros_like(diff, device=attacker.device)
+
+        # print(torch.min(diff))
+        # print(torch.max(diff))
 
         result = torch.relu(
-            (torch.sigmoid((attacker - target + noise) * self.temperature) * 2 - 1).sum(dim=-1) / d
+            (torch.sigmoid((diff * self.temperature) + noise) * 2 - 1).sum(dim=-1) / d
         )
+
+        # print(torch.min(result))
+        # print(torch.max(result))
+        #
+        # exit()
 
         return result.unsqueeze(-1)

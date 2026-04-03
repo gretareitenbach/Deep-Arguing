@@ -9,7 +9,7 @@ from optuna.samplers import TPESampler
 # os.environ["MKL_NUM_THREADS"] = "1"
 # os.environ["NUMEXPR_NUM_THREADS"] = "1"
 # os.environ["OMP_NUM_THREADS"] = "1"
-# os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import uuid
 
