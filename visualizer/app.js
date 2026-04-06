@@ -14,6 +14,7 @@ let showSupports = true;
 let showAttacks = true;
 let useBorderBaseScore = true; // Toggle for border thickness based on base score
 let useTransparentFinalStrength = true; // Toggle for node opacity based on final strength
+let removeSpikes = false; // Toggle to remove spikes (nodes not connected to default cases)
 let currentFinalStrengthThreshold = 0.0;
 let currentMinFStrength = 0.0;
 let currentMaxFStrength = 1.0;
@@ -58,6 +59,7 @@ const imageToggleContainer = document.getElementById('image-toggle-container');
 const transparentFinalStrengthCheckbox = document.getElementById('transparent-final-strength-checkbox');
 const showSupportsCheckbox = document.getElementById('supports-checkbox');
 const showAttacksCheckbox = document.getElementById('attacks-checkbox');
+const removeSpikesCheckbox = document.getElementById('remove-spikes-checkbox');
 const loadingOverlay = document.getElementById('loading-overlay');
 const legendContainer = document.getElementById('legend-container');
 const legendItems = document.getElementById('legend-items');
@@ -582,6 +584,7 @@ jsonUpload.addEventListener('change', (event) => {
                         useBorderBaseScore = true;
                         useTransparentFinalStrength = true;
                         showImages = false;
+                        removeSpikes = false;
                         
                         // Handle Graph Slider Visibility
                         const graphSliderContainer = document.getElementById('graph-slider-container');
@@ -622,6 +625,9 @@ jsonUpload.addEventListener('change', (event) => {
 
                         attacksCheckbox.checked = true;
                         attacksCheckbox.disabled = false;
+                        
+                        removeSpikesCheckbox.checked = false;
+                        removeSpikesCheckbox.disabled = false;
                         
                         updateLabels();
                         showLoading("Rendering graph...");
@@ -724,6 +730,11 @@ borderBaseScoreCheckbox.addEventListener('change', (e) => {
 
 transparentFinalStrengthCheckbox.addEventListener('change', (e) => {
     useTransparentFinalStrength = e.target.checked;
+    if (precomputedEdges.length > 0) handleSliderChange();
+});
+
+removeSpikesCheckbox.addEventListener('change', (e) => {
+    removeSpikes = e.target.checked;
     if (precomputedEdges.length > 0) handleSliderChange();
 });
 
@@ -876,6 +887,44 @@ function getFinalStrength(caseIndex, nodeId, graphIndex) {
 }
 
 /**
+ * Returns a Set of node IDs that can reach a default case based on a backwards BFS.
+ */
+function getNodesConnectedToDefaults(filteredEdges) {
+    const visited = new Set();
+    const queue = [];
+
+    // Always protect default cases
+    defaultIndexesData.forEach(id => {
+        visited.add(id);
+        queue.push(id);
+    });
+
+    // Build reverse adjacency list: target -> source
+    const incoming = {};
+    filteredEdges.forEach(edge => {
+        let s = edge.data.source === 'new_case_node' ? 'new_case_node' : parseInt(edge.data.source.substring(1));
+        let t = edge.data.target === 'new_case_node' ? 'new_case_node' : parseInt(edge.data.target.substring(1));
+        
+        if (!incoming[t]) incoming[t] = [];
+        incoming[t].push(s);
+    });
+
+    // BFS traversing backwards
+    while (queue.length > 0) {
+        const curr = queue.shift();
+        if (incoming[curr]) {
+            incoming[curr].forEach(source => {
+                if (!visited.has(source)) {
+                    visited.add(source);
+                    queue.push(source);
+                }
+            });
+        }
+    }
+    return visited;
+}
+
+/**
  * Initializes Cytoscape (Called ONLY ONCE per file upload)
  */
 function initCytoscape() {
@@ -885,6 +934,12 @@ function initCytoscape() {
 
     const elements = [];
     const uniqueClasses = [...new Set(yTrainData)].sort((a, b) => a - b);
+
+    const currentEdges = getFilteredEdges();
+    let connectedNodes = null;
+    if (removeSpikes) {
+        connectedNodes = getNodesConnectedToDefaults(currentEdges);
+    }
 
     // Add nodes
     for (let i = 0; i < numNodes; i++) {
@@ -910,7 +965,8 @@ function initCytoscape() {
             nodeOpacity = 0;
         } else {
             if ((!isDefault && score < currentBaseScoreThreshold) || 
-                (!isDefault && selectedNewCaseIndex !== -1 && finalStrengths.length > 0 && fStrength < currentFinalStrengthThreshold)) {
+                (!isDefault && selectedNewCaseIndex !== -1 && finalStrengths.length > 0 && fStrength < currentFinalStrengthThreshold) ||
+                (removeSpikes && !isDefault && connectedNodes && !connectedNodes.has(i))) {
                 nodeDisplay = 'none';
                 nodeOpacity = 0;
             } else {
@@ -966,7 +1022,7 @@ function initCytoscape() {
     }
 
     // Add initial edges
-    elements.push(...getFilteredEdges());
+    elements.push(...currentEdges);
 
     // Add New Case Node if selected
     if (selectedNewCaseIndex !== -1) {
@@ -1147,6 +1203,11 @@ function updateGraphElements() {
     // Instead of completely destroying, we can just update the nodes via cy.batch
     
     const uniqueClasses = [...new Set(yTrainData)].sort((a, b) => a - b);
+    const currentEdges = getFilteredEdges();
+    let connectedNodes = null;
+    if (removeSpikes) {
+        connectedNodes = getNodesConnectedToDefaults(currentEdges);
+    }
 
     cy.batch(() => {
         // 1. Update Nodes
@@ -1170,7 +1231,8 @@ function updateGraphElements() {
                 node.data('opacity', 0);
             } else {
                 if ((!isDefault && score < currentBaseScoreThreshold) || 
-                    (!isDefault && selectedNewCaseIndex !== -1 && finalStrengths.length > 0 && fStrength < currentFinalStrengthThreshold)) {
+                    (!isDefault && selectedNewCaseIndex !== -1 && finalStrengths.length > 0 && fStrength < currentFinalStrengthThreshold) ||
+                    (removeSpikes && !isDefault && connectedNodes && !connectedNodes.has(nodeId))) {
                     node.data('display', 'none');
                     node.data('opacity', 0);
                 } else {
@@ -1292,6 +1354,6 @@ function updateGraphElements() {
         }
 
         // 4. Add the newly filtered edges
-        cy.add(getFilteredEdges());
+        cy.add(currentEdges);
     });
 }

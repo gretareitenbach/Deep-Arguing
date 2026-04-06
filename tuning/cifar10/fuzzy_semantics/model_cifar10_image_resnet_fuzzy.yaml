@@ -257,27 +257,27 @@ irrelevance:
       type: ref
       value: "partial_order"
 
-# base_score:
-#   type: class
-#   class_name: "LearnedBaseScore"
-#   params:
-#     feature_extractors:
-#       type: list
-#       value: [
-#           { type: ref, value: "feature_weights" },
-#           { type: ref, value: "feature_weights_2" },
-#         ]
-#     activation:
-#       type: function
-#       value: "sigmoid"
-#
 base_score:
   type: class
-  class_name: "ConstantBaseScore"
+  class_name: "LearnedBaseScore"
   params:
-    constant: 
-      type: value
-      value: 1.0
+    feature_extractors:
+      type: list
+      value: [
+          { type: ref, value: "feature_weights" },
+          { type: ref, value: "feature_weights_2" },
+        ]
+    activation:
+      type: function
+      value: "sigmoid"
+
+# base_score:
+#   type: class
+#   class_name: "ConstantBaseScore"
+#   params:
+#     constant: 
+#       type: value
+#       value: 1.0
 
 model:
   type: class

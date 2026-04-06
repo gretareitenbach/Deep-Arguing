@@ -1,6 +1,6 @@
 epochs:
   type: value
-  value: 20
+  value: 5
 
 lr:
   type: value

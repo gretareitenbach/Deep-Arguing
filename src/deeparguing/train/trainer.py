@@ -95,6 +95,12 @@ class Trainer(metaclass=ABCMeta):
 
         loss: Tensor = criterion(predictions, y_target)
         loss += regulariser(model)
+        #TODO: Move to a criterion class
+        mse = torch.nn.MSELoss()
+        out = model.casebase_edge_weights(X_casebase, X_default)
+        loss += mse(out, torch.ones_like(out))
+        out = model.casebase_edge_weights(X_default, X_casebase)
+        loss += mse(out, torch.zeros_like(out))
 
         loss.backward()
 
