@@ -539,9 +539,7 @@ class GradualAACBR(torch.nn.Module):
 
         # Only apply linear combination when d > 1
         if self.dimensions > 1:
-            final_strengths = torch.matmul(
-                strengths, self.W
-            )  # (B, n, d) -> (B, n)
+            final_strengths = torch.matmul(strengths, self.W)  # (B, n, d) -> (B, n)
 
         else:
             final_strengths = strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
@@ -783,13 +781,22 @@ class GradualAACBR(torch.nn.Module):
             data["new_cases"] = new_cases.detach().cpu().numpy().tolist()
             if new_cases_labels is not None:
                 new_cases_labels_np = new_cases_labels.detach().cpu().numpy()
-                if len(new_cases_labels_np.shape) > 1 and new_cases_labels_np.shape[-1] > 1:
-                    data["new_cases_labels"] = np.argmax(new_cases_labels_np, axis=1).tolist()
+                if (
+                    len(new_cases_labels_np.shape) > 1
+                    and new_cases_labels_np.shape[-1] > 1
+                ):
+                    data["new_cases_labels"] = np.argmax(
+                        new_cases_labels_np, axis=1
+                    ).tolist()
                 else:
                     data["new_cases_labels"] = new_cases_labels_np.squeeze().tolist()
-            
-            data["new_cases_base_scores"] = self.new_cases_base_scores.detach().cpu().numpy().tolist()
-            data["new_cases_adjacency"] = self.new_cases_attacks_adjacency.detach().cpu().numpy().tolist()
+
+            data["new_cases_base_scores"] = (
+                self.new_cases_base_scores.detach().cpu().numpy().tolist()
+            )
+            data["new_cases_adjacency"] = (
+                self.new_cases_attacks_adjacency.detach().cpu().numpy().tolist()
+            )
             data["final_strengths"] = final_strengths.detach().cpu().numpy().tolist()
 
         with open(filepath, "w", encoding="utf-8") as f:
