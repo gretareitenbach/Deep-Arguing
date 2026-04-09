@@ -46,7 +46,7 @@ class ApproximateTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ) -> float:
+    ) -> tuple[float, float]:
         # Validate scheduler_step_per when scheduler is provided
         if scheduler is not None:
             if scheduler_step_per is None:
@@ -65,6 +65,7 @@ class ApproximateTrainer(Trainer):
 
         batch_size = batch_size if batch_size is not None else n_samples
         max_val_acc = 0.0
+        max_val_f1 = 0.0
 
         for epoch in pbar:
             permutation = torch.randperm(n_samples)
@@ -128,12 +129,12 @@ class ApproximateTrainer(Trainer):
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
 
-            _, train_acc = self.log_validation_loss(
+            _, train_acc, train_f1 = self.log_validation_loss(
                 model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
             )
 
             if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg, val_acc = self.log_validation_loss(
+                val_loss_avg, val_acc, val_f1 = self.log_validation_loss(
                     model, batch_size, X_val, y_val, criterion, regulariser
                 )
                 ExperimentLogger.current().log_metrics(
@@ -141,15 +142,25 @@ class ApproximateTrainer(Trainer):
                         "loss/loss_per_epoch": float(total_loss.item()),
                         "epoch": epoch,
                         "accuracy/train_accuracy_per_epoch": train_acc,
+                        "f1/train_f1_per_epoch": train_f1,
                         "loss/val_loss_per_epoch": float(val_loss_avg),
                         "accuracy/val_accuracy_per_epoch": val_acc,
+                        "f1/val_f1_per_epoch": val_f1,
                     }
                 )
                 max_val_acc = max(max_val_acc, val_acc)
+                max_val_f1 = max(max_val_f1, val_f1)
             else:
                 ExperimentLogger.current().log_metrics(
-                    {"loss/loss_per_epoch": float(total_loss.item()), "epoch": epoch, "accuracy/train_accuracy_per_epoch": train_acc}
+                    {
+                        "loss/loss_per_epoch": float(total_loss.item()),
+                        "epoch": epoch,
+                        "accuracy/train_accuracy_per_epoch": train_acc,
+                        "f1/train_f1_per_epoch": train_f1,
+                    }
                 )
         
-        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
-        return float(max_val_acc)
+        ExperimentLogger.current().log_metrics(
+            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+        )
+        return float(max_val_acc), float(max_val_f1)

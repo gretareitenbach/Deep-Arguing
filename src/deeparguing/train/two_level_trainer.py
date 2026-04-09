@@ -61,7 +61,7 @@ class TwoLevelTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ) -> float:
+    ) -> tuple[float, float]:
         """
         Train with a two-level optimization loop.
 
@@ -132,6 +132,7 @@ class TwoLevelTrainer(Trainer):
         # Track loss for reporting
         loss: Tensor | None = None
         max_val_acc = 0.0
+        max_val_f1 = 0.0
 
         # Outer loop
         outer_pbar = tqdm(
@@ -199,7 +200,7 @@ class TwoLevelTrainer(Trainer):
             with torch.no_grad():
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
-            val_acc = self._log_outer_iteration(
+            val_acc, val_f1 = self._log_outer_iteration(
                 regulariser,
                 outer_iter,
                 loss,
@@ -213,6 +214,7 @@ class TwoLevelTrainer(Trainer):
                 log_val_loss,
             )
             max_val_acc = max(max_val_acc, val_acc)
+            max_val_f1 = max(max_val_f1, val_f1)
 
             # Update outer progress bar
             outer_pbar.set_description(
@@ -223,8 +225,10 @@ class TwoLevelTrainer(Trainer):
             if converged:
                 break
 
-        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
-        return float(max_val_acc)
+        ExperimentLogger.current().log_metrics(
+            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+        )
+        return float(max_val_acc), float(max_val_f1)
 
     def _step_regulariser(
         self, regulariser: RegulariserType, model: GradualAACBR
@@ -252,9 +256,9 @@ class TwoLevelTrainer(Trainer):
         y_val: Tensor | None,
         criterion: Loss,
         log_val_loss: bool,
-    ) -> float:
+    ) -> tuple[float, float]:
         """Log metrics after each outer iteration. Returns validation accuracy or 0.0"""
-        _, train_acc = self.log_validation_loss(
+        _, train_acc, train_f1 = self.log_validation_loss(
             model, batch_size, X_train, y_train, criterion, regulariser
         )
 
@@ -262,6 +266,7 @@ class TwoLevelTrainer(Trainer):
             "loss/loss_per_outer": float(loss.item()),
             "outer_iteration": outer_iter,
             "accuracy/train_accuracy_per_outer": train_acc,
+            "f1/train_f1_per_outer": train_f1,
         }
 
         # Log NOTEARS-specific metrics if available
@@ -276,13 +281,16 @@ class TwoLevelTrainer(Trainer):
                 metrics["notears/converged"] = regulariser.converged
 
         val_acc_to_return = 0.0
+        val_f1_to_return = 0.0
         if log_val_loss and X_val is not None and y_val is not None:
-            val_loss, val_acc = self.log_validation_loss(
+            val_loss, val_acc, val_f1 = self.log_validation_loss(
                 model, batch_size, X_val, y_val, criterion, regulariser
             )
             metrics["loss/val_loss_per_outer"] = float(val_loss)
             metrics["accuracy/val_accuracy_per_outer"] = val_acc
+            metrics["f1/val_f1_per_outer"] = val_f1
             val_acc_to_return = val_acc
+            val_f1_to_return = val_f1
 
         ExperimentLogger.current().log_metrics(metrics)
-        return float(val_acc_to_return)
+        return float(val_acc_to_return), float(val_f1_to_return)

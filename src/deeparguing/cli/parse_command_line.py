@@ -103,6 +103,14 @@ def parse_command_line():
     )
 
     parser.add_argument(
+        "--ht-obj",
+        type=str,
+        choices=["acc", "f1"],
+        default="acc",
+        help="Objective metric to maximize during hyperparameter tuning (default: acc)",
+    )
+
+    parser.add_argument(
         "--visualise_loss_landscape",
         "-vll",
         action="store_true",

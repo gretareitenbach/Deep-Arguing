@@ -75,7 +75,7 @@ def load_data_dict(
 ):
 
     params: Dict[str, Any] = {
-        k: parse_entry(v, config, ref_stack, trial)
+        k: parse_entry(v, config, ref_stack, trial, device)
         for k, v in entry.get("params", {}).items()
     }
     if entry["sub_type"] == "tabular":
@@ -104,7 +104,7 @@ def load_data_dict(
 
     if "data_pre_process" not in instances.keys():
         instances["data_pre_process"] = parse_entry(
-            config["data_pre_process"], config, ref_stack, trial
+            config["data_pre_process"], config, ref_stack, trial, device
         )
 
     assert type(instances["data_pre_process"]) == dict
@@ -139,6 +139,7 @@ def parse_entry(
     config: Dict[str, Any],
     ref_stack: list[str],
     trial: Trial | None,
+    device: str,
 ) -> Any:
     if "type" in entry:
         entry_type = entry["type"]
@@ -155,31 +156,33 @@ def parse_entry(
         result: Dict[str, Any] = {}
         for key, value in children.items():
             if key not in instances:
-                child_entry = parse_entry(value, config, ref_stack, trial)
+                child_entry = parse_entry(value, config, ref_stack, trial, device)
                 instances[key] = child_entry
             else:
                 child_entry = instances[key]
             result[key] = child_entry
         return result
 
-    if entry_type == "list":
+    if entry_type == "list" or entry_type == "tensor":
         children = check_entry_for_value(entry)
         result: list[Any] = []
         for child in children:
-            result.append(parse_entry(child, config, ref_stack, trial))
+            result.append(parse_entry(child, config, ref_stack, trial, device))
+        if entry_type == "tensor":
+            return torch.tensor(result, device=device)
         return result
 
     if entry_type == "class":
         class_name = entry["class_name"]
         params: Dict[str, Any] = {
-            k: parse_entry(v, config, ref_stack, trial)
+            k: parse_entry(v, config, ref_stack, trial, device)
             for k, v in entry.get("params", {}).items()
         }
         if entry_sub_type == "optim":
             model_name = entry["model"]
             if model_name not in instances:
                 instances[model_name] = parse_entry(
-                    config[model_name], config, ref_stack, trial
+                    config[model_name], config, ref_stack, trial, device
                 )
             params["params"] = instances[model_name].parameters()
 
@@ -187,7 +190,7 @@ def parse_entry(
             optimizer = entry["optimizer"]
             if optimizer not in instances:
                 instances[optimizer] = parse_entry(
-                    config[optimizer], config, ref_stack, trial
+                    config[optimizer], config, ref_stack, trial, device
                 )
             params["optimizer"] = instances[optimizer]
 
@@ -202,7 +205,7 @@ def parse_entry(
         if ref_name not in instances:
             ref_stack.append(ref_name)
             instances[ref_name] = parse_entry(
-                config[ref_name], config, ref_stack, trial
+                config[ref_name], config, ref_stack, trial, device
             )
             ref_stack.remove(ref_name)
         return instances[ref_name]
@@ -241,7 +244,7 @@ def parse_tune_values(
             "Attempt to parse tuning variables. Hyperparameter tuning is not turned on. Use -ht in the command line to ensure you are running with hyperparameter tuning on."
         )
     params: Dict[str, Any] = {
-        k: parse_entry(v, config, ref_stack, trial)
+        k: parse_entry(v, config, ref_stack, trial, device)
         for k, v in entry.get("params", {}).items()
     }
     if "tune_type" not in entry:
@@ -283,6 +286,8 @@ def parse_model_config(
     for key, value in model_config.items():
         if key in instances or key == "data":
             continue
-        instances[key] = parse_entry(value, model_config, ref_stack=[], trial=trial)
+        instances[key] = parse_entry(
+            value, model_config, ref_stack=[], trial=trial, device=device
+        )
 
     return data_dict, instances

@@ -55,6 +55,8 @@ def run(project: str = "gradual-aa-cbr"):
 
         total = 0
         f1s = []
+        max_val_accs = []
+        max_val_f1s = []
 
         trial_id = uuid.uuid4()
 
@@ -152,7 +154,7 @@ def run(project: str = "gradual-aa-cbr"):
                 )
 
             model.train()
-            max_val_acc = trainer.train(
+            max_val_acc, max_val_f1 = trainer.train(
                 model,
                 X_casebase,
                 y_casebase,
@@ -250,6 +252,8 @@ def run(project: str = "gradual-aa-cbr"):
                     f"F1 > 0.7 in {total}/{seed_idx + 1} seeds, which is {total / (seed_idx + 1) * 100}%"
                 )
             f1s.append(f1)
+            max_val_accs.append(max_val_acc)
+            max_val_f1s.append(max_val_f1)
             logging.info(f"Average f1 score: {np.mean(f1s)}")
 
             if args.visualise_loss_landscape:
@@ -282,10 +286,18 @@ def run(project: str = "gradual-aa-cbr"):
 
         average_f1 = np.mean(f1s)
         std_f1 = np.std(f1s)
+        average_max_val_acc = np.mean(max_val_accs)
+        average_max_val_f1 = np.mean(max_val_f1s)
+        
         logging.info(f"Average F1: {average_f1}")
         logging.info(f"F1 STD: {std_f1}")
-        # return average_f1
-        return max_val_acc
+        logging.info(f"Average Max Val Acc: {average_max_val_acc}")
+        logging.info(f"Average Max Val F1: {average_max_val_f1}")
+        
+        if args.ht_obj == "f1":
+            return average_max_val_f1
+        else:
+            return average_max_val_acc
 
     return objective
 

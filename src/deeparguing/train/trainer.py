@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 import matplotlib.pyplot as plt
 import torch
+from sklearn.metrics import accuracy_score, f1_score
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -44,7 +45,7 @@ class Trainer(metaclass=ABCMeta):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ) -> float:
+    ) -> tuple[float, float]:
         pass
 
     def plot_loss_curve(self):
@@ -135,7 +136,7 @@ class Trainer(metaclass=ABCMeta):
         y_val: Tensor,
         criterion: Loss,
         regulariser: RegulariserType,
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, float]:
 
         n_samples = X_val.shape[0]
         batch_size = batch_size if batch_size is not None else n_samples
@@ -143,8 +144,8 @@ class Trainer(metaclass=ABCMeta):
 
         val_loss_total = 0.0
         num_batches = 0
-        correct = 0
-        total = 0
+        all_preds = []
+        all_targets = []
 
         with torch.no_grad():
             for i in range(0, len(X_val), batch_size):
@@ -159,11 +160,16 @@ class Trainer(metaclass=ABCMeta):
                 num_batches += 1
 
                 predicted_classes = torch.argmax(predictions, dim=1)
-                correct += (predicted_classes == y_target).sum().item()
-                total += y_target.size(0)
+                all_preds.extend(predicted_classes.cpu().tolist())
+                all_targets.extend(y_target.cpu().tolist())
 
         val_loss_avg = val_loss_total / num_batches if num_batches > 0 else float("nan")
-        accuracy = correct / total if total > 0 else float("nan")
+        if len(all_targets) > 0:
+            accuracy = float(accuracy_score(all_targets, all_preds))
+            f1 = float(f1_score(all_targets, all_preds, average="macro", zero_division=0.0))
+        else:
+            accuracy = float("nan")
+            f1 = float("nan")
 
         model.train()
-        return val_loss_avg, accuracy
+        return val_loss_avg, accuracy, f1

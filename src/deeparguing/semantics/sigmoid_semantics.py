@@ -35,4 +35,4 @@ class SigmoidSemantics(GradualSemantics):
 
     @override
     def influence_func(self, base_scores: Tensor, aggregations: Tensor) -> Tensor:
-        return torch.sigmoid(torch.log(base_scores / (1 - base_scores)) + aggregations)
+        return torch.sigmoid(torch.log(base_scores / ((1 - base_scores) + 1e-8)) + aggregations)

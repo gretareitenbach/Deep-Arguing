@@ -7,6 +7,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import WeightedRandomSampler
 from tqdm import tqdm
+from sklearn.metrics import accuracy_score, f1_score
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
@@ -258,7 +259,7 @@ class CurriculumTrainer(Trainer):
         y_val: Tensor | None = None,
         log_val_loss: bool = False,
         log_gradients: bool = False,
-    ) -> float:
+    ) -> tuple[float, float]:
         # Validation
         self._validate_epochs(epochs)
         if scheduler is not None:
@@ -284,6 +285,7 @@ class CurriculumTrainer(Trainer):
 
         pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
         max_val_acc = 0.0
+        max_val_f1 = 0.0
 
         for epoch in pbar:
             # Store active classes for training step
@@ -335,7 +337,7 @@ class CurriculumTrainer(Trainer):
             model.eval()
             with torch.no_grad():
                 model.fit(X_cb_curr, y_cb_curr, X_def_curr, y_def_curr)
-                curr_loss, curr_acc = self._log_curriculum_validation(
+                curr_loss, curr_acc, curr_f1 = self._log_curriculum_validation(
                     model, batch_size, X_new_curr, y_new_curr, criterion, regulariser,
                     active_classes
                 )
@@ -346,6 +348,7 @@ class CurriculumTrainer(Trainer):
                 "epoch": epoch,
                 "loss/loss_per_epoch": float(loss.item()),
                 "accuracy/curriculum_accuracy": curr_acc,
+                "f1/curriculum_f1": curr_f1,
                 "loss/curriculum_loss": curr_loss,
                 "num_active_classes": len(active_classes),
                 "active_classes": str(active_classes),  # For clarity in logs
@@ -356,12 +359,14 @@ class CurriculumTrainer(Trainer):
             if log_val_loss and X_val is not None and y_val is not None:
                 with torch.no_grad():
                     model.fit(X_casebase, y_casebase, X_default, y_default)
-                    full_loss, full_acc = self.log_validation_loss(
+                    full_loss, full_acc, full_f1 = self.log_validation_loss(
                         model, batch_size, X_val, y_val, criterion, regulariser
                     )
                 metrics["accuracy/full_val_accuracy"] = full_acc
+                metrics["f1/full_val_f1"] = full_f1
                 metrics["loss/full_val_loss"] = full_loss
                 max_val_acc = max(max_val_acc, full_acc)
+                max_val_f1 = max(max_val_f1, full_f1)
 
             ExperimentLogger.current().log_metrics(metrics)
 
@@ -389,8 +394,10 @@ class CurriculumTrainer(Trainer):
 
         logging.info(f"Curriculum complete. Final active classes: {active_classes}")
 
-        ExperimentLogger.current().log_metrics({"evals/max_val_acc": float(max_val_acc)})
-        return float(max_val_acc)
+        ExperimentLogger.current().log_metrics(
+            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+        )
+        return float(max_val_acc), float(max_val_f1)
 
     def _log_curriculum_validation(
         self,
@@ -401,7 +408,7 @@ class CurriculumTrainer(Trainer):
         criterion: Loss,
         regulariser: RegulariserType,
         active_classes: list[int],
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, float]:
         """
         Computes validation metrics with remapped targets for curriculum scope.
 
@@ -411,8 +418,9 @@ class CurriculumTrainer(Trainer):
         batch_size = batch_size if batch_size is not None else n_samples
 
         total_loss = 0.0
-        total_correct = 0
         total_samples = 0
+        all_preds = []
+        all_targets = []
 
         for i in range(0, n_samples, batch_size):
             batch_X = X_val[i : i + batch_size]
@@ -433,13 +441,19 @@ class CurriculumTrainer(Trainer):
             if predictions.dim() == 1:
                 predictions = predictions.unsqueeze(0)
             pred_classes = torch.argmax(predictions, dim=1)
-            total_correct += (pred_classes == y_target).sum().item()
+            all_preds.extend(pred_classes.cpu().tolist())
+            all_targets.extend(y_target.cpu().tolist())
             total_samples += batch_X.shape[0]
 
         avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
-        accuracy = total_correct / total_samples if total_samples > 0 else 0.0
+        if len(all_targets) > 0:
+            accuracy = float(accuracy_score(all_targets, all_preds))
+            f1 = float(f1_score(all_targets, all_preds, average="macro", zero_division=0.0))
+        else:
+            accuracy = 0.0
+            f1 = 0.0
 
-        return avg_loss, accuracy
+        return avg_loss, accuracy, f1
 
     def _train_curriculum_epoch(
         self,
