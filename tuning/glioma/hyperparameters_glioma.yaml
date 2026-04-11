@@ -1,76 +1,55 @@
 epochs:
   type: value
-  value: 1000
-  # value: 430 
-  # value: 3000 
+  value: 128
 
 lr:
   type: value
-  value: 0.00043550221972029154
+  value: 0.0001
 
 gamma_dag:
   type: value
-  value: 0.000265391991872852
+  value: 0.0001
 
 max_iters:
   type: value
-  value: 86
-
-epsilon:
-  type: value
-  value: 0
+  value: 5
 
 temperature:
   type: value
-  value: 0.0089012749637506
+  value: 10
 
 dag_alpha:
   type: value
-  value: 0.0016046122840315505
+  value: 0.001
 
-hidden_weight_1:
+first_layer:
   type: value
-  value: 20
+  value: 64
 
-hidden_weight_2:
+second_layer:
   type: value
-  value: 50
+  value: 0
 
-hidden_weight_3:
+third_layer:
   type: value
-  value: 30
-
-hidden_weight_4:
-  type: value
-  value: 40
-
-mlp_hidden_sizes:
-  type: list
-  value:
-    [
-      { type: ref, value: hidden_weight_1 },
-      { type: ref, value: hidden_weight_2 },
-      { type: ref, value: hidden_weight_3 },
-      { type: ref, value: hidden_weight_4 },
-    ]
+  value: 0
 
 cluster_size:
   type: value
-  value: 5
+  value: 10 
 
-# Best trial:
-# Value: 0.7299534552136056
-# Params:
-#   dag_alpha: 0.0016046122840315505
-#   gamma_dag: 0.000265391991872852
-#   epochs: 430
-#   lr: 0.00043550221972029154
-#   max_iters: 86
-#   hidden_weight_1: 20
-#   hidden_weight_2: 50
-#   hidden_weight_3: 30
-#   hidden_weight_4: 40
-#   temperature: 0.0089012749637506
-  #
-  #   Of 100 runs, 54 had f1 > 0.7
-  #   Average f1 was 0.65741583
+batch_size:
+  type: value
+  value: 64
+
+gradient_max_norm:
+  type: value
+  value: 0.5
+
+t_norm_str:
+  type: value
+  value: ProductTNorm
+
+weight_decay:
+  type: value
+  value: 0.0001

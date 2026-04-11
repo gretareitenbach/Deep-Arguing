@@ -16,9 +16,6 @@ data:
       value:
         - { type: value, value: 0 }
         - { type: value, value: 10 }
-    scale_continuous:
-      type: value
-      value: true
     # labels:
     #   type: range
     #   value: 

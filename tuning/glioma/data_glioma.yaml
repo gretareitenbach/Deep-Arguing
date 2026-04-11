@@ -8,12 +8,21 @@ data:
     path:
       type: value
       value: "./data/glioma/TCGA_InfoWithGrade.csv"
-    excluded_fields:
-      type: list
-      value: [{ type: value, value: 2 }, { type: value, value: 3 }]
+    # excluded_fields:
+    #   type: list
+    #   value: [{ type: value, value: 2 }, { type: value, value: 3 }]
     has_header:
       type: value
       value: true
+    continuous_cols:
+      type: list
+      value:
+        - {type: value, value: 1} # Age_at_diagnosis column
+    categorical_cols:
+      type: list
+      value:
+        - {type: value, value: 2} # Race column
+
 
 data_pre_process:
   type: dict

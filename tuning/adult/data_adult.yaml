@@ -30,9 +30,6 @@ data:
         - { type: value, value: 10 }
         - { type: value, value: 11 }
         - { type: value, value: 12 }
-    scale_continuous:
-      type: value
-      value: true
     binary_cols:
       type: list
       value:

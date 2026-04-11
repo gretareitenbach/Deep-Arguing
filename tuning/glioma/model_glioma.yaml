@@ -36,6 +36,9 @@ build_casebase:
     cluster_size:
       type: ref
       value: cluster_size
+    nearest_sample:
+      type: value
+      value: True
 
 build_new_cases:
   type: function
@@ -64,14 +67,17 @@ train_settings:
           type: ref
           value: lr
         weight_decay:
-          type: value
-          value: 0.0004
+          type: ref
+          value: weight_decay
     regulariser:
       type: ref
       value: "regularisers"
+    batch_size:
+      type: ref
+      value: "batch_size"
     gradient_max_norm:
-      type: value
-      value: 1.0
+      type: ref
+      value: gradient_max_norm
 
 feature_weights:
   type: class
@@ -81,19 +87,35 @@ feature_weights:
       type: data_ref
       value: "no_features"
     hidden_sizes:
-      type: ref
-      value: mlp_hidden_sizes
+      type: list
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
+        ]
+    output_size:
+      type: value
+      value: 64
+
+feature_weights_1:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: data_ref
+      value: "no_features"
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
+        ]
     output_size:
       type: value
       value: 1
-
-scaler:
-  type: class
-  class_name: "Scaler"
-  params:
-    no_features:
-      type: data_ref
-      value: "no_features"
 
 semantics:
   type: class
@@ -102,9 +124,6 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
-    epsilon:
-      type: ref
-      value: epsilon
 
 partial_order:
   type: class
@@ -115,14 +134,11 @@ partial_order:
       value: [{ type: ref, value: "feature_weights" }]
     comparison_func:
       type: class
-      class_name: "Subtractor"
+      class_name: "SoftCoordinateDominance"
       params:
         temperature:
           type: ref
           value: temperature
-        activation:
-          type: function
-          value: "sigmoid"
 
 irrelevance:
   type: class
@@ -140,8 +156,7 @@ base_score:
       type: list
       value:
         [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "scaler" },
+          { type: ref, value: "feature_weights_1" },
         ]
     activation:
       type: function
@@ -177,4 +192,7 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "uni_directional"
+      value: "identity"
+    t_norm_str:
+      type: ref
+      value: t_norm_str

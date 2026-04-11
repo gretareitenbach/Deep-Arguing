@@ -4,7 +4,6 @@ epochs:
 
 lr:
   type: value
-  # value: 0.0017516780759110426
   value: 0.0001
 
 gamma_dag:

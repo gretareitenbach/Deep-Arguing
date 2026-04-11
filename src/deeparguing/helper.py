@@ -66,7 +66,6 @@ def load_tabular_data(
     binary_cols: List[int] = [],
     continuous_cols: List[int] = [],
     binary_maps: Optional[Dict[int, Dict]] = None,
-    scale_continuous: bool = False,
 ):
     """
     Generic tabular dataset loader with flexible preprocessing support.
@@ -114,7 +113,7 @@ def load_tabular_data(
 
     # ---------- scaling continuous columns ----------
 
-    if continuous_cols and scale_continuous:
+    if continuous_cols:
         X = apply_scaling(X, continuous_cols)
 
     # ---------- one-hot encode categorical columns ----------
