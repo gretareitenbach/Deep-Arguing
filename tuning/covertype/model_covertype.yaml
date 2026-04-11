@@ -30,38 +30,38 @@ regularisers:
       type: list
       value:
         [
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "dag_regulariser" },
-          #       { type: ref, value: gamma_dag },
-          #     ],
-          # },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "class_balance_regulariser" },
-          #       { type: ref, value: gamma_cbr },
-          #     ],
-          # },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "sparsity_regulariser" },
-          #       { type: ref, value: gamma_sparsity },
-          #     ],
-          # },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "community_preservation_regulariser" },
-          #       { type: ref, value: gamma_cp },
-          #     ],
-          # },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "dag_regulariser" },
+                { type: ref, value: gamma_dag },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "class_balance_regulariser" },
+                { type: ref, value: gamma_cbr },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "sparsity_regulariser" },
+                { type: ref, value: gamma_sparsity },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "community_preservation_regulariser" },
+                { type: ref, value: gamma_cp },
+              ],
+          },
         ]
 
 # focal_loss:
