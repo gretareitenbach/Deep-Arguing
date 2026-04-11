@@ -1,0 +1,39 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 0
+    path:
+      type: value
+      value: "./data/higgs/HIGGS.csv"
+    has_header:
+      type: value
+      value: false
+    continuous_cols:
+      type: range
+      value:
+        - { type: value, value: 0 } # We start at 0 because we first exclude the target field
+        - { type: value, value: 28 }
+    scale_continuous:
+      type: value
+      value: true
+    # size:
+    #   type: value
+    #   value: 1000000
+    # labels:
+    #   type: range
+    #   value: 
+    #     - {type: value, value: 1}
+    #     - {type: value, value: 3}
+        # - {type: value, value: 3}
+        # - {type: value, value: 8}
+
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "no_normalize"
