@@ -1,0 +1,44 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 54
+    path:
+      type: value
+      value: "./data/covertype/covtype.data"
+    has_header:
+      type: value
+      value: false
+    continuous_cols:
+      type: range
+      value:
+        - { type: value, value: 0 }
+        - { type: value, value: 10 }
+    scale_continuous:
+      type: value
+      value: true
+    # labels:
+    #   type: range
+    #   value: 
+    #     - {type: value, value: 1}
+    #     - {type: value, value: 3}
+        # - {type: value, value: 3}
+        # - {type: value, value: 8}
+    # Note that we do not have to specify binary columns because 
+    # they are already binarized in the data so we do not need to
+    # map them
+    # binary_cols:
+    #   type: range
+    #   value:
+    #     - { type: value, value: 10 }
+    #     - { type: value, value: 54 }
+
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "no_normalize"

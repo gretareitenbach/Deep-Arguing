@@ -172,6 +172,25 @@ def parse_entry(
             return torch.tensor(result, device=device)
         return result
 
+    if entry_type == "range":
+        children = check_entry_for_value(entry)
+        if len(children) > 3:
+            raise ValueError(
+                "Range must contain at most 3 values: start, stop, step (optional)"
+            )
+
+        start = parse_entry(children[0], config, ref_stack, trial, device)
+        stop = parse_entry(children[1], config, ref_stack, trial, device)
+
+        if stop < start:
+            raise ValueError("Upper value cannot be less than lower value")
+
+        step = 1
+        if len(children) == 3:
+            step = parse_entry(children[2], config, ref_stack, trial, device)
+
+        return list(range(start, stop, step))
+
     if entry_type == "class":
         class_name = entry["class_name"]
         params: Dict[str, Any] = {

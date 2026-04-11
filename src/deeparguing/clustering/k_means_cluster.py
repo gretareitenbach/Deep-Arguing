@@ -11,7 +11,9 @@ from deeparguing.clustering import Cluster
 
 class kMeansCluster(Cluster):
 
-    def __init__(self, cluster_size: int, nearest_sample: bool = False) -> None:
+    def __init__(
+        self, cluster_size: int | list[int], nearest_sample: bool = False
+    ) -> None:
         super().__init__()
         self.cluster_size = cluster_size
         self.nearest_sample = nearest_sample
@@ -55,14 +57,22 @@ class kMeansCluster(Cluster):
 
         all_y = np.unique(y_, axis=0)
 
-        for selected_y in all_y:
+        for i, selected_y in enumerate(all_y):
 
             group = X_[np.all(selected_y == y_, axis=1)]
             group_size = len(group)
 
             group = group.reshape(group_size, -1)
 
-            kmeans = KMeans(n_clusters=self.cluster_size, random_state=0)
+            if isinstance(self.cluster_size, int):
+                cluster_size = self.cluster_size
+            else:
+                cluster_size = self.cluster_size[i]
+                print(
+                    f"Class {i}, group_size: {group_size}, cluster_size: {cluster_size}"
+                )
+
+            kmeans = KMeans(n_clusters=cluster_size, random_state=0)
 
             kmeans.fit_predict(group)
 
@@ -72,7 +82,7 @@ class kMeansCluster(Cluster):
                 nearest_indices = pairwise_distances_argmin(X_centroids_group, group)
                 X_centroids_group = group[nearest_indices]
 
-            y_centroids_group = np.tile(selected_y, (self.cluster_size, 1))
+            y_centroids_group = np.tile(selected_y, (cluster_size, 1))
 
             X_all_centroids.append(X_centroids_group)
             y_all_centroids.append(y_centroids_group)

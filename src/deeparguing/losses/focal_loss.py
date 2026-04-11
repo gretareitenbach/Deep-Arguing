@@ -11,7 +11,7 @@ class FocalLoss(Loss):
 
     def __init__(
         self,
-        alpha: float = 1.0,
+        alpha: float | Tensor = 1.0,
         gamma: float = 2.0,
         label_smoothing: float = 0.0,
         reduction: str = "mean",
@@ -23,11 +23,22 @@ class FocalLoss(Loss):
 
     @override
     def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
+
         ce_loss = F.cross_entropy(
-            predictions, targets, label_smoothing=self.label_smoothing, reduction="none"
+            predictions,
+            targets,
+            label_smoothing=self.label_smoothing,
+            reduction="none",
         )
+
         pt = torch.exp(-ce_loss)
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+
+        if isinstance(self.alpha, Tensor):
+            alpha_t = self.alpha[targets]
+        else:
+            alpha_t = self.alpha
+
+        focal_loss = alpha_t * (1 - pt) ** self.gamma * ce_loss
 
         if self.reduction == "mean":
             return focal_loss.mean()
