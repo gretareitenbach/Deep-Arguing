@@ -38,14 +38,14 @@ regularisers:
                 { type: ref, value: gamma_dag },
               ],
           },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "class_balance_regulariser" },
-          #       { type: ref, value: gamma_cbr },
-          #     ],
-          # },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "class_balance_regulariser" },
+                { type: ref, value: gamma_cbr },
+              ],
+          },
           {
             type: list,
             value:
@@ -54,14 +54,14 @@ regularisers:
                 { type: ref, value: gamma_sparsity },
               ],
           },
-          # {
-          #   type: list,
-          #   value:
-          #     [
-          #       { type: ref, value: "community_preservation_regulariser" },
-          #       { type: ref, value: gamma_cp },
-          #     ],
-          # },
+          {
+            type: list,
+            value:
+              [
+                { type: ref, value: "community_preservation_regulariser" },
+                { type: ref, value: gamma_cp },
+              ],
+          },
         ]
 
 cross_entropy:
@@ -74,8 +74,10 @@ cross_entropy:
     weight:
       type: tensor
       value:
-        - {type: value, value: 0.25}
-        - {type: value, value: 1.0}
+        # - {type: value, value: 2.63}
+        # - {type: value, value: 8.36}
+        - {type: value, value: 1.62}
+        - {type: value, value: 2.89}
 
 
 batch_entropy:
@@ -97,14 +99,14 @@ losses:
                 { type: value, value: 1 },
               ],
           }
-        # - {
-        #     type: list,
-        #     value:
-        #       [
-        #         { type: ref, value: "batch_entropy" },
-        #         { type: ref, value: gamma_batch_entropy },
-        #       ],
-        #   }
+        - {
+            type: list,
+            value:
+              [
+                { type: ref, value: "batch_entropy" },
+                { type: ref, value: gamma_batch_entropy },
+              ],
+          }
 
 trainer:
   type: class

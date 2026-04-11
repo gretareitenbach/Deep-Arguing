@@ -226,7 +226,7 @@ def parse_entry(
             raise ValueError(f"Function {func_name} not found.")
 
     if entry_type == "tune":
-        return parse_tune_values(entry, config, ref_stack, trial)
+        return parse_tune_values(entry, config, ref_stack, trial, device)
 
     raise ValueError(
         f"Input is not formatted correctly, parsing failed.\nType: {entry_type}\nEntry: {entry}."
@@ -238,6 +238,7 @@ def parse_tune_values(
     config: Dict[str, Any],
     ref_stack: list[Any],
     trial: Trial | None,
+    device: str,
 ) -> Any:
     if trial is None:
         raise ValueError(
