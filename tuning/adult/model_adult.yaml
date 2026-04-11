@@ -170,8 +170,8 @@ feature_weights:
       value:
         [
           { type: ref, value: first_layer },
-          # { type: ref, value: second_layer },
-          # { type: ref, value: third_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
         ]
     output_size:
       type: value
@@ -189,8 +189,8 @@ feature_weights_1:
       value:
         [
           { type: ref, value: first_layer },
-          # { type: ref, value: second_layer },
-          # { type: ref, value: third_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
         ]
     output_size:
       type: value
