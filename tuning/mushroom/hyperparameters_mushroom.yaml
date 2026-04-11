@@ -1,0 +1,55 @@
+epochs:
+  type: value
+  value: 128
+
+lr:
+  type: value
+  value: 0.0001
+
+gamma_dag:
+  type: value
+  value: 0.0001
+
+max_iters:
+  type: value
+  value: 5
+
+temperature:
+  type: value
+  value: 10
+
+dag_alpha:
+  type: value
+  value: 0.001
+
+first_layer:
+  type: value
+  value: 64
+
+second_layer:
+  type: value
+  value: 0
+
+third_layer:
+  type: value
+  value: 0
+
+cluster_size:
+  type: value
+  value: 10 
+
+batch_size:
+  type: value
+  value: 64
+
+gradient_max_norm:
+  type: value
+  value: 0.5
+
+t_norm_str:
+  type: value
+  value: ProductTNorm
+
+weight_decay:
+  type: value
+  value: 0.0001
