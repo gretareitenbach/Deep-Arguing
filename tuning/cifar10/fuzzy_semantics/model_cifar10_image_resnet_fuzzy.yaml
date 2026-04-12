@@ -1,3 +1,4 @@
+# =================== REGULARISERS ===================
 dag_regulariser:
   type: class
   class_name: DAGRegulariser
@@ -5,12 +6,15 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
+
 class_balance_regulariser:
   type: class
   class_name: ClassBalanceRegulariser
+
 sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
+
 community_preservation_regulariser:
   type: class
   class_name: CommunityPreservationRegulariser
@@ -18,6 +22,7 @@ community_preservation_regulariser:
     method:
       type: value
       value: fro
+
 regularisers:
   type: class
   class_name: CriterionList
@@ -25,36 +30,38 @@ regularisers:
     criteria:
       type: list
       value:
-      - type: list
-        value:
-        - type: ref
-          value: attacks_defaults_regulariser
-        - type: value
-          value: 1.0
-      - type: list
-        value:
-        - type: ref
-          value: dag_regulariser
-        - type: ref
-          value: gamma_dag
-      - type: list
-        value:
-        - type: ref
-          value: class_balance_regulariser
-        - type: ref
-          value: gamma_cbr
-      - type: list
-        value:
-        - type: ref
-          value: sparsity_regulariser
-        - type: ref
-          value: gamma_sparsity
-      - type: list
-        value:
-        - type: ref
-          value: community_preservation_regulariser
-        - type: ref
-          value: gamma_cp
+        - type: list
+          value:
+            - type: ref
+              value: attacks_defaults_regulariser
+            - type: value
+              value: 1.0
+        - type: list
+          value:
+            - type: ref
+              value: dag_regulariser
+            - type: ref
+              value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: class_balance_regulariser
+            - type: ref
+              value: gamma_cbr
+        - type: list
+          value:
+            - type: ref
+              value: sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: community_preservation_regulariser
+            - type: ref
+              value: gamma_cp
+
+# ====================== LOSSES ======================
 cross_entropy:
   type: class
   class_name: TorchLoss
@@ -65,9 +72,11 @@ cross_entropy:
     label_smoothing:
       type: ref
       value: label_smoothing
+
 batch_entropy:
   type: class
   class_name: BatchEntropyRegularisation
+
 losses:
   type: class
   class_name: CriterionList
@@ -75,18 +84,20 @@ losses:
     criteria:
       type: list
       value:
-      - type: list
-        value:
-        - type: ref
-          value: cross_entropy
-        - type: value
-          value: 1
-      - type: list
-        value:
-        - type: ref
-          value: batch_entropy
-        - type: ref
-          value: gamma_batch_entropy
+        - type: list
+          value:
+            - type: ref
+              value: cross_entropy
+            - type: value
+              value: 1
+        - type: list
+          value:
+            - type: ref
+              value: batch_entropy
+            - type: ref
+              value: gamma_batch_entropy
+
+# ================ TRAINING SETTINGS =================
 trainer:
   type: class
   class_name: SimpleTrainer
@@ -132,9 +143,12 @@ build_casebase:
     nearest_sample:
       type: value
       value: true
+
 build_new_cases:
   type: function
   value: use_train
+
+# ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
   class_name: ResNetCIFAR
@@ -145,6 +159,7 @@ feature_weights:
     freeze_weights:
       type: value
       value: true
+
 feature_weights_1:
   type: class
   class_name: MLPExtractor
@@ -158,15 +173,16 @@ feature_weights_1:
     hidden_sizes:
       type: list
       value:
-      - type: ref
-        value: first_layer
-      - type: ref
-        value: second_layer
-      - type: ref
-        value: third_layer
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 64
+
 feature_weights_2:
   type: class
   class_name: MLPExtractor
@@ -180,15 +196,17 @@ feature_weights_2:
     hidden_sizes:
       type: list
       value:
-      - type: ref
-        value: first_layer
-      - type: ref
-        value: second_layer
-      - type: ref
-        value: third_layer
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 1
+
+# ====================== MODEL =======================
 semantics:
   type: class
   class_name: FuzzyGroundedSemantics
@@ -199,6 +217,7 @@ semantics:
     t_norm:
       type: class
       class_name: GodelTNorm
+
 partial_order:
   type: class
   class_name: LearnedPartialOrder
@@ -206,10 +225,10 @@ partial_order:
     feature_extractors:
       type: list
       value:
-      - type: ref
-        value: feature_weights
-      - type: ref
-        value: feature_weights_1
+        - type: ref
+          value: feature_weights
+        - type: ref
+          value: feature_weights_1
     comparison_func:
       type: class
       class_name: SoftCoordinateDominance
@@ -220,6 +239,7 @@ partial_order:
         noise_value:
           type: ref
           value: noise_value
+
 irrelevance:
   type: class
   class_name: RegularIrrelevance
@@ -227,6 +247,7 @@ irrelevance:
     compute_partial_order:
       type: ref
       value: partial_order
+
 base_score:
   type: class
   class_name: LearnedBaseScore
@@ -234,13 +255,14 @@ base_score:
     feature_extractors:
       type: list
       value:
-      - type: ref
-        value: feature_weights
-      - type: ref
-        value: feature_weights_2
+        - type: ref
+          value: feature_weights
+        - type: ref
+          value: feature_weights_2
     activation:
       type: function
       value: sigmoid
+
 model:
   type: class
   class_name: GradualAACBR
@@ -281,6 +303,7 @@ model:
     rand_weight:
       type: ref
       value: rand_weight
+
 attacks_defaults_regulariser:
   type: class
   class_name: AttackDefaultsRegulariser

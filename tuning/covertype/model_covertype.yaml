@@ -1,3 +1,4 @@
+# =================== REGULARISERS ===================
 dag_regulariser:
   type: class
   class_name: DAGRegulariser
@@ -8,7 +9,7 @@ dag_regulariser:
 
 class_balance_regulariser:
   type: class
-  class_name: "ClassBalanceRegulariser"
+  class_name: ClassBalanceRegulariser
 
 sparsity_regulariser:
   type: class
@@ -20,7 +21,7 @@ community_preservation_regulariser:
   params:
     method:
       type: value
-      value: "fro"
+      value: fro
 
 regularisers:
   type: class
@@ -29,59 +30,47 @@ regularisers:
     criteria:
       type: list
       value:
-        [
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "attacks_defaults_regulariser" },
-                { type: value, value: 1.0 },
-              ],
-          },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "dag_regulariser" },
-                { type: ref, value: gamma_dag },
-              ],
-          },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "class_balance_regulariser" },
-                { type: ref, value: gamma_cbr },
-              ],
-          },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "sparsity_regulariser" },
-                { type: ref, value: gamma_sparsity },
-              ],
-          },
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "community_preservation_regulariser" },
-                { type: ref, value: gamma_cp },
-              ],
-          },
-        ]
+        - type: list
+          value:
+            - type: ref
+              value: attacks_defaults_regulariser
+            - type: value
+              value: 1.0
+        - type: list
+          value:
+            - type: ref
+              value: dag_regulariser
+            - type: ref
+              value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: class_balance_regulariser
+            - type: ref
+              value: gamma_cbr
+        - type: list
+          value:
+            - type: ref
+              value: sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: community_preservation_regulariser
+            - type: ref
+              value: gamma_cp
 
 # focal_loss:
 #   type: class
-#   class_name: "FocalLoss"
+#   class_name: FocalLoss
 #   params:
 #     label_smoothing:
 #       type: ref
-#       value: "label_smoothing"
+#       value: label_smoothing
 #     alpha:
 #       type: tensor
-#       value: 
+#       value:
 #          # - {type: value, value: 0.39}
 #          # - {type: value, value: 0.29}
 #          # - {type: value, value: 2.32}
@@ -100,18 +89,18 @@ regularisers:
 #     gamma:
 #       type: value
 #       value: 2
-      
 
+# ====================== LOSSES ======================
 cross_entropy:
   type: class
-  class_name: "TorchLoss"
+  class_name: TorchLoss
   params:
     class_name:
       type: value
-      value: "CrossEntropyLoss"
+      value: CrossEntropyLoss
     label_smoothing:
       type: ref
-      value: "label_smoothing"
+      value: label_smoothing
     weight:
       type: tensor
       value:
@@ -123,17 +112,17 @@ cross_entropy:
         # - {type: value, value: 4.78}
         # - {type: value, value: 4.05}
         # [0.62, 0.54, 1.52, 5.49, 2.95, 2.18, 2.01]
-        - {type: value, value: 0.62}
-        - {type: value, value: 0.54}
-        - {type: value, value: 1.52}
-        - {type: value, value: 5.49}
-        - {type: value, value: 2.95}
-        - {type: value, value: 2.18}
-        - {type: value, value: 2.01}
+        - { type: value, value: 0.62 }
+        - { type: value, value: 0.54 }
+        - { type: value, value: 1.52 }
+        - { type: value, value: 5.49 }
+        - { type: value, value: 2.95 }
+        - { type: value, value: 2.18 }
+        - { type: value, value: 2.01 }
 
 batch_entropy:
   type: class
-  class_name: "BatchEntropyRegularisation"
+  class_name: BatchEntropyRegularisation
 
 losses:
   type: class
@@ -142,23 +131,20 @@ losses:
     criteria:
       type: list
       value:
-        - {
-            type: list,
-            value:
-              [
-                { type: ref, value: "cross_entropy" },
-                { type: value, value: 1 },
-              ],
-          }
-        - {
-            type: list,
-            value:
-              [
-                { type: ref, value: "batch_entropy" },
-                { type: ref, value: gamma_batch_entropy },
-              ],
-          }
+        - type: list
+          value:
+            - type: ref
+              value: cross_entropy
+            - type: value
+              value: 1
+        - type: list
+          value:
+            - type: ref
+              value: batch_entropy
+            - type: ref
+              value: gamma_batch_entropy
 
+# ================ TRAINING SETTINGS =================
 trainer:
   type: class
   class_name: SimpleTrainer
@@ -172,46 +158,46 @@ trainer:
     optimizer:
       type: class
       sub_type: optim
-      class_name: "AdamW"
-      model: "model"
+      class_name: AdamW
+      model: model
       params:
         lr:
           type: ref
           value: lr
         weight_decay:
           type: ref
-          value: "weight_decay"
+          value: weight_decay
     regulariser:
       type: ref
-      value: "regularisers"
+      value: regularisers
     batch_size:
       type: ref
-      value: "batch_size"
+      value: batch_size
     gradient_max_norm:
       type: ref
-      value: "gradient_max_norm"
+      value: gradient_max_norm
     # scheduler:
     #   type: class
-    #   class_name: "LinearLR"
+    #   class_name: LinearLR
     #   sub_type: scheduler
-    #   optimizer: "optimizer"
+    #   optimizer: optimizer
     #   params:
     #     start_factor:
     #       type: value
-    #       value: 0.0005 
+    #       value: 0.0005
     #     total_iters:
     #       type: ref
     #       value: epochs
     # scheduler_step_per:
     #   type: value
-    #   value: "epoch"
+    #   value: epoch
     validation_log_strategy:
       type: class
       class_name: StandardValidationLog
 
 build_casebase:
   type: class
-  class_name: "kMeansCluster"
+  class_name: kMeansCluster
   params:
     cluster_size:
       type: ref
@@ -222,50 +208,53 @@ build_casebase:
 
 build_new_cases:
   type: function
-  value: "use_train"
+  value: use_train
 
-
+# ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: data_ref
-      value: "no_features"
+      value: no_features
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 128
 
 feature_weights_1:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: data_ref
-      value: "no_features"
+      value: no_features
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 1
 
+# ====================== MODEL =======================
 semantics:
   type: class
-  class_name: "ReluSemantics"
+  class_name: ReluSemantics
   params:
     max_iters:
       type: ref
@@ -273,14 +262,16 @@ semantics:
 
 partial_order:
   type: class
-  class_name: "LearnedPartialOrder"
+  class_name: LearnedPartialOrder
   params:
     feature_extractors:
       type: list
-      value: [{ type: ref, value: "feature_weights" }]
+      value:
+        - type: ref
+          value: feature_weights
     comparison_func:
       type: class
-      class_name: "SoftCoordinateDominance"
+      class_name: SoftCoordinateDominance
       params:
         temperature:
           type: ref
@@ -291,50 +282,49 @@ partial_order:
 
 irrelevance:
   type: class
-  class_name: "RegularIrrelevance"
+  class_name: RegularIrrelevance
   params:
     compute_partial_order:
       type: ref
-      value: "partial_order"
+      value: partial_order
 
 base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: LearnedBaseScore
   params:
     feature_extractors:
       type: list
       value:
-        [
-          { type: ref, value: "feature_weights_1" },
-        ]
+        - type: ref
+          value: feature_weights_1
     activation:
       type: function
-      value: "sigmoid"
+      value: sigmoid
 
 # base_score:
 #   type: class
-#   class_name: "ConstantBaseScore"
+#   class_name: ConstantBaseScore
 #   params:
-#     constant: 
+#     constant:
 #       type: value
 #       value: 1.0
 
 model:
   type: class
-  class_name: "GradualAACBR"
+  class_name: GradualAACBR
   params:
     gradual_semantics:
       type: ref
-      value: "semantics"
+      value: semantics
     compute_base_score:
       type: ref
-      value: "base_score"
+      value: base_score
     irrelevance_edge_weights:
       type: ref
-      value: "irrelevance"
+      value: irrelevance
     casebase_edge_weights:
       type: ref
-      value: "partial_order"
+      value: partial_order
     use_symmetric_attacks:
       type: value
       value: false
@@ -349,7 +339,7 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "identity"
+      value: identity
     rescale_edges:
       type: ref
       value: rescale_edges

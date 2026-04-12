@@ -5,26 +5,26 @@ curriculum_strategy:
     class_order:
       type: list
       value:
-      - type: value
-        value: 0
-      - type: value
-        value: 1
-      - type: value
-        value: 2
-      - type: value
-        value: 3
-      - type: value
-        value: 4
-      - type: value
-        value: 5
-      - type: value
-        value: 6
-      - type: value
-        value: 7
-      - type: value
-        value: 8
-      - type: value
-        value: 9
+        - type: value
+          value: 0
+        - type: value
+          value: 1
+        - type: value
+          value: 2
+        - type: value
+          value: 3
+        - type: value
+          value: 4
+        - type: value
+          value: 5
+        - type: value
+          value: 6
+        - type: value
+          value: 7
+        - type: value
+          value: 8
+        - type: value
+          value: 9
     max_epochs_per_class:
       type: ref
       value: max_epochs_per_class
@@ -37,6 +37,7 @@ curriculum_strategy:
     initial_classes:
       type: ref
       value: initial_classes
+
 data_selector:
   type: class
   class_name: WeightedDataSelector
@@ -47,6 +48,8 @@ data_selector:
     decay_epochs:
       type: ref
       value: decay_epochs
+
+# =================== REGULARISERS ===================
 dag_regulariser:
   type: class
   class_name: DAGRegulariser
@@ -54,6 +57,7 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
+
 regularisers:
   type: class
   class_name: CriterionList
@@ -61,18 +65,20 @@ regularisers:
     criteria:
       type: list
       value:
-      - type: list
-        value:
-        - type: ref
-          value: attacks_defaults_regulariser
-        - type: value
-          value: 1.0
-      - type: list
-        value:
-        - type: ref
-          value: dag_regulariser
-        - type: ref
-          value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: attacks_defaults_regulariser
+            - type: value
+              value: 1.0
+        - type: list
+          value:
+            - type: ref
+              value: dag_regulariser
+            - type: ref
+              value: gamma_dag
+
+# ================ TRAINING SETTINGS =================
 trainer:
   type: class
   class_name: CurriculumTrainer
@@ -138,6 +144,7 @@ trainer:
     validation_log_strategy:
       type: class
       class_name: CurriculumValidationLog
+
 build_casebase:
   type: class
   class_name: kMeansCluster
@@ -145,9 +152,12 @@ build_casebase:
     cluster_size:
       type: ref
       value: cluster_size
+
 build_new_cases:
   type: function
   value: use_train
+
+# ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
   class_name: ResNetCIFAR
@@ -158,6 +168,7 @@ feature_weights:
     freeze_weights:
       type: value
       value: true
+
 feature_weights_1:
   type: class
   class_name: MLPExtractor
@@ -171,13 +182,15 @@ feature_weights_1:
     hidden_sizes:
       type: list
       value:
-      - type: value
-        value: 32
-      - type: value
-        value: 16
+        - type: value
+          value: 32
+        - type: value
+          value: 16
     output_size:
       type: ref
       value: dimensions
+
+# ====================== MODEL =======================
 semantics:
   type: class
   class_name: ReluSemantics
@@ -185,6 +198,7 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
+
 partial_order:
   type: class
   class_name: LearnedPartialOrder
@@ -192,10 +206,10 @@ partial_order:
     feature_extractors:
       type: list
       value:
-      - type: ref
-        value: feature_weights
-      - type: ref
-        value: feature_weights_1
+        - type: ref
+          value: feature_weights
+        - type: ref
+          value: feature_weights_1
     comparison_func:
       type: class
       class_name: Subtractor
@@ -206,6 +220,7 @@ partial_order:
         activation:
           type: function
           value: sigmoid
+
 irrelevance:
   type: class
   class_name: RegularIrrelevance
@@ -213,6 +228,7 @@ irrelevance:
     compute_partial_order:
       type: ref
       value: partial_order
+
 base_score:
   type: class
   class_name: ConstantBaseScore
@@ -223,6 +239,7 @@ base_score:
     dim:
       type: ref
       value: dimensions
+
 model:
   type: class
   class_name: GradualAACBR
@@ -257,6 +274,7 @@ model:
     dimensions:
       type: ref
       value: dimensions
+
 attacks_defaults_regulariser:
   type: class
   class_name: AttackDefaultsRegulariser
