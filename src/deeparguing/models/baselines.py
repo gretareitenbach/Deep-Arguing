@@ -80,43 +80,48 @@ class RandomForestBaseline(FitPredictBaseline):
 
 
 """
-TODO: Neural Network Baselines
+Neural Network Baselines
 """
 
 
-# class NeuralNetworkBaseline(Model):
-#     def __init__(
-#         self,
-#         input_size: int,
-#         hidden_sizes: list[int],
-#         output_size: int,
-#         output_activation: torch.nn.Module | None = None,
-#         bias: bool = True,
-#         dropout: None | float = None,
-#         batch_norm: bool = False,
-#     ):
-#
-#         self.model = MLPExtractor(
-#             input_size,
-#             hidden_sizes,
-#             output_size,
-#             output_activation,
-#             bias,
-#             dropout,
-#             batch_norm,
-#         )
-#
-#     @override
-#     def forward(self, input: ArrayLike):
-#         return self.model(input)
-#
-#     @override
-#     def fit(
-#         self,
-#         X_train: ArrayLike,
-#         y_train: ArrayLike,
-#         X_default: Optional[ArrayLike] = None,
-#         y_default: Optional[ArrayLike] = None,
-#         batch_size: Optional[int] = None,
-#     ):
-#         pass
+class NeuralNetworkBaseline(Model, torch.nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: list[int],
+        output_size: int,
+        output_activation: torch.nn.Module | None = None,
+        bias: bool = True,
+        dropout: None | float = None,
+        batch_norm: bool = False,
+    ):
+        super(NeuralNetworkBaseline, self).__init__()
+
+        self.model = MLPExtractor(
+            input_size,
+            hidden_sizes,
+            output_size,
+            output_activation,
+            bias,
+            dropout,
+            batch_norm,
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters(), torch.tensor(0)).device
+
+    @override
+    def forward(self, input: ArrayLike):
+        return self.model(input)
+
+    @override
+    def fit(
+        self,
+        X_train: ArrayLike,
+        y_train: ArrayLike,
+        X_default: Optional[ArrayLike] = None,
+        y_default: Optional[ArrayLike] = None,
+        batch_size: Optional[int] = None,
+    ):
+        pass

@@ -9,13 +9,12 @@ from deeparguing.criterion.criterion import Criterion
 
 class CriterionList(Criterion):
 
-    def __init__(self, criteria: list[Tuple[Criterion, float]]):
+    def __init__(self, criteria: list[Tuple[Criterion, float]] = []):
         super().__init__()
         self.criteria = criteria
 
     @override
     def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
-        assert model.A is not None
 
         # Determine the correct device
         device = predictions.device if predictions is not None else (model.device if model is not None else torch.device("cpu"))
