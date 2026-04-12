@@ -3,10 +3,10 @@ from typing import override
 import torch.nn.functional as F
 from torch import Tensor
 
-from deeparguing.losses.loss import Loss
+from deeparguing.criterion.criterion import Criterion
 
 
-class DiceLoss(Loss):
+class DiceLoss(Criterion):
     """
     Soft Dice loss (also known as F1 loss) for multi-class classification.
 
@@ -34,7 +34,7 @@ class DiceLoss(Loss):
         self.reduction = reduction
 
     @override
-    def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
+    def forward(self, model, predictions: Tensor, targets: Tensor) -> Tensor:
         probs = F.softmax(predictions, dim=1)
 
         if targets.dim() == 1:

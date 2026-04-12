@@ -4,13 +4,13 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from deeparguing.losses.loss import Loss
+from deeparguing.criterion.criterion import Criterion
 
 
-class BatchEntropyRegularisation(Loss):
+class BatchEntropyRegularisation(Criterion):
 
     @override
-    def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
+    def forward(self, model, predictions: Tensor, targets: Tensor) -> Tensor:
 
         probs = F.softmax(predictions, dim=1)
 

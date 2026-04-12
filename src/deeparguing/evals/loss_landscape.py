@@ -11,7 +11,7 @@ from torch.types import Number
 from tqdm import tqdm
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
 
 
 def generate_random_directions(param_vector: Tensor) -> Tuple[Tensor, Tensor]:
@@ -32,7 +32,7 @@ def compute_loss(
     y_casebase: Tensor,
     X_defaults: Tensor,
     y_defaults: Tensor,
-    regulariser: RegulariserType | None,
+    regulariser: CriterionType | None,
 ) -> Number:
     """Compute loss on the full training data."""
     model.eval()
@@ -40,7 +40,7 @@ def compute_loss(
         model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
         outputs = model(X_train)
         y_target = torch.argmax(y_train, dim=1)
-        loss = loss_fn(outputs, y_target) + (regulariser(model) if regulariser else 0)
+        loss = loss_fn(outputs, y_target) + (regulariser(model, outputs, y_target) if regulariser else 0)
     return loss.item()
 
 
@@ -56,7 +56,7 @@ def compute_loss_grid(
     y_defaults: Tensor,
     d1: Tensor,
     d2: Tensor,
-    regulariser: RegulariserType | None = None,
+    regulariser: CriterionType | None = None,
     range_alpha: float = 20.0,
     range_beta: float = 20.0,
     steps: int = 30,
@@ -103,7 +103,7 @@ def visualize_loss_landscape_3d(
     y_casebase: Tensor,
     X_defaults: Tensor,
     y_defaults: Tensor,
-    regulariser: RegulariserType | None = None,
+    regulariser: CriterionType | None = None,
     range_alpha: float = 20.0,
     range_beta: float = 20.0,
     steps: int = 30,
@@ -164,7 +164,7 @@ def visualize_overlayed_loss_landscapes(
     X_defaults: Tensor,
     y_defaults: Tensor,
     theta_pre: Tensor,
-    regulariser: RegulariserType | None = None,
+    regulariser: CriterionType | None = None,
     range_alpha: float = 20.0,
     range_beta: float = 20.0,
     steps: int = 30,

@@ -3,11 +3,11 @@ from typing import override
 import torch
 from torch import Tensor
 
+from deeparguing.criterion.criterion import Criterion
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
 
 
-class AttackDefaultsRegulariser(Regulariser):
+class AttackDefaultsRegulariser(Criterion):
 
     def __init__(
         self,
@@ -15,7 +15,7 @@ class AttackDefaultsRegulariser(Regulariser):
         super().__init__()
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
 
         mse = torch.nn.MSELoss()
         out = model.casebase_edge_weights(model.X_cases, model.X_default)

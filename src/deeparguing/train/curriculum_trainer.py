@@ -11,8 +11,8 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import CriterionType
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import ValidationLogStrategy
@@ -147,9 +147,9 @@ class CurriculumTrainer(NeuralTrainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
+        criterion: CriterionType,
         epochs: int,
-        regulariser: RegulariserType = lambda _: 0,
+        regulariser: CriterionType = lambda _m, _p, _t: 0,
         disable_tqdm: bool = False,
         batch_size: int | None = None,
         scheduler: LRScheduler | None = None,
@@ -314,8 +314,8 @@ class CurriculumTrainer(NeuralTrainer):
         y_default: Tensor,
         sample_weights: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         batch_size: int | None,
         scheduler: LRScheduler | None,
         scheduler_step_per: str | None,
@@ -381,8 +381,8 @@ class CurriculumTrainer(NeuralTrainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         gradient_max_norm: float | None,
         active_classes: list[int] = [],
     ) -> Tensor:
@@ -397,8 +397,8 @@ class CurriculumTrainer(NeuralTrainer):
 
         y_target = self._remap_targets(y_new_cases, active_classes)
 
-        loss: Tensor = criterion(predictions, y_target)
-        loss += regulariser(model)
+        loss: Tensor = criterion(model, predictions, y_target)
+        loss += regulariser(model, predictions, y_target)
         loss.backward()
 
         if gradient_max_norm is not None:

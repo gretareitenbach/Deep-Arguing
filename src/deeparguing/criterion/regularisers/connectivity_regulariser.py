@@ -4,11 +4,11 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
-from deeparguing.regularisers.utils import FilterFunc
+from deeparguing.criterion.criterion import Criterion
+from deeparguing.criterion.regularisers.utils import FilterFunc
 
 
-class ConnectivityRegulariser(Regulariser):
+class ConnectivityRegulariser(Criterion):
 
     def __init__(self, filter_func: FilterFunc = lambda A: A, epsilon: float = 1e-8):
         super().__init__()
@@ -16,7 +16,7 @@ class ConnectivityRegulariser(Regulariser):
         self.epsilon = epsilon
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
         assert model.A is not None
         A = self.filter_func(model.A)
         A = torch.abs(A)

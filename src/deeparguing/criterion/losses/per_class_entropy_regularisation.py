@@ -4,10 +4,10 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from deeparguing.losses.loss import Loss
+from deeparguing.criterion.criterion import Criterion
 
 
-class PerClassEntropyRegularisation(Loss):
+class PerClassEntropyRegularisation(Criterion):
     """
     Maximize entropy of predictions within each target class.
 
@@ -29,7 +29,7 @@ class PerClassEntropyRegularisation(Loss):
         self.epsilon = epsilon
 
     @override
-    def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
+    def forward(self, model, predictions: Tensor, targets: Tensor) -> Tensor:
         probs = F.softmax(predictions, dim=1)
 
         if targets.dim() > 1:

@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import CriterionType
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import ValidationLogStrategy
 
@@ -20,9 +20,9 @@ class SimpleTrainer(NeuralTrainer):
         self,
         epochs: int,
         optimizer: Optimizer,
-        criterion: Loss,
+        criterion: CriterionType,
         validation_log_strategy: ValidationLogStrategy,
-        regulariser: RegulariserType = lambda _: 0,
+        regulariser: CriterionType = lambda _m, _p, _t: 0,
         batch_size: int | None = None,
         scheduler: LRScheduler | None = None,
         scheduler_step_per: str | None = None,
@@ -55,8 +55,8 @@ class SimpleTrainer(NeuralTrainer):
         predictions = model(X_new_cases).squeeze()
         y_target = torch.argmax(y_new_cases, dim=1)
 
-        loss: Tensor = self.criterion(predictions, y_target)
-        loss += self.regulariser(model)
+        loss: Tensor = self.criterion(model, predictions, y_target)
+        loss += self.regulariser(model, predictions, y_target)
 
         loss.backward()
 

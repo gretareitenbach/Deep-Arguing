@@ -4,11 +4,11 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
-from deeparguing.regularisers.utils import FilterFunc
+from deeparguing.criterion.criterion import Criterion
+from deeparguing.criterion.regularisers.utils import FilterFunc
 
 
-class NOTEARSRegulariser(Regulariser):
+class NOTEARSRegulariser(Criterion):
     """
     NOTEARS regulariser using augmented Lagrangian method.
 
@@ -61,7 +61,7 @@ class NOTEARSRegulariser(Regulariser):
         return h.sum()
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
         """Compute lambda * h + (rho/2) * h^2"""
         h = self.compute_h(model)
         return self.lambda_ * h + (self.rho / 2) * h**2

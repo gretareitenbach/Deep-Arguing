@@ -56,9 +56,9 @@ dag_regulariser:
       value: dag_alpha
 regularisers:
   type: class
-  class_name: RegulariserList
+  class_name: CriterionList
   params:
-    regularisers:
+    criteria:
       type: list
       value:
       - type: list
@@ -88,8 +88,11 @@ trainer:
       value: reset_optimizer
     criterion:
       type: class
-      class_name: CrossEntropyLoss
+      class_name: TorchLoss
       params:
+        class_name:
+          type: value
+          value: CrossEntropyLoss
         label_smoothing:
           type: ref
           value: label_smoothing

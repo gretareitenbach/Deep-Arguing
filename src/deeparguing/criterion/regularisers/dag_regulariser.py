@@ -4,11 +4,11 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
-from deeparguing.regularisers.utils import FilterFunc
+from deeparguing.criterion.criterion import Criterion
+from deeparguing.criterion.regularisers.utils import FilterFunc
 
 
-class DAGRegulariser(Regulariser):
+class DAGRegulariser(Criterion):
     """
     This is a modification of NOTEARS (https://proceedings.neurips.cc/paper_files/paper/2018/file/e347c51419ffb23ca3fd5050202f9c3d-Paper.pdf)
     which introduces a regulariser that forces the learned graph to be a DAG.
@@ -24,7 +24,7 @@ class DAGRegulariser(Regulariser):
         self.alpha = alpha
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
         assert model.A is not None
         A = self.filter_func(model.A)
         d = A.shape[0]

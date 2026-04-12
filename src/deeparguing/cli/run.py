@@ -26,14 +26,16 @@ from deeparguing.cli import (parse_command_line, parse_model_config, plots,
 from deeparguing.cli.loggers import DummyLogger, ExperimentLogger, WandbLogger
 from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
+from deeparguing.criterion import *
 from deeparguing.evals import (evaluate_model, print_results,
                                visualize_overlayed_loss_landscapes)
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
-from deeparguing.losses import *
+from deeparguing.criterion.losses import *
+from deeparguing.criterion import *
 from deeparguing.models import *
-from deeparguing.regularisers import *
+from deeparguing.criterion.regularisers import *
 from deeparguing.semantics import *
 from deeparguing.t_norm import *
 from deeparguing.train import Trainer

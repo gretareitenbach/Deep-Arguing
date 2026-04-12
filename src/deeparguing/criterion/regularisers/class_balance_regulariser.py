@@ -4,11 +4,11 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
-from deeparguing.regularisers.utils import FilterFunc
+from deeparguing.criterion.criterion import Criterion
+from deeparguing.criterion.regularisers.utils import FilterFunc
 
 
-class ClassBalanceRegulariser(Regulariser):
+class ClassBalanceRegulariser(Criterion):
     """
     Penalize imbalance in edge weights across class-specific subgraphs.
 
@@ -35,7 +35,7 @@ class ClassBalanceRegulariser(Regulariser):
         self.epsilon = epsilon
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
         assert model.A is not None
         assert model.y_train is not None
         y_train = model.y_train

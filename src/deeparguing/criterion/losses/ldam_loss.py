@@ -4,10 +4,10 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from deeparguing.losses.loss import Loss
+from deeparguing.criterion.criterion import Criterion
 
 
-class LDAMLoss(Loss):
+class LDAMLoss(Criterion):
     """
     Label-Distribution-Aware Margin (LDAM) Loss.
 
@@ -48,7 +48,7 @@ class LDAMLoss(Loss):
         self.margins = margins
 
     @override
-    def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
+    def forward(self, model, predictions: Tensor, targets: Tensor) -> Tensor:
         device = predictions.device
         margins = self.margins.to(device)
 

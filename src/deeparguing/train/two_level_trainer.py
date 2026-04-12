@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import Regulariser, RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import Criterion, CriterionType
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import ValidationLogStrategy
 
@@ -29,7 +29,7 @@ class TwoLevelTrainer(NeuralTrainer):
             if regulariser.converged:
                 break  # Early stopping
 
-    Use with NOTEARSRegulariser for DAG learning.
+    Use with NOTEARSCriterion for DAG learning.
     """
 
     def __init__(
@@ -48,8 +48,8 @@ class TwoLevelTrainer(NeuralTrainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         gradient_max_norm: float | None,
     ) -> Tensor:
         optimizer.zero_grad()
@@ -59,8 +59,8 @@ class TwoLevelTrainer(NeuralTrainer):
         predictions = model(X_new_cases).squeeze()
         y_target = torch.argmax(y_new_cases, dim=1)
 
-        loss: Tensor = criterion(predictions, y_target)
-        loss += regulariser(model)
+        loss: Tensor = criterion(model, predictions, y_target)
+        loss += regulariser(model, predictions, y_target)
 
         loss.backward()
 
@@ -84,10 +84,10 @@ class TwoLevelTrainer(NeuralTrainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
+        criterion: CriterionType,
         epochs: int,
         outer_iterations: int,
-        regulariser: RegulariserType = lambda _: 0,
+        regulariser: CriterionType = lambda _m, _p, _t: 0,
         disable_tqdm: bool = False,
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
@@ -123,8 +123,8 @@ class TwoLevelTrainer(NeuralTrainer):
             Number of inner epochs per outer iteration.
         outer_iterations : int
             Number of outer iterations (lambda/rho updates).
-        regulariser : RegulariserType
-            Regulariser (use NOTEARSRegulariser for DAG learning).
+        regulariser : CriterionType
+            Criterion (use NOTEARSCriterion for DAG learning).
         disable_tqdm : bool
             Disable progress bars.
         batch_size : int | None
@@ -267,25 +267,25 @@ class TwoLevelTrainer(NeuralTrainer):
 
     def _step_regulariser(
         self,
-        regulariser: RegulariserType,
+        regulariser: CriterionType,
         model: GradualAACBR,
     ) -> bool:
         """Step the regulariser, return True if converged."""
-        if isinstance(regulariser, Regulariser):
+        if isinstance(regulariser, Criterion):
             return regulariser.step(model)
         return True  # Plain callables always "converged"
 
     def _reset_regulariser(
         self,
-        regulariser: RegulariserType,
+        regulariser: CriterionType,
     ) -> None:
         """Reset the regulariser state."""
-        if isinstance(regulariser, Regulariser):
+        if isinstance(regulariser, Criterion):
             regulariser.reset()
 
     def _log_outer_iteration(
         self,
-        regulariser: RegulariserType,
+        regulariser: CriterionType,
         outer_iter: int,
         loss: Tensor,
         model: GradualAACBR,
@@ -294,7 +294,7 @@ class TwoLevelTrainer(NeuralTrainer):
         y_train: Tensor,
         X_val: Tensor | None,
         y_val: Tensor | None,
-        criterion: Loss,
+        criterion: CriterionType,
     ) -> tuple[float, float]:
         """Log metrics after each outer iteration. Returns validation accuracy or 0.0"""
         _, train_acc, train_f1 = self.validation_log_strategy.log(
@@ -309,7 +309,7 @@ class TwoLevelTrainer(NeuralTrainer):
         }
 
         # Log NOTEARS-specific metrics if available
-        if isinstance(regulariser, Regulariser):
+        if isinstance(regulariser, Criterion):
             if hasattr(regulariser, "lambda_"):
                 metrics["notears/lambda"] = float(regulariser.lambda_)
             if hasattr(regulariser, "rho"):

@@ -20,9 +20,9 @@ community_preservation_regulariser:
       value: fro
 regularisers:
   type: class
-  class_name: RegulariserList
+  class_name: CriterionList
   params:
-    regularisers:
+    criteria:
       type: list
       value:
       - type: list
@@ -57,8 +57,11 @@ regularisers:
           value: gamma_cp
 cross_entropy:
   type: class
-  class_name: CrossEntropyLoss
+  class_name: TorchLoss
   params:
+    class_name:
+      type: value
+      value: CrossEntropyLoss
     label_smoothing:
       type: ref
       value: label_smoothing
@@ -67,9 +70,9 @@ batch_entropy:
   class_name: BatchEntropyRegularisation
 losses:
   type: class
-  class_name: LossList
+  class_name: CriterionList
   params:
-    losses:
+    criteria:
       type: list
       value:
       - type: list

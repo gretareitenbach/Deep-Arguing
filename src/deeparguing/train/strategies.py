@@ -7,8 +7,8 @@ from torch.optim import Optimizer
 from sklearn.metrics import accuracy_score, f1_score
 
 from deeparguing import GradualAACBR
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import CriterionType
 from deeparguing.cli.loggers import ExperimentLogger
 from torch.utils.checkpoint import checkpoint
 
@@ -21,8 +21,8 @@ class ValidationLogStrategy(metaclass=ABCMeta):
         batch_size: int | None,
         X_val: Tensor,
         y_val: Tensor,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         **kwargs
     ) -> tuple[float, float, float]:
         pass
@@ -35,8 +35,8 @@ class StandardValidationLog(ValidationLogStrategy):
         batch_size: int | None,
         X_val: Tensor,
         y_val: Tensor,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         **kwargs
     ) -> tuple[float, float, float]:
         n_samples = X_val.shape[0]
@@ -55,7 +55,7 @@ class StandardValidationLog(ValidationLogStrategy):
 
                 predictions = model(X_batch).squeeze()
                 y_target = torch.argmax(y_batch, dim=1)
-                batch_loss = criterion(predictions, y_target) + regulariser(model)
+                batch_loss = criterion(model, predictions, y_target) + regulariser(model, predictions, y_target)
 
                 val_loss_total += batch_loss.item()
                 num_batches += 1
@@ -87,8 +87,8 @@ class CurriculumValidationLog(ValidationLogStrategy):
         batch_size: int | None,
         X_val: Tensor,
         y_val: Tensor,
-        criterion: Loss,
-        regulariser: RegulariserType,
+        criterion: CriterionType,
+        regulariser: CriterionType,
         **kwargs
     ) -> tuple[float, float, float]:
         active_classes = kwargs.get("active_classes", list(range(y_val.shape[1])))
@@ -110,7 +110,7 @@ class CurriculumValidationLog(ValidationLogStrategy):
                 if predictions.dim() > 2 or (predictions.dim() == 2 and predictions.shape[1] > 1):
                     predictions = predictions.squeeze()
                 y_target = self._remap_targets(y_batch, active_classes)
-                batch_loss = criterion(predictions, y_target) + regulariser(model)
+                batch_loss = criterion(model, predictions, y_target) + regulariser(model, predictions, y_target)
 
                 val_loss_total += batch_loss.item()
                 num_batches += 1

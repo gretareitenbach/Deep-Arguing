@@ -9,8 +9,8 @@ from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import CriterionType
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import ValidationLogStrategy
 
@@ -34,9 +34,9 @@ class ApproximateTrainer(NeuralTrainer):
         X_default: Tensor,
         y_default: Tensor,
         optimizer: Optimizer,
-        criterion: Loss,
+        criterion: CriterionType,
         epochs: int,
-        regulariser: RegulariserType = lambda _: 0,
+        regulariser: CriterionType = lambda _m, _p, _t: 0,
         disable_tqdm: bool = False,
         batch_size: None | int = None,
         scheduler: LRScheduler | None = None,
@@ -80,7 +80,7 @@ class ApproximateTrainer(NeuralTrainer):
                 predictions = checkpoint(model, batch_X_new_cases).squeeze()
 
                 y_target = torch.argmax(batch_y_new_cases, dim=1)
-                loss: Tensor = criterion(predictions, y_target) + regulariser(model)
+                loss: Tensor = criterion(model, predictions, y_target) + regulariser(model, predictions, y_target)
 
                 if total_loss is None:
                     total_loss = loss

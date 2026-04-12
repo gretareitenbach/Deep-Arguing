@@ -7,8 +7,8 @@ from torch.optim import Optimizer
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.losses.loss import Loss
-from deeparguing.regularisers import RegulariserType
+from deeparguing.criterion import CriterionType
+from deeparguing.criterion import CriterionType
 from deeparguing.train.strategies import ValidationLogStrategy
 from deeparguing.train.trainer import Trainer
 

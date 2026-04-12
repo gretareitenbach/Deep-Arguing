@@ -4,18 +4,18 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
-from deeparguing.regularisers.regulariser import Regulariser
-from deeparguing.regularisers.utils import FilterFunc
+from deeparguing.criterion.criterion import Criterion
+from deeparguing.criterion.regularisers.utils import FilterFunc
 
 
-class SparsityRegulariser(Regulariser):
+class SparsityRegulariser(Criterion):
 
     def __init__(self, filter_func: FilterFunc = lambda A: A):
         super().__init__()
         self.filter_func = filter_func
 
     @override
-    def forward(self, model: GradualAACBR) -> Tensor:
+    def forward(self, model: GradualAACBR, predictions: Tensor, targets: Tensor) -> Tensor:
         assert model.A is not None
         A = self.filter_func(model.A)
         result = torch.sum(torch.abs(A))
