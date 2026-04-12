@@ -34,6 +34,14 @@ regularisers:
             type: list,
             value:
               [
+                { type: ref, value: "attacks_defaults_regulariser" },
+                { type: value, value: 1.0 },
+              ],
+          },
+          {
+            type: list,
+            value:
+              [
                 { type: ref, value: "dag_regulariser" },
                 { type: ref, value: gamma_dag },
               ],
@@ -150,26 +158,8 @@ losses:
 
 trainer:
   type: class
-  class_name: "SimpleTrainer"
-
-build_casebase:
-  type: class
-  class_name: "kMeansCluster"
+  class_name: SimpleTrainer
   params:
-    cluster_size:
-      type: ref
-      value: cluster_size
-    nearest_sample:
-      type: value
-      value: True
-
-build_new_cases:
-  type: function
-  value: "use_train"
-
-train_settings:
-  type: dict
-  value:
     criterion:
       type: ref
       value: losses
@@ -212,6 +202,25 @@ train_settings:
     # scheduler_step_per:
     #   type: value
     #   value: "epoch"
+    validation_log_strategy:
+      type: class
+      class_name: StandardValidationLog
+
+build_casebase:
+  type: class
+  class_name: "kMeansCluster"
+  params:
+    cluster_size:
+      type: ref
+      value: cluster_size
+    nearest_sample:
+      type: value
+      value: True
+
+build_new_cases:
+  type: function
+  value: "use_train"
+
 
 feature_weights:
   type: class
@@ -347,3 +356,7 @@ model:
     rand_weight:
       type: ref
       value: rand_weight
+
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser

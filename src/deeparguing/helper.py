@@ -66,6 +66,7 @@ def load_tabular_data(
     binary_cols: List[int] = [],
     continuous_cols: List[int] = [],
     binary_maps: Optional[Dict[int, Dict]] = None,
+    sep: str = ",",
 ):
     """
     Generic tabular dataset loader with flexible preprocessing support.
@@ -75,9 +76,9 @@ def load_tabular_data(
     # ---------- load data ----------
 
     if has_header:
-        data = pd.read_csv(path, header=0)
+        data = pd.read_csv(path, header=0, sep=sep)
     else:
-        data = pd.read_csv(path, header=None)
+        data = pd.read_csv(path, header=None, sep=sep)
 
     data = data.values
 
@@ -188,11 +189,14 @@ def load_torch_images(
     X = X[:size]
     y = y[:size]
 
-    X = X.permute(0, 3, 1, 2).float() / 255.0
+    if X.ndim == 4:
+        X = X.permute(0, 3, 1, 2).float() / 255.0
+    else:
+        X = X.unsqueeze(1).float() / 255.0
+
 
     mean = X.mean(dim=(0, 2, 3), keepdim=True)
     std = X.std(dim=(0, 2, 3), keepdim=True)
-
     X = (X - mean) / std
 
     mean_out = mean.view(-1)

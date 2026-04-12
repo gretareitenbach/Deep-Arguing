@@ -1,0 +1,122 @@
+from typing import Optional, override
+
+import numpy as np
+import torch
+from numpy.typing import ArrayLike
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+
+from deeparguing.feature_extractor.mlp_extractor import MLPExtractor
+
+from .model import Model
+
+"""
+Fit-Predict Baselines
+
+"""
+
+
+class FitPredictBaseline(Model):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.device = "cpu"
+
+    @override
+    def forward(self, input: ArrayLike):
+        if isinstance(input, torch.Tensor):
+            input = input.cpu().numpy()
+
+        if hasattr(self.model, "predict_proba"):
+            preds = self.model.predict_proba(input)
+        else:
+            preds = self.model.predict(input)
+
+        return torch.tensor(preds)
+
+    @override
+    def fit(
+        self,
+        X_train: ArrayLike,
+        y_train: ArrayLike,
+        X_default: Optional[ArrayLike] = None,
+        y_default: Optional[ArrayLike] = None,
+        batch_size: Optional[int] = None,
+    ):
+        if isinstance(X_train, torch.Tensor):
+            X_train = X_train.cpu().numpy()
+        if isinstance(y_train, torch.Tensor):
+            y_train = y_train.cpu().numpy()
+            if y_train.ndim > 1 and y_train.shape[1] > 1:
+                y_train = np.argmax(y_train, axis=1)
+
+        self.model.fit(X_train, y_train)
+
+    def to(self, device):
+        self.device = device
+        return self
+
+    def train(self, mode: bool = True):
+        pass
+
+    def eval(self):
+        pass
+
+
+class LogisticRegressionBaseline(FitPredictBaseline):
+    def __init__(self, **kwargs):
+        super().__init__(model=LogisticRegression(**kwargs))
+
+
+class DecisionTreeBaseline(FitPredictBaseline):
+    def __init__(self, **kwargs):
+        super().__init__(model=DecisionTreeClassifier(**kwargs))
+
+
+class RandomForestBaseline(FitPredictBaseline):
+    def __init__(self, **kwargs):
+        super().__init__(model=RandomForestClassifier(**kwargs))
+
+
+"""
+TODO: Neural Network Baselines
+"""
+
+
+# class NeuralNetworkBaseline(Model):
+#     def __init__(
+#         self,
+#         input_size: int,
+#         hidden_sizes: list[int],
+#         output_size: int,
+#         output_activation: torch.nn.Module | None = None,
+#         bias: bool = True,
+#         dropout: None | float = None,
+#         batch_norm: bool = False,
+#     ):
+#
+#         self.model = MLPExtractor(
+#             input_size,
+#             hidden_sizes,
+#             output_size,
+#             output_activation,
+#             bias,
+#             dropout,
+#             batch_norm,
+#         )
+#
+#     @override
+#     def forward(self, input: ArrayLike):
+#         return self.model(input)
+#
+#     @override
+#     def fit(
+#         self,
+#         X_train: ArrayLike,
+#         y_train: ArrayLike,
+#         X_default: Optional[ArrayLike] = None,
+#         y_default: Optional[ArrayLike] = None,
+#         batch_size: Optional[int] = None,
+#     ):
+#         pass

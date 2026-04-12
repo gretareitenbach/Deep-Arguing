@@ -152,6 +152,11 @@ class GradualAACBR(torch.nn.Module):
 
         device = X_train.device
 
+        self.X_cases = X_train
+        self.y_cases = y_train
+        self.X_default = X_default
+        self.y_dfault = y_default
+
         X_train, y_train, default_indexes, indexes, attackers_default_mask = (
             self.__prepare_default(X_train, y_train, X_default, y_default)
         )

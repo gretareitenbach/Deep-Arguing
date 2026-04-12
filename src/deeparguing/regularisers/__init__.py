@@ -8,6 +8,7 @@ from .notears_regulariser import NOTEARSRegulariser
 from .regulariser import FilterFunc, Regulariser, RegulariserType
 from .regulariser_list import RegulariserList
 from .sparsity_regulariser import SparsityRegulariser
+from .attack_defaults_regulariser import AttackDefaultsRegulariser
 from .utils import (
     apply_threshold_to_model,
     filter_to_attacks,
@@ -32,4 +33,5 @@ __all__ = [
     "filter_to_attacks",
     "filter_to_supports",
     "threshold_adjacency",
+    "AttackDefaultsRegulariser"
 ]

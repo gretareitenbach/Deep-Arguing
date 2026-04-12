@@ -22,6 +22,7 @@ from deeparguing.regularisers import *
 from deeparguing.semantics import *
 from deeparguing.t_norm import *
 from deeparguing.train import *
+from deeparguing.models import *
 
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "sigmoid": torch.sigmoid,

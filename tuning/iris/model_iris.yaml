@@ -5,49 +5,32 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
-    
-
 regularisers:
   type: class
-  class_name: "RegulariserList"
+  class_name: RegulariserList
   params:
     regularisers:
       type: list
       value:
-        [
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "dag_regulariser" },
-                { type: ref, value: gamma_dag },
-              ],
-          },
-        ]
-
+      - type: list
+        value:
+        - type: ref
+          value: attacks_defaults_regulariser
+        - type: value
+          value: 1.0
+      - type: list
+        value:
+        - type: ref
+          value: dag_regulariser
+        - type: ref
+          value: gamma_dag
 trainer:
   type: class
-  class_name: "SimpleTrainer"
-
-build_casebase:
-  type: class
-  class_name: "IdentityCluster"
-  # class_name: "kMeansCluster"
-  # params:
-  #   cluster_size:
-  #     type: ref
-  #     value: cluster_size
-
-build_new_cases:
-  type: function
-  value: "use_train"
-
-train_settings:
-  type: dict
-  value:
+  class_name: SimpleTrainer
+  params:
     criterion:
       type: class
-      class_name: "CrossEntropyLoss"
+      class_name: CrossEntropyLoss
       params:
         label_smoothing:
           type: value
@@ -58,8 +41,8 @@ train_settings:
     optimizer:
       type: class
       sub_type: optim
-      class_name: "AdamW"
-      model: "model"
+      class_name: AdamW
+      model: model
       params:
         lr:
           type: ref
@@ -69,36 +52,42 @@ train_settings:
           value: 0.0004
     regulariser:
       type: ref
-      value: "regularisers"
+      value: regularisers
     gradient_max_norm:
       type: value
       value: 1.0
-
+    validation_log_strategy:
+      type: class
+      class_name: StandardValidationLog
+build_casebase:
+  type: class
+  class_name: IdentityCluster
+build_new_cases:
+  type: function
+  value: use_train
 feature_weights:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: data_ref
-      value: "no_features"
+      value: no_features
     hidden_sizes:
       type: ref
       value: mlp_hidden_sizes
     output_size:
       type: value
       value: 1
-
 scaler:
   type: class
-  class_name: "Scaler"
+  class_name: Scaler
   params:
     no_features:
       type: data_ref
-      value: "no_features"
-
+      value: no_features
 semantics:
   type: class
-  class_name: "ReluSemantics"
+  class_name: ReluSemantics
   params:
     max_iters:
       type: ref
@@ -106,64 +95,62 @@ semantics:
     epsilon:
       type: ref
       value: epsilon
-
 partial_order:
   type: class
-  class_name: "LearnedPartialOrder"
+  class_name: LearnedPartialOrder
   params:
     feature_extractors:
       type: list
-      value: [{ type: ref, value: "feature_weights" }]
+      value:
+      - type: ref
+        value: feature_weights
     comparison_func:
       type: class
-      class_name: "Subtractor"
+      class_name: Subtractor
       params:
         temperature:
           type: ref
           value: temperature
         activation:
           type: function
-          value: "sigmoid"
-
+          value: sigmoid
 irrelevance:
   type: class
-  class_name: "RegularIrrelevance"
+  class_name: RegularIrrelevance
   params:
     compute_partial_order:
       type: ref
-      value: "partial_order"
-
+      value: partial_order
 base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: LearnedBaseScore
   params:
     feature_extractors:
       type: list
       value:
-        [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "scaler" },
-        ]
+      - type: ref
+        value: feature_weights
+      - type: ref
+        value: scaler
     activation:
       type: function
-      value: "sigmoid"
-
+      value: sigmoid
 model:
   type: class
-  class_name: "GradualAACBR"
+  class_name: GradualAACBR
   params:
     gradual_semantics:
       type: ref
-      value: "semantics"
+      value: semantics
     compute_base_score:
       type: ref
-      value: "base_score"
+      value: base_score
     irrelevance_edge_weights:
       type: ref
-      value: "irrelevance"
+      value: irrelevance
     casebase_edge_weights:
       type: ref
-      value: "partial_order"
+      value: partial_order
     use_symmetric_attacks:
       type: value
       value: false
@@ -178,4 +165,7 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "uni_directional"
+      value: uni_directional
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser

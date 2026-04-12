@@ -5,51 +5,32 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
-    
-
 regularisers:
   type: class
-  class_name: "RegulariserList"
+  class_name: RegulariserList
   params:
     regularisers:
       type: list
       value:
-        [
-          {
-            type: list,
-            value:
-              [
-                { type: ref, value: "dag_regulariser" },
-                { type: ref, value: gamma_dag },
-              ],
-          },
-        ]
-
+      - type: list
+        value:
+        - type: ref
+          value: attacks_defaults_regulariser
+        - type: value
+          value: 1.0
+      - type: list
+        value:
+        - type: ref
+          value: dag_regulariser
+        - type: ref
+          value: gamma_dag
 trainer:
   type: class
-  class_name: "SimpleTrainer"
-
-build_casebase:
-  type: class
-  class_name: "kMeansCluster"
+  class_name: SimpleTrainer
   params:
-    cluster_size:
-      type: ref
-      value: cluster_size
-    nearest_sample:
-      type: value
-      value: True
-
-build_new_cases:
-  type: function
-  value: "use_train"
-
-train_settings:
-  type: dict
-  value:
     criterion:
       type: class
-      class_name: "CrossEntropyLoss"
+      class_name: CrossEntropyLoss
       params:
         label_smoothing:
           type: value
@@ -60,8 +41,8 @@ train_settings:
     optimizer:
       type: class
       sub_type: optim
-      class_name: "AdamW"
-      model: "model"
+      class_name: AdamW
+      model: model
       params:
         lr:
           type: ref
@@ -71,113 +52,125 @@ train_settings:
           value: weight_decay
     regulariser:
       type: ref
-      value: "regularisers"
+      value: regularisers
     batch_size:
       type: ref
-      value: "batch_size"
+      value: batch_size
     gradient_max_norm:
       type: ref
       value: gradient_max_norm
-
+    validation_log_strategy:
+      type: class
+      class_name: StandardValidationLog
+build_casebase:
+  type: class
+  class_name: kMeansCluster
+  params:
+    cluster_size:
+      type: ref
+      value: cluster_size
+    nearest_sample:
+      type: value
+      value: true
+build_new_cases:
+  type: function
+  value: use_train
 feature_weights:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: data_ref
-      value: "no_features"
+      value: no_features
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+      - type: ref
+        value: first_layer
+      - type: ref
+        value: second_layer
+      - type: ref
+        value: third_layer
     output_size:
       type: value
       value: 64
-
 feature_weights_1:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: data_ref
-      value: "no_features"
+      value: no_features
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+      - type: ref
+        value: first_layer
+      - type: ref
+        value: second_layer
+      - type: ref
+        value: third_layer
     output_size:
       type: value
       value: 1
-
 semantics:
   type: class
-  class_name: "ReluSemantics"
+  class_name: ReluSemantics
   params:
     max_iters:
       type: ref
       value: max_iters
-
 partial_order:
   type: class
-  class_name: "LearnedPartialOrder"
-  params:
-    feature_extractors:
-      type: list
-      value: [{ type: ref, value: "feature_weights" }]
-    comparison_func:
-      type: class
-      class_name: "SoftCoordinateDominance"
-      params:
-        temperature:
-          type: ref
-          value: temperature
-
-irrelevance:
-  type: class
-  class_name: "RegularIrrelevance"
-  params:
-    compute_partial_order:
-      type: ref
-      value: "partial_order"
-
-base_score:
-  type: class
-  class_name: "LearnedBaseScore"
+  class_name: LearnedPartialOrder
   params:
     feature_extractors:
       type: list
       value:
-        [
-          { type: ref, value: "feature_weights_1" },
-        ]
+      - type: ref
+        value: feature_weights
+    comparison_func:
+      type: class
+      class_name: SoftCoordinateDominance
+      params:
+        temperature:
+          type: ref
+          value: temperature
+irrelevance:
+  type: class
+  class_name: RegularIrrelevance
+  params:
+    compute_partial_order:
+      type: ref
+      value: partial_order
+base_score:
+  type: class
+  class_name: LearnedBaseScore
+  params:
+    feature_extractors:
+      type: list
+      value:
+      - type: ref
+        value: feature_weights_1
     activation:
       type: function
-      value: "sigmoid"
-
+      value: sigmoid
 model:
   type: class
-  class_name: "GradualAACBR"
+  class_name: GradualAACBR
   params:
     gradual_semantics:
       type: ref
-      value: "semantics"
+      value: semantics
     compute_base_score:
       type: ref
-      value: "base_score"
+      value: base_score
     irrelevance_edge_weights:
       type: ref
-      value: "irrelevance"
+      value: irrelevance
     casebase_edge_weights:
       type: ref
-      value: "partial_order"
+      value: partial_order
     use_symmetric_attacks:
       type: value
       value: false
@@ -192,7 +185,10 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "identity"
+      value: identity
     t_norm_str:
       type: ref
       value: t_norm_str
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser

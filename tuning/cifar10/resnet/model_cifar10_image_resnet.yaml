@@ -5,6 +5,19 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
+class_balance_regulariser:
+  type: class
+  class_name: ClassBalanceRegulariser
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+community_preservation_regulariser:
+  type: class
+  class_name: CommunityPreservationRegulariser
+  params:
+    method:
+      type: value
+      value: fro
 regularisers:
   type: class
   class_name: RegulariserList
@@ -24,17 +37,60 @@ regularisers:
           value: dag_regulariser
         - type: ref
           value: gamma_dag
+      - type: list
+        value:
+        - type: ref
+          value: class_balance_regulariser
+        - type: ref
+          value: gamma_cbr
+      - type: list
+        value:
+        - type: ref
+          value: sparsity_regulariser
+        - type: ref
+          value: gamma_sparsity
+      - type: list
+        value:
+        - type: ref
+          value: community_preservation_regulariser
+        - type: ref
+          value: gamma_cp
+cross_entropy:
+  type: class
+  class_name: CrossEntropyLoss
+  params:
+    label_smoothing:
+      type: ref
+      value: label_smoothing
+batch_entropy:
+  type: class
+  class_name: BatchEntropyRegularisation
+losses:
+  type: class
+  class_name: LossList
+  params:
+    losses:
+      type: list
+      value:
+      - type: list
+        value:
+        - type: ref
+          value: cross_entropy
+        - type: value
+          value: 1
+      - type: list
+        value:
+        - type: ref
+          value: batch_entropy
+        - type: ref
+          value: gamma_batch_entropy
 trainer:
   type: class
   class_name: SimpleTrainer
   params:
     criterion:
-      type: class
-      class_name: CrossEntropyLoss
-      params:
-        label_smoothing:
-          type: value
-          value: 0.05
+      type: ref
+      value: losses
     epochs:
       type: ref
       value: epochs
@@ -48,20 +104,21 @@ trainer:
           type: ref
           value: lr
         weight_decay:
-          type: value
-          value: 0.0004
+          type: ref
+          value: weight_decay
     regulariser:
       type: ref
       value: regularisers
     batch_size:
-      type: value
-      value: 7680
+      type: ref
+      value: batch_size
     gradient_max_norm:
-      type: value
-      value: 1.0
+      type: ref
+      value: gradient_max_norm
     validation_log_strategy:
       type: class
       class_name: StandardValidationLog
+
 build_casebase:
   type: class
   class_name: kMeansCluster
@@ -69,29 +126,66 @@ build_casebase:
     cluster_size:
       type: ref
       value: cluster_size
+    nearest_sample:
+      type: value
+      value: true
 build_new_cases:
   type: function
   value: use_train
 feature_weights:
   type: class
+  class_name: ResNetCIFAR
+  params:
+    weights_path:
+      type: value
+      value: resnet_30.pt
+    freeze_weights:
+      type: value
+      value: true
+feature_weights_1:
+  type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
-    hidden_sizes:
+      type: value
+      value: 64
+    batch_norm:
       type: ref
-      value: mlp_hidden_sizes
+      value: batch_norm
+    hidden_sizes:
+      type: list
+      value:
+      - type: ref
+        value: first_layer
+      - type: ref
+        value: second_layer
+      - type: ref
+        value: third_layer
+    output_size:
+      type: value
+      value: 64
+feature_weights_2:
+  type: class
+  class_name: MLPExtractor
+  params:
+    input_size:
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
+    hidden_sizes:
+      type: list
+      value:
+      - type: ref
+        value: first_layer
+      - type: ref
+        value: second_layer
+      - type: ref
+        value: third_layer
     output_size:
       type: value
       value: 1
-scaler:
-  type: class
-  class_name: Scaler
-  params:
-    no_features:
-      type: data_ref
-      value: no_features
 semantics:
   type: class
   class_name: ReluSemantics
@@ -99,9 +193,12 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
-    epsilon:
-      type: ref
-      value: epsilon
+    use_soft_relu:
+      type: value
+      value: false
+    damping:
+      type: value
+      value: 1.0
 partial_order:
   type: class
   class_name: LearnedPartialOrder
@@ -111,16 +208,15 @@ partial_order:
       value:
       - type: ref
         value: feature_weights
+      - type: ref
+        value: feature_weights_1
     comparison_func:
       type: class
-      class_name: Subtractor
+      class_name: SoftCoordinateDominance
       params:
         temperature:
           type: ref
           value: temperature
-        activation:
-          type: function
-          value: sigmoid
 irrelevance:
   type: class
   class_name: RegularIrrelevance
@@ -138,7 +234,7 @@ base_score:
       - type: ref
         value: feature_weights
       - type: ref
-        value: scaler
+        value: feature_weights_2
     activation:
       type: function
       value: sigmoid
@@ -173,6 +269,15 @@ model:
     post_process_func:
       type: function
       value: identity
+    rescale_edges:
+      type: ref
+      value: rescale_edges
+    t_norm_str:
+      type: ref
+      value: t_norm_str
+    rand_weight:
+      type: ref
+      value: rand_weight
 attacks_defaults_regulariser:
   type: class
   class_name: AttackDefaultsRegulariser

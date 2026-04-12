@@ -4,24 +4,24 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+from torch.utils.checkpoint import checkpoint
 from tqdm import tqdm
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import RegulariserType
-from deeparguing.train import Trainer
+from deeparguing.train.neural_trainer import NeuralTrainer
+from deeparguing.train.strategies import ValidationLogStrategy
 
-from torch.utils.checkpoint import checkpoint
 
-
-class ApproximateTrainer(Trainer):
+class ApproximateTrainer(NeuralTrainer):
 
     def __init__(
         self,
-        real_time_logger: Callable[[Any], Any] = lambda _: None,
+        validation_log_strategy: ValidationLogStrategy,
     ) -> None:
-        super().__init__(real_time_logger)
+        super().__init__(validation_log_strategy)
 
     @override
     def train(
@@ -44,8 +44,6 @@ class ApproximateTrainer(Trainer):
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
-        log_val_loss: bool = False,
-        log_gradients: bool = False,
     ) -> tuple[float, float]:
         # Validate scheduler_step_per when scheduler is provided
         if scheduler is not None:
@@ -104,21 +102,11 @@ class ApproximateTrainer(Trainer):
 
             optimizer.step()
 
-
             if gradient_max_norm is not None:
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    max_norm=gradient_max_norm,
-                    error_if_nonfinite=False,
-                )
+                self.clip_gradients(model, gradient_max_norm)
 
-            if log_gradients:
-                ExperimentLogger.current().log_metrics(
-                    {
-                        f"gradients/Gradient {n}": float(torch.norm(p.grad.cpu())) if p.grad is not None else 0.0
-                        for n, p in model.named_parameters()
-                    }
-                )
+            if self.log_gradients_flag:
+                self.log_gradients(model)
 
             pbar.set_description(
                 f"Epoch {epoch + 1}, Loss: {round(total_loss.item(), 6)}"
@@ -129,12 +117,12 @@ class ApproximateTrainer(Trainer):
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
 
-            _, train_acc, train_f1 = self.log_validation_loss(
+            _, train_acc, train_f1 = self.validation_log_strategy.log(
                 model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
             )
 
-            if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg, val_acc, val_f1 = self.log_validation_loss(
+            if self.log_val_loss and X_val is not None and y_val is not None:
+                val_loss_avg, val_acc, val_f1 = self.validation_log_strategy.log(
                     model, batch_size, X_val, y_val, criterion, regulariser
                 )
                 ExperimentLogger.current().log_metrics(
@@ -159,8 +147,11 @@ class ApproximateTrainer(Trainer):
                         "f1/train_f1_per_epoch": train_f1,
                     }
                 )
-        
+
         ExperimentLogger.current().log_metrics(
-            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+            {
+                "evals/max_val_acc": float(max_val_acc),
+                "evals/max_val_f1": float(max_val_f1),
+            }
         )
         return float(max_val_acc), float(max_val_f1)

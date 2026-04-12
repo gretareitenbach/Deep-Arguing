@@ -6,6 +6,10 @@ lr:
   type: value
   value: 0.0010773454579728057
 
+batch_size:
+  type: value
+  value: 32
+
 gamma_dag:
   type: value
   value: 0.08312338066981176

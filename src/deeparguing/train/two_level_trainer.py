@@ -10,10 +10,11 @@ from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import Regulariser, RegulariserType
-from deeparguing.train import Trainer
+from deeparguing.train.neural_trainer import NeuralTrainer
+from deeparguing.train.strategies import ValidationLogStrategy
 
 
-class TwoLevelTrainer(Trainer):
+class TwoLevelTrainer(NeuralTrainer):
     """
     Trainer with two-level optimization loop for augmented Lagrangian methods.
 
@@ -33,9 +34,44 @@ class TwoLevelTrainer(Trainer):
 
     def __init__(
         self,
-        real_time_logger: Callable[[Any], Any] = lambda _: None,
+        validation_log_strategy: ValidationLogStrategy,
     ) -> None:
-        super().__init__(real_time_logger)
+        super().__init__(validation_log_strategy)
+
+    def _train_step(
+        self,
+        model: GradualAACBR,
+        X_casebase: Tensor,
+        y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
+        X_default: Tensor,
+        y_default: Tensor,
+        optimizer: Optimizer,
+        criterion: Loss,
+        regulariser: RegulariserType,
+        gradient_max_norm: float | None,
+    ) -> Tensor:
+        optimizer.zero_grad()
+
+        model.fit(X_casebase, y_casebase, X_default, y_default)
+
+        predictions = model(X_new_cases).squeeze()
+        y_target = torch.argmax(y_new_cases, dim=1)
+
+        loss: Tensor = criterion(predictions, y_target)
+        loss += regulariser(model)
+
+        loss.backward()
+
+        if gradient_max_norm is not None:
+            self.clip_gradients(model, gradient_max_norm)
+
+        if self.log_gradients_flag:
+            self.log_gradients(model)
+
+        optimizer.step()
+        return loss
 
     @override
     def train(
@@ -59,8 +95,6 @@ class TwoLevelTrainer(Trainer):
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
-        log_val_loss: bool = False,
-        log_gradients: bool = False,
     ) -> tuple[float, float]:
         """
         Train with a two-level optimization loop.
@@ -172,7 +206,6 @@ class TwoLevelTrainer(Trainer):
                         criterion,
                         regulariser=regulariser,
                         gradient_max_norm=gradient_max_norm,
-                        log_gradients=log_gradients,
                     )
 
                     if scheduler is not None and scheduler_step_per == "batch":
@@ -211,7 +244,6 @@ class TwoLevelTrainer(Trainer):
                 X_val,
                 y_val,
                 criterion,
-                log_val_loss,
             )
             max_val_acc = max(max_val_acc, val_acc)
             max_val_f1 = max(max_val_f1, val_f1)
@@ -226,19 +258,27 @@ class TwoLevelTrainer(Trainer):
                 break
 
         ExperimentLogger.current().log_metrics(
-            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+            {
+                "evals/max_val_acc": float(max_val_acc),
+                "evals/max_val_f1": float(max_val_f1),
+            }
         )
         return float(max_val_acc), float(max_val_f1)
 
     def _step_regulariser(
-        self, regulariser: RegulariserType, model: GradualAACBR
+        self,
+        regulariser: RegulariserType,
+        model: GradualAACBR,
     ) -> bool:
         """Step the regulariser, return True if converged."""
         if isinstance(regulariser, Regulariser):
             return regulariser.step(model)
         return True  # Plain callables always "converged"
 
-    def _reset_regulariser(self, regulariser: RegulariserType) -> None:
+    def _reset_regulariser(
+        self,
+        regulariser: RegulariserType,
+    ) -> None:
         """Reset the regulariser state."""
         if isinstance(regulariser, Regulariser):
             regulariser.reset()
@@ -255,10 +295,9 @@ class TwoLevelTrainer(Trainer):
         X_val: Tensor | None,
         y_val: Tensor | None,
         criterion: Loss,
-        log_val_loss: bool,
     ) -> tuple[float, float]:
         """Log metrics after each outer iteration. Returns validation accuracy or 0.0"""
-        _, train_acc, train_f1 = self.log_validation_loss(
+        _, train_acc, train_f1 = self.validation_log_strategy.log(
             model, batch_size, X_train, y_train, criterion, regulariser
         )
 
@@ -282,8 +321,8 @@ class TwoLevelTrainer(Trainer):
 
         val_acc_to_return = 0.0
         val_f1_to_return = 0.0
-        if log_val_loss and X_val is not None and y_val is not None:
-            val_loss, val_acc, val_f1 = self.log_validation_loss(
+        if self.log_val_loss and X_val is not None and y_val is not None:
+            val_loss, val_acc, val_f1 = self.validation_log_strategy.log(
                 model, batch_size, X_val, y_val, criterion, regulariser
             )
             metrics["loss/val_loss_per_outer"] = float(val_loss)

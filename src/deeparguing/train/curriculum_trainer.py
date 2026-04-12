@@ -2,22 +2,23 @@ import logging
 from typing import Any, Callable, cast, override
 
 import torch
+from sklearn.metrics import accuracy_score, f1_score
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import WeightedRandomSampler
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score, f1_score
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import RegulariserType
-from deeparguing.train import Trainer
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
+from deeparguing.train.neural_trainer import NeuralTrainer
+from deeparguing.train.strategies import ValidationLogStrategy
 
 
-class CurriculumTrainer(Trainer):
+class CurriculumTrainer(NeuralTrainer):
     """
     Trainer implementing class-based curriculum learning.
 
@@ -51,19 +52,18 @@ class CurriculumTrainer(Trainer):
 
     def __init__(
         self,
+        validation_log_strategy: ValidationLogStrategy,
         curriculum_strategy: CurriculumStrategy,
         data_selector: DataSelector,
         reset_optimizer_on_advance: bool = False,
-        real_time_logger: Callable[[Any], Any] = lambda _: None,
     ):
-        super().__init__(real_time_logger)
+        super().__init__(validation_log_strategy)
         self.curriculum_strategy = curriculum_strategy
         self.data_selector = data_selector
         self.reset_optimizer_on_advance = reset_optimizer_on_advance
         # Store active classes for use in training step
         self._current_active_classes: list[int] = []
 
-    def _validate_epochs(self, epochs: int) -> None:
         """
         Validates total epochs is sufficient for curriculum.
 
@@ -84,7 +84,6 @@ class CurriculumTrainer(Trainer):
                 )
 
     def _filter_defaults(
-        self,
         X_default: Tensor,
         y_default: Tensor,
         active_classes: list[int],
@@ -132,113 +131,14 @@ class CurriculumTrainer(Trainer):
         # After filtering, default[i] should have one-hot label [0,...,1,...,0]
         # where the 1 is at position i (since we sorted by class index)
         num_active = len(active_classes)
-        y_filtered = torch.eye(num_active, device=y_default.device, dtype=y_default.dtype)
+        y_filtered = torch.eye(
+            num_active, device=y_default.device, dtype=y_default.dtype
+        )
 
         return X_filtered, y_filtered
 
-    def _remap_targets(
-        self,
-        y: Tensor,
-        active_classes: list[int],
-    ) -> Tensor:
-        """
-        Remaps one-hot encoded labels to filtered class index space.
-
-        When active_classes=[0, 5, 7], a sample with original class 5
-        should have target index 1 (the second position in sorted active_classes).
-
-        Parameters
-        ----------
-        y : Tensor
-            One-hot encoded labels, shape (N, num_classes)
-        active_classes : list[int]
-            Currently active class indices
-
-        Returns
-        -------
-        Tensor
-            Remapped target indices, shape (N,), values in [0, len(active_classes))
-        """
-        # Get original class indices
-        original_indices = torch.argmax(y, dim=1)  # (N,)
-
-        # Create mapping: original_class -> filtered_index
-        sorted_classes = sorted(active_classes)
-        class_to_idx = {c: i for i, c in enumerate(sorted_classes)}
-
-        # Remap each target
-        remapped = torch.tensor(
-            [class_to_idx[int(idx.item())] for idx in original_indices],
-            device=y.device,
-            dtype=torch.long,
-        )
-        return remapped
-
-    def _reset_optimizer_state(self, optimizer: Optimizer) -> None:
-        """Clears optimizer momentum/adaptive learning state."""
-        optimizer.state.clear()
-
-    def _curriculum_train_step(
-        self,
-        model: GradualAACBR,
-        X_casebase: Tensor,
-        y_casebase: Tensor,
-        X_new_cases: Tensor,
-        y_new_cases: Tensor,
-        X_default: Tensor,
-        y_default: Tensor,
-        optimizer: Optimizer,
-        criterion: Loss,
-        regulariser: RegulariserType,
-        gradient_max_norm: float | None,
-        log_gradients: bool,
-        active_classes: list[int],
-    ) -> Tensor:
-        """
-        Single training step with target remapping for curriculum learning.
-
-        Similar to base Trainer._train_step but remaps target indices
-        to the filtered class space.
-        """
-        optimizer.zero_grad()
-
-        model.fit(X_casebase, y_casebase, X_default, y_default)
-
-        predictions = model(X_new_cases)
-        # Only squeeze if we won't lose the class dimension
-        if predictions.dim() > 2 or (predictions.dim() == 2 and predictions.shape[1] > 1):
-            predictions = predictions.squeeze()
-
-        # Remap targets to filtered class space
-        y_target = self._remap_targets(y_new_cases, active_classes)
-
-        loss: Tensor = criterion(predictions, y_target)
-        loss += regulariser(model)
-
-        loss.backward()
-
-        if gradient_max_norm is not None:
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(),
-                max_norm=gradient_max_norm,
-                error_if_nonfinite=False,
-            )
-
-        if log_gradients:
-            grad_metrics: dict[str, float] = {}
-            for n, p in model.named_parameters():
-                if p.grad is not None:
-                    grad_norm = cast(Tensor, torch.norm(p.grad.detach().cpu()))
-                    grad_metrics[f"gradients/Gradient {n}"] = grad_norm.item()
-            ExperimentLogger.current().log_metrics(grad_metrics)
-
-        optimizer.step()
-
-        return loss
-
     @override
     def train(
-        self,
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
@@ -257,8 +157,6 @@ class CurriculumTrainer(Trainer):
         gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
-        log_val_loss: bool = False,
-        log_gradients: bool = False,
     ) -> tuple[float, float]:
         # Validation
         self._validate_epochs(epochs)
@@ -325,7 +223,6 @@ class CurriculumTrainer(Trainer):
                 scheduler=scheduler,
                 scheduler_step_per=scheduler_step_per,
                 gradient_max_norm=gradient_max_norm,
-                log_gradients=log_gradients,
                 active_classes=active_classes,
             )
 
@@ -337,9 +234,14 @@ class CurriculumTrainer(Trainer):
             model.eval()
             with torch.no_grad():
                 model.fit(X_cb_curr, y_cb_curr, X_def_curr, y_def_curr)
-                curr_loss, curr_acc, curr_f1 = self._log_curriculum_validation(
-                    model, batch_size, X_new_curr, y_new_curr, criterion, regulariser,
-                    active_classes
+                curr_loss, curr_acc, curr_f1 = self.validation_log_strategy.log(
+                    model,
+                    batch_size,
+                    X_new_curr,
+                    y_new_curr,
+                    criterion,
+                    regulariser,
+                    active_classes,
                 )
             model.train()
 
@@ -356,10 +258,10 @@ class CurriculumTrainer(Trainer):
             }
 
             # Full-scope validation (use full casebase/defaults)
-            if log_val_loss and X_val is not None and y_val is not None:
+            if self.log_val_loss and X_val is not None and y_val is not None:
                 with torch.no_grad():
                     model.fit(X_casebase, y_casebase, X_default, y_default)
-                    full_loss, full_acc, full_f1 = self.log_validation_loss(
+                    full_loss, full_acc, full_f1 = self.validation_log_strategy.log(
                         model, batch_size, X_val, y_val, criterion, regulariser
                     )
                 metrics["accuracy/full_val_accuracy"] = full_acc
@@ -395,68 +297,14 @@ class CurriculumTrainer(Trainer):
         logging.info(f"Curriculum complete. Final active classes: {active_classes}")
 
         ExperimentLogger.current().log_metrics(
-            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+            {
+                "evals/max_val_acc": float(max_val_acc),
+                "evals/max_val_f1": float(max_val_f1),
+            }
         )
         return float(max_val_acc), float(max_val_f1)
 
-    def _log_curriculum_validation(
-        self,
-        model: GradualAACBR,
-        batch_size: int | None,
-        X_val: Tensor,
-        y_val: Tensor,
-        criterion: Loss,
-        regulariser: RegulariserType,
-        active_classes: list[int],
-    ) -> tuple[float, float, float]:
-        """
-        Computes validation metrics with remapped targets for curriculum scope.
-
-        Similar to base log_validation_loss but uses remapped targets.
-        """
-        n_samples = X_val.shape[0]
-        batch_size = batch_size if batch_size is not None else n_samples
-
-        total_loss = 0.0
-        total_samples = 0
-        all_preds = []
-        all_targets = []
-
-        for i in range(0, n_samples, batch_size):
-            batch_X = X_val[i : i + batch_size]
-            batch_y = y_val[i : i + batch_size]
-
-            predictions = model(batch_X)
-            # Only squeeze if we won't lose the class dimension
-            if predictions.dim() > 2 or (predictions.dim() == 2 and predictions.shape[1] > 1):
-                predictions = predictions.squeeze()
-            y_target = self._remap_targets(batch_y, active_classes)
-
-            loss = criterion(predictions, y_target)
-            loss += regulariser(model)
-
-            total_loss += loss.item() * batch_X.shape[0]
-
-            # Accuracy
-            if predictions.dim() == 1:
-                predictions = predictions.unsqueeze(0)
-            pred_classes = torch.argmax(predictions, dim=1)
-            all_preds.extend(pred_classes.cpu().tolist())
-            all_targets.extend(y_target.cpu().tolist())
-            total_samples += batch_X.shape[0]
-
-        avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
-        if len(all_targets) > 0:
-            accuracy = float(accuracy_score(all_targets, all_preds))
-            f1 = float(f1_score(all_targets, all_preds, average="macro", zero_division=0.0))
-        else:
-            accuracy = 0.0
-            f1 = 0.0
-
-        return avg_loss, accuracy, f1
-
     def _train_curriculum_epoch(
-        self,
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
@@ -472,7 +320,6 @@ class CurriculumTrainer(Trainer):
         scheduler: LRScheduler | None,
         scheduler_step_per: str | None,
         gradient_max_norm: float | None,
-        log_gradients: bool,
         active_classes: list[int],
     ) -> Tensor:
         """Trains one epoch with weighted sampling and target remapping."""
@@ -494,7 +341,7 @@ class CurriculumTrainer(Trainer):
             batch_X = X_new_cases[batch_indices]
             batch_y = y_new_cases[batch_indices]
 
-            loss = self._curriculum_train_step(
+            loss = self._train_step(
                 model,
                 X_casebase,
                 y_casebase,
@@ -506,7 +353,6 @@ class CurriculumTrainer(Trainer):
                 criterion,
                 regulariser,
                 gradient_max_norm,
-                log_gradients,
                 active_classes,
             )
 
@@ -514,4 +360,52 @@ class CurriculumTrainer(Trainer):
                 scheduler.step()
 
         assert loss is not None
+        return loss
+
+    def _remap_targets(
+        self,
+        y: Tensor,
+        active_classes: list[int],
+    ) -> Tensor:
+        original_labels = torch.argmax(y, dim=1)
+        active_tensor = torch.tensor(sorted(active_classes), device=y.device)
+        return (original_labels.unsqueeze(1) == active_tensor).nonzero()[:, 1]
+
+    def _train_step(
+        self,
+        model: GradualAACBR,
+        X_casebase: Tensor,
+        y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
+        X_default: Tensor,
+        y_default: Tensor,
+        optimizer: Optimizer,
+        criterion: Loss,
+        regulariser: RegulariserType,
+        gradient_max_norm: float | None,
+        active_classes: list[int] = [],
+    ) -> Tensor:
+        optimizer.zero_grad()
+        model.fit(X_casebase, y_casebase, X_default, y_default)
+
+        predictions = model(X_new_cases)
+        if predictions.dim() > 2 or (
+            predictions.dim() == 2 and predictions.shape[1] > 1
+        ):
+            predictions = predictions.squeeze()
+
+        y_target = self._remap_targets(y_new_cases, active_classes)
+
+        loss: Tensor = criterion(predictions, y_target)
+        loss += regulariser(model)
+        loss.backward()
+
+        if gradient_max_norm is not None:
+            self.clip_gradients(model, gradient_max_norm)
+
+        if self.log_gradients_flag:
+            self.log_gradients(model)
+
+        optimizer.step()
         return loss

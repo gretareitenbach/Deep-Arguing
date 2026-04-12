@@ -1,4 +1,4 @@
-from typing import Any, Callable, override
+from typing import override
 
 import torch
 from torch import Tensor
@@ -10,16 +10,64 @@ from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.losses.loss import Loss
 from deeparguing.regularisers import RegulariserType
-from deeparguing.train import Trainer
+from deeparguing.train.neural_trainer import NeuralTrainer
+from deeparguing.train.strategies import ValidationLogStrategy
 
 
-class SimpleTrainer(Trainer):
+class SimpleTrainer(NeuralTrainer):
 
     def __init__(
         self,
-        real_time_logger: Callable[[Any], Any] = lambda _: None,
+        epochs: int,
+        optimizer: Optimizer,
+        criterion: Loss,
+        validation_log_strategy: ValidationLogStrategy,
+        regulariser: RegulariserType = lambda _: 0,
+        batch_size: int | None = None,
+        scheduler: LRScheduler | None = None,
+        scheduler_step_per: str | None = None,
+        gradient_max_norm: float | None = None,
     ) -> None:
-        super().__init__(real_time_logger)
+        super().__init__(validation_log_strategy)
+        self.epochs = epochs
+        self.optimizer = optimizer
+        self.criterion = criterion
+        self.regulariser = regulariser
+        self.batch_size = batch_size
+        self.scheduler = scheduler
+        self.scheduler_step_per = scheduler_step_per
+        self.gradient_max_norm = gradient_max_norm
+
+    def _train_step(
+        self,
+        model: GradualAACBR,
+        X_casebase: Tensor,
+        y_casebase: Tensor,
+        X_new_cases: Tensor,
+        y_new_cases: Tensor,
+        X_default: Tensor,
+        y_default: Tensor,
+    ) -> Tensor:
+        self.optimizer.zero_grad()
+
+        model.fit(X_casebase, y_casebase, X_default, y_default)
+
+        predictions = model(X_new_cases).squeeze()
+        y_target = torch.argmax(y_new_cases, dim=1)
+
+        loss: Tensor = self.criterion(predictions, y_target)
+        loss += self.regulariser(model)
+
+        loss.backward()
+
+        if self.gradient_max_norm is not None:
+            self.clip_gradients(model, self.gradient_max_norm)
+
+        if self.log_gradients_flag:
+            self.log_gradients(model)
+
+        self.optimizer.step()
+        return loss
 
     @override
     def train(
@@ -31,40 +79,27 @@ class SimpleTrainer(Trainer):
         y_new_cases: Tensor,
         X_default: Tensor,
         y_default: Tensor,
-        optimizer: Optimizer,
-        criterion: Loss,
-        epochs: int,
-        regulariser: RegulariserType = lambda _: 0,
         disable_tqdm: bool = False,
-        batch_size: None | int = None,
-        scheduler: LRScheduler | None = None,
-        scheduler_step_per: str | None = None,
-        gradient_max_norm: float | None = None,
         X_val: Tensor | None = None,
         y_val: Tensor | None = None,
-        log_val_loss: bool = False,
-        log_gradients: bool = False,
     ) -> tuple[float, float]:
-        # Validate scheduler_step_per when scheduler is provided
-        if scheduler is not None:
-            if scheduler_step_per is None:
+
+        if self.scheduler is not None:
+            if self.scheduler_step_per is None:
                 raise ValueError(
-                    "scheduler_step_per must be specified when using a scheduler. "
-                    "Valid values: 'epoch' or 'batch'"
+                    "scheduler_step_per must be specified when using a scheduler. Valid values: 'epoch' or 'batch'"
                 )
-            if scheduler_step_per not in ("epoch", "batch"):
+            if self.scheduler_step_per not in ("epoch", "batch"):
                 raise ValueError(
-                    f"scheduler_step_per must be 'epoch' or 'batch', got '{scheduler_step_per}'"
+                    f"scheduler_step_per must be 'epoch' or 'batch', got '{self.scheduler_step_per}'"
                 )
 
-        pbar = tqdm(range(epochs), dynamic_ncols=True, disable=disable_tqdm)
-
+        pbar = tqdm(range(self.epochs), dynamic_ncols=True, disable=disable_tqdm)
         n_samples = X_new_cases.shape[0]
-
-        batch_size = batch_size if batch_size is not None else n_samples
+        batch_size = self.batch_size if self.batch_size is not None else n_samples
         max_val_acc = 0.0
         max_val_f1 = 0.0
-        
+
         for epoch in pbar:
             permutation = torch.randperm(n_samples, device=model.device)
             loss: Tensor | None = None
@@ -81,39 +116,37 @@ class SimpleTrainer(Trainer):
                     batch_y_new_cases,
                     X_default,
                     y_default,
-                    optimizer,
-                    criterion,
-                    regulariser=regulariser,
-                    gradient_max_norm=gradient_max_norm,
-                    log_gradients=log_gradients,
                 )
 
                 if loss is torch.nan or torch.isnan(loss):
                     print("WARNING: LOSS IS NAN")
                     return 0.0
 
-                # Step scheduler per batch if configured
-                if scheduler is not None and scheduler_step_per == "batch":
-                    scheduler.step()
+                if self.scheduler is not None and self.scheduler_step_per == "batch":
+                    self.scheduler.step()
 
             assert loss is not None
 
-            # Step scheduler per epoch if configured
-            if scheduler is not None and scheduler_step_per == "epoch":
-                scheduler.step()
+            if self.scheduler is not None and self.scheduler_step_per == "epoch":
+                self.scheduler.step()
 
             model.eval()
             with torch.no_grad():
                 model.fit(X_casebase, y_casebase, X_default, y_default)
             model.train()
 
-            post_train_loss, train_acc, train_f1 = self.log_validation_loss(
-                model, batch_size, X_new_cases, y_new_cases, criterion, regulariser
+            post_train_loss, train_acc, train_f1 = self.validation_log_strategy.log(
+                model,
+                batch_size,
+                X_new_cases,
+                y_new_cases,
+                self.criterion,
+                self.regulariser,
             )
 
-            if log_val_loss and X_val is not None and y_val is not None:
-                val_loss_avg, val_acc, val_f1 = self.log_validation_loss(
-                    model, batch_size, X_val, y_val, criterion, regulariser
+            if self.log_val_loss and X_val is not None and y_val is not None:
+                val_loss_avg, val_acc, val_f1 = self.validation_log_strategy.log(
+                    model, batch_size, X_val, y_val, self.criterion, self.regulariser
                 )
                 ExperimentLogger.current().log_metrics(
                     {
@@ -144,7 +177,11 @@ class SimpleTrainer(Trainer):
                 pbar.set_description(
                     f"Epoch {epoch}, Loss: {round(loss.item(), 6)}, Train Acc: {round(train_acc, 6)}, Train F1: {round(train_f1, 6)}"
                 )
+
         ExperimentLogger.current().log_metrics(
-            {"evals/max_val_acc": float(max_val_acc), "evals/max_val_f1": float(max_val_f1)}
+            {
+                "evals/max_val_acc": float(max_val_acc),
+                "evals/max_val_f1": float(max_val_f1),
+            }
         )
         return float(max_val_acc), float(max_val_f1)

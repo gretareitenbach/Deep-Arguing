@@ -32,10 +32,12 @@ from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
 from deeparguing.losses import *
+from deeparguing.models import *
 from deeparguing.regularisers import *
 from deeparguing.semantics import *
 from deeparguing.t_norm import *
 from deeparguing.train import Trainer
+from deeparguing.train.neural_trainer import NeuralTrainer
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.debug(f"Using device: {device}")
@@ -98,11 +100,15 @@ def run(project: str = "gradual-aa-cbr"):
             X_val = data_dict["X_val"]
             y_val = data_dict["y_val"]
 
-            model: GradualAACBR = instances["model"].to(device)
+            # TODO: Handle this differently?
+            model_instance = instances["model"]
+            if hasattr(model_instance, "to"):
+                model = model_instance.to(device)
+            else:
+                model = model_instance
 
             trainer: Trainer = instances["trainer"]
-            train_settings = instances["train_settings"]
-            batch_size = train_settings.get("batch_size", None)
+            batch_size = getattr(trainer, "batch_size", None)
 
             labels = data_dict["labels"]
 
@@ -154,6 +160,9 @@ def run(project: str = "gradual-aa-cbr"):
                 )
 
             model.train()
+            if isinstance(trainer, NeuralTrainer):
+                trainer.set_logging_flags(args.log_val_loss, args.log_gradients)
+
             max_val_acc, max_val_f1 = trainer.train(
                 model,
                 X_casebase,
@@ -162,12 +171,9 @@ def run(project: str = "gradual-aa-cbr"):
                 y_new_cases,
                 X_defaults,
                 y_defaults,
-                **train_settings,
                 disable_tqdm=args.disable_tqdm,
                 X_val=X_val,
                 y_val=y_val,
-                log_val_loss=args.log_val_loss,
-                log_gradients=args.log_gradients,
             )
 
             model.eval()
@@ -235,9 +241,9 @@ def run(project: str = "gradual-aa-cbr"):
                     labels,
                 )
 
-            if args.plot_loss:
+            if args.plot_loss and isinstance(trainer, NeuralTrainer):
                 trainer.plot_loss_curve()
-            if args.plot_gradients:
+            if args.plot_gradients and isinstance(trainer, NeuralTrainer):
                 trainer.plot_grads()
             if plot_matrix_after:
                 model.show_matrix()
@@ -256,10 +262,10 @@ def run(project: str = "gradual-aa-cbr"):
             max_val_f1s.append(max_val_f1)
             logging.info(f"Average f1 score: {np.mean(f1s)}")
 
-            if args.visualise_loss_landscape:
+            if args.visualise_loss_landscape and isinstance(trainer, NeuralTrainer):
                 visualize_overlayed_loss_landscapes(
                     model,
-                    train_settings["criterion_factory"](),
+                    trainer.criterion,  # Assuming it holds the instance itself or a similar structure
                     X_train,
                     y_train,
                     X_casebase,
@@ -267,7 +273,7 @@ def run(project: str = "gradual-aa-cbr"):
                     X_defaults,
                     y_defaults,
                     theta_pre,
-                    train_settings["regulariser"],
+                    trainer.regulariser,
                     steps=30,
                 )
             ExperimentLogger.current().finish()
@@ -280,20 +286,20 @@ def run(project: str = "gradual-aa-cbr"):
                     f"{OUT_DIR}/post_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
-                    new_cases=X_new_cases[:args.num_new_vis],
-                    new_cases_labels=y_new_cases[:args.num_new_vis],
+                    new_cases=X_new_cases[: args.num_new_vis],
+                    new_cases_labels=y_new_cases[: args.num_new_vis],
                 )
 
         average_f1 = np.mean(f1s)
         std_f1 = np.std(f1s)
         average_max_val_acc = np.mean(max_val_accs)
         average_max_val_f1 = np.mean(max_val_f1s)
-        
+
         logging.info(f"Average F1: {average_f1}")
         logging.info(f"F1 STD: {std_f1}")
         logging.info(f"Average Max Val Acc: {average_max_val_acc}")
         logging.info(f"Average Max Val F1: {average_max_val_f1}")
-        
+
         if args.ht_obj == "f1":
             return average_max_val_f1
         else:
