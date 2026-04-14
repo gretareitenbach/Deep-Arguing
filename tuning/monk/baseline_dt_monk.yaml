@@ -14,9 +14,9 @@ model:
   type: class
   class_name: "DecisionTreeBaseline"
   params:
-    # max_depth:
-    #   type: value
-    #   value: 10
+    max_depth:
+      type: value
+      value: 10
     random_state:
       type: value
       value: 42
