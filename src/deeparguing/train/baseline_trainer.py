@@ -4,6 +4,7 @@ import torch
 from sklearn.metrics import accuracy_score, f1_score
 from torch import Tensor
 
+from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.models.model import Model
 from deeparguing.train.trainer import Trainer
 
@@ -62,5 +63,12 @@ class BaselineTrainer(Trainer):
                     y_target.cpu(), y_pred.cpu(), average="macro", zero_division=0.0
                 )
             )
+
+        ExperimentLogger.current().log_metrics(
+            {
+                "evals/max_val_acc": float(max_val_acc),
+                "evals/max_val_f1": float(max_val_f1),
+            }
+        )
 
         return max_val_acc, max_val_f1

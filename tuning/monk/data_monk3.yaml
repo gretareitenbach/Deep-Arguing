@@ -1,0 +1,32 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 0
+    excluded_fields:
+      type: list
+      value:
+        - { type: value, value: 7 }
+    path:
+      type: value
+      value: "./data/monks_problems/monks-3.train"
+    has_header:
+      type: value
+      value: false
+    categorical_cols:
+      type: range
+      value:
+        - { type: value, value: 0 }
+        - { type: value, value: 6 }
+    sep:
+      type: value
+      value: " "
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "no_normalize"
