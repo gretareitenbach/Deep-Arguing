@@ -185,9 +185,6 @@ def parse_entry(
         start = parse_entry(children[0], config, ref_stack, trial, device)
         stop = parse_entry(children[1], config, ref_stack, trial, device)
 
-        if stop < start:
-            raise ValueError("Upper value cannot be less than lower value")
-
         step = 1
         if len(children) == 3:
             step = parse_entry(children[2], config, ref_stack, trial, device)
