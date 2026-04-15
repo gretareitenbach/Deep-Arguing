@@ -301,14 +301,6 @@ base_score:
       type: function
       value: sigmoid
 
-# base_score:
-#   type: class
-#   class_name: ConstantBaseScore
-#   params:
-#     constant:
-#       type: value
-#       value: 1.0
-
 model:
   type: class
   class_name: GradualAACBR

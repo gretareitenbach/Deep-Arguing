@@ -48,7 +48,7 @@ class SoftCoordinateDominance(CompareCases):
     def __init__(
         self,
         temperature: float = 1.0,
-        noise_value = 0
+        noise_value: float = 0
     ):
         super(SoftCoordinateDominance, self).__init__()
         self.temperature = temperature
