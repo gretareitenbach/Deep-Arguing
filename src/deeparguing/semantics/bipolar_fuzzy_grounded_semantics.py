@@ -7,7 +7,7 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 from deeparguing.t_norm import TNorm
 
 
-class FuzzyGroundedSemantics(GradualSemantics):
+class BipolarFuzzyGroundedSemantics(GradualSemantics):
 
     def __init__(
         self,
@@ -22,11 +22,17 @@ class FuzzyGroundedSemantics(GradualSemantics):
     @override
     def aggregation_func(self, A: Tensor, strengths: Tensor):
 
-        """
-        This is defined for attacking only WAFs
-        """
+        A_attacks = torch.where(A < 0, -A, 0)
+        A_support = torch.where(A > 0, A, 0)
 
-        A = -A
+        att_agg = self._agg(A_attacks, strengths)
+        support_agg = self._agg(A_support, strengths)
+
+        return torch.maximum(1 - att_agg, support_agg)
+
+
+    def _agg(self, A: Tensor, strengths: Tensor):
+
         assert torch.all(A >= 0)
 
         tnorm = self.t_norm
@@ -77,6 +83,6 @@ class FuzzyGroundedSemantics(GradualSemantics):
 
         # base_scores (B, n)
         # aggregations (B, n)
-        return self.t_norm.and_op(1 - aggregations, base_scores)
+        return self.t_norm.and_op(aggregations, base_scores)
 
 

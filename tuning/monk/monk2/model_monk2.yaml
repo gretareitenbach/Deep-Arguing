@@ -90,6 +90,13 @@ cross_entropy:
     label_smoothing:
       type: value
       value: 0.0
+    weight:
+      type: tensor
+      value:
+        - type: value
+          value: 0.885
+        - type: value
+          value: 1.18
 
 # ================ FEATURE EXTRACTORS ================
 feature_weights:
@@ -135,7 +142,8 @@ feature_weights_1:
 # ====================== MODEL =======================
 semantics:
   type: class
-  class_name: FuzzyGroundedSemantics
+  # class_name: FuzzyGroundedSemantics
+  class_name: BipolarFuzzyGroundedSemantics
   params:
     max_iters:
       type: ref
@@ -189,6 +197,14 @@ base_score:
       type: function
       value: sigmoid
 
+# base_score:
+#   type: class
+#   class_name: ConstantBaseScore
+#   params:
+#     constant:
+#       type: value
+#       value: 1.0
+
 model:
   type: class
   class_name: GradualAACBR
@@ -216,7 +232,8 @@ model:
       value: true
     use_supports:
       type: value
-      value: false
+      value: true
+      # value: false
     post_process_func:
       type: function
       value: identity

@@ -1,9 +1,10 @@
 epochs:
   type: value
-  value: 256
+  value: 512
 
 lr:
   type: value
+  # value: 0.00005
   value: 0.0001
 
 gamma_dag:
@@ -16,7 +17,7 @@ max_iters:
 
 temperature:
   type: value
-  value: 10
+  value: 100
 
 dag_alpha:
   type: value
@@ -32,7 +33,7 @@ second_layer:
 
 third_layer:
   type: value
-  value: 0
+  value: 64
 
 cluster_size:
   type: value
