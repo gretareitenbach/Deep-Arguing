@@ -1,0 +1,25 @@
+data:
+  type: data
+  sub_type: tabular
+  params:
+    target_field:
+      type: value
+      value: 11
+    path:
+      type: value
+      value: "./data/defeasible/defeasible.csv"
+    has_header:
+      type: value
+      value: true
+    continuous_cols:
+      type: range
+      value:
+        - { type: value, value: 0 }
+        - { type: value, value: 11 }
+
+data_pre_process:
+  type: dict
+  value:
+    pre_process_func:
+      type: function
+      value: "no_normalize"

@@ -49,6 +49,14 @@ def apply_one_hot(X, column_indices):
 def one_hot_encode(data):
     encoder = OneHotEncoder(sparse_output=False)
     encoder.fit(data)
+
+    categories = encoder.categories_[0]
+    print("Label One-Hot Encoding Mapping:")
+    for i, category in enumerate(categories):
+        one_hot_vec = [0] * len(categories)
+        one_hot_vec[i] = 1
+        print(f"  {category} -> {one_hot_vec} -> Class {i}")
+
     return encoder.transform(data)
 
 
@@ -211,7 +219,16 @@ def load_torch_images(
         X = X[indices]
         y = y[indices]
 
-    y = torch.nn.functional.one_hot(y, num_classes=len(torch.unique(y))).float()
+    unique_labels = torch.unique(y).tolist()
+    num_classes = len(unique_labels)
+
+    print("Label One-Hot Encoding Mapping:")
+    for i, label in enumerate(unique_labels):
+        one_hot_vec = [0] * num_classes
+        one_hot_vec[i] = 1
+        print(f"  {label} -> {one_hot_vec} -> Class {i}")
+
+    y = torch.nn.functional.one_hot(y, num_classes=num_classes).float()
 
     # Move to device
     X = X.to(device)
