@@ -7,7 +7,7 @@ from deeparguing.criterion.criterion import Criterion
 from deeparguing.gradual_aacbr import GradualAACBR
 
 
-class AttackDefaultsRegulariser(Criterion):
+class TransitivityRegulariser(Criterion):
 
     def __init__(
         self,
@@ -19,11 +19,14 @@ class AttackDefaultsRegulariser(Criterion):
         self, model: GradualAACBR, predictions: Tensor, targets: Tensor
     ) -> Tensor:
 
-        mse = torch.nn.MSELoss()
-        out = model.casebase_edge_weights(model.X_cases, model.X_default)
-        result = mse(out, torch.ones_like(out))
-        out = model.casebase_edge_weights(model.X_default, model.X_cases)
-        result += mse(out, torch.zeros_like(out))
+        n = len(model.X_train)
+        W = model.casebase_edge_weights(model.X_train, model.X_train).reshape(n, n)
+        Wij = W.unsqueeze(2)  # (n, n, 1)
+        Wjk = W.unsqueeze(0)  # (1, n, n)
+        Wik = W.unsqueeze(1)  # (n, 1, n)
+
+        violations = torch.relu(Wij * Wjk - Wik)
+        result = violations.mean()
 
         return result
 

@@ -3,6 +3,7 @@ from .entropy_regularisation import BatchEntropyRegularisation
 from .focal_loss import FocalLoss
 from .ldam_loss import LDAMLoss
 from .per_class_entropy_regularisation import PerClassEntropyRegularisation
+from .shift_loss import ShiftLoss
 from .torch_loss import TorchLoss
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "LDAMLoss",
     "PerClassEntropyRegularisation",
     "TorchLoss",
+    "ShiftLoss",
 ]

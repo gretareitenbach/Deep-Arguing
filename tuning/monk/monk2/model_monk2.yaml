@@ -34,7 +34,7 @@ trainer:
   params:
     criterion:
       type: ref
-      value: cross_entropy
+      value: shift_loss
     epochs:
       type: ref
       value: epochs
@@ -76,27 +76,32 @@ build_casebase:
 
 build_new_cases:
   type: function
-
-  # ====================== LOSSES ======================
   value: use_train
 
-cross_entropy:
+  # ====================== LOSSES ======================
+
+# cross_entropy:
+#   type: class
+#   class_name: TorchLoss
+#   params:
+#     class_name:
+#       type: value
+#       value: CrossEntropyLoss
+#     label_smoothing:
+#       type: value
+#       value: 0.0
+#     weight:
+#       type: tensor
+#       value:
+#         - type: value
+#           value: 0.885
+#         - type: value
+#           value: 1.18
+
+shift_loss:
   type: class
-  class_name: TorchLoss
-  params:
-    class_name:
-      type: value
-      value: CrossEntropyLoss
-    label_smoothing:
-      type: value
-      value: 0.0
-    weight:
-      type: tensor
-      value:
-        - type: value
-          value: 0.885
-        - type: value
-          value: 1.18
+  class_name: ShiftLoss
+
 
 # ================ FEATURE EXTRACTORS ================
 feature_weights:

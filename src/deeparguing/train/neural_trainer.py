@@ -1,14 +1,9 @@
-from typing import Any, Callable
-
 import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
-from torch.optim import Optimizer
 
 from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
-from deeparguing.criterion import CriterionType
-from deeparguing.criterion import CriterionType
 from deeparguing.train.strategies import ValidationLogStrategy
 from deeparguing.train.trainer import Trainer
 

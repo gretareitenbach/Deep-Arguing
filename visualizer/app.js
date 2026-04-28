@@ -15,6 +15,7 @@ let showAttacks = true;
 let useBorderBaseScore = true; // Toggle for border thickness based on base score
 let useTransparentFinalStrength = true; // Toggle for node opacity based on final strength
 let removeSpikes = false; // Toggle to remove spikes (nodes not connected to default cases)
+let hideDefaultsPerClass = false; // Toggle to hide defaults if their class is hidden
 let currentFinalStrengthThreshold = 0.0;
 let currentMinFStrength = 0.0;
 let currentMaxFStrength = 1.0;
@@ -225,6 +226,24 @@ function renderLegend(uniqueClasses) {
         defaultItem.appendChild(defaultBox);
         defaultItem.appendChild(defaultLabel);
         legendItems.appendChild(defaultItem);
+
+        const hideDefaultsItem = document.createElement('label');
+        hideDefaultsItem.className = 'legend-item checkbox-row';
+        hideDefaultsItem.style.cursor = 'pointer';
+        
+        const hideDefaultsCheckbox = document.createElement('input');
+        hideDefaultsCheckbox.type = 'checkbox';
+        hideDefaultsCheckbox.checked = hideDefaultsPerClass;
+        hideDefaultsCheckbox.addEventListener('change', (e) => {
+            hideDefaultsPerClass = e.target.checked;
+            if (precomputedEdges.length > 0) handleSliderChange();
+        });
+
+        const hideDefaultsLabel = document.createTextNode(`Hide Defaults Per Class`);
+        
+        hideDefaultsItem.appendChild(hideDefaultsCheckbox);
+        hideDefaultsItem.appendChild(hideDefaultsLabel);
+        legendItems.appendChild(hideDefaultsItem);
     }
 }
 
@@ -554,6 +573,7 @@ jsonUpload.addEventListener('change', (event) => {
                     // Initialize filter states
                     visibleClasses = new Set(yTrainData);
                     showDefaultCases = true;
+                    hideDefaultsPerClass = false;
 
                     setTimeout(() => {
                         precomputeImages();
@@ -808,9 +828,11 @@ function getFilteredEdges() {
         const targetClass = yTrainData[targetId];
         
         if (isSourceDefault && !showDefaultCases) return false;
+        if (isSourceDefault && hideDefaultsPerClass && sourceClass !== undefined && !visibleClasses.has(sourceClass)) return false;
         if (!isSourceDefault && sourceClass !== undefined && !visibleClasses.has(sourceClass)) return false;
         
         if (isTargetDefault && !showDefaultCases) return false;
+        if (isTargetDefault && hideDefaultsPerClass && targetClass !== undefined && !visibleClasses.has(targetClass)) return false;
         if (!isTargetDefault && targetClass !== undefined && !visibleClasses.has(targetClass)) return false;
 
         // Edge Weight Checks
@@ -837,6 +859,7 @@ function getFilteredEdges() {
             
             const targetClass = yTrainData[j];
             if (isTargetDefault && !showDefaultCases) continue;
+            if (isTargetDefault && hideDefaultsPerClass && targetClass !== undefined && !visibleClasses.has(targetClass)) continue;
             if (!isTargetDefault && targetClass !== undefined && !visibleClasses.has(targetClass)) continue;
 
             const weight = newCasesAdjacency[selectedNewCaseIndex][j][currentGraphIndex];
@@ -958,7 +981,7 @@ function initCytoscape() {
 
         const fStrength = (selectedNewCaseIndex !== -1 && finalStrengths.length > 0) ? getFinalStrength(selectedNewCaseIndex, i, currentGraphIndex) : score;
 
-        const isVisibleClass = isDefault ? showDefaultCases : (classInt !== undefined ? visibleClasses.has(classInt) : true);
+        const isVisibleClass = isDefault ? (showDefaultCases && (!hideDefaultsPerClass || classInt === undefined || visibleClasses.has(classInt))) : (classInt !== undefined ? visibleClasses.has(classInt) : true);
 
         if (!isVisibleClass) {
             nodeDisplay = 'none';
@@ -1175,6 +1198,26 @@ function initCytoscape() {
     cy.on('mouseout', 'node', () => {
         nodeTooltip.classList.add('hidden');
     });
+
+    // Edge click tooltip
+    cy.on('click', 'edge', (e) => {
+        const edge = e.target;
+        const weight = edge.data('weight');
+        
+        let tooltipHtml = `<strong>Edge Weight:</strong> ${weight.toFixed(4)}`;
+        nodeTooltip.innerHTML = tooltipHtml;
+        
+        nodeTooltip.style.left = e.originalEvent.clientX + 15 + 'px';
+        nodeTooltip.style.top = e.originalEvent.clientY + 15 + 'px';
+        nodeTooltip.classList.remove('hidden');
+    });
+
+    // Hide tooltip when clicking the background
+    cy.on('click', (e) => {
+        if (e.target === cy) {
+            nodeTooltip.classList.add('hidden');
+        }
+    });
 }
 
 /**
@@ -1224,7 +1267,7 @@ function updateGraphElements() {
             const fStrength = (selectedNewCaseIndex !== -1 && finalStrengths.length > 0) ? getFinalStrength(selectedNewCaseIndex, nodeId, currentGraphIndex) : score;
 
             // Opacity and Display
-            const isVisibleClass = isDefault ? showDefaultCases : (classInt !== undefined ? visibleClasses.has(classInt) : true);
+            const isVisibleClass = isDefault ? (showDefaultCases && (!hideDefaultsPerClass || classInt === undefined || visibleClasses.has(classInt))) : (classInt !== undefined ? visibleClasses.has(classInt) : true);
 
             if (!isVisibleClass) {
                 node.data('display', 'none');

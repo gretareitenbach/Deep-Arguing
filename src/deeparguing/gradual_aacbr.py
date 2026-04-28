@@ -247,9 +247,11 @@ class GradualAACBR(torch.nn.Module):
         # else: already 3D (n, n, d)
 
         edge_weights = edge_weights.reshape((train_size, train_size, -1))
-        return self.t_norm.and_op(
-            edge_weights, self.t_norm.not_op(torch.transpose(edge_weights, 0, 1))
-        )
+        if self.use_symmetric_attacks:
+            return self.t_norm.and_op(
+                edge_weights, self.t_norm.not_op(torch.transpose(edge_weights, 0, 1))
+            )
+        return edge_weights
 
     def __casebase_edge_weights_equal(
         self, attacker: Tensor, target: Tensor, train_size: int

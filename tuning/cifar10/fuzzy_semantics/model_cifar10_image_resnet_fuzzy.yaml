@@ -15,6 +15,14 @@ sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
 
+irr_sparsity_regulariser:
+  type: class
+  class_name: IrrelevanceSparsityRegulariser
+
+transitivity_regulariser:
+  type: class
+  class_name: TransitivityRegulariser
+
 community_preservation_regulariser:
   type: class
   class_name: CommunityPreservationRegulariser
@@ -35,6 +43,12 @@ regularisers:
             - type: ref
               value: attacks_defaults_regulariser
             - type: value
+              value: 0.0
+        - type: list
+          value:
+            - type: ref
+              value: transitivity_regulariser
+            - type: value
               value: 1.0
         - type: list
           value:
@@ -48,6 +62,12 @@ regularisers:
               value: class_balance_regulariser
             - type: ref
               value: gamma_cbr
+        - type: list
+          value:
+            - type: ref
+              value: irr_sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
         - type: list
           value:
             - type: ref

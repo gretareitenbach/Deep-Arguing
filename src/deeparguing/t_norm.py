@@ -63,7 +63,10 @@ class GodelTNorm(TNorm):
 
     @override
     def aggregate(self, x: Tensor, dim: int) -> Tensor:
-        return torch.min(x, dim=dim).values
+        tau = 0.025
+        return -tau * torch.logsumexp(-x/tau, dim=dim)
+
+        # return torch.min(x, dim=dim).values
 
     @override
     def or_aggregate(self, x: Tensor, dim: int) -> Tensor:

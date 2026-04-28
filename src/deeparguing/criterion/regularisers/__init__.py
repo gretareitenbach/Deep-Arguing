@@ -7,7 +7,9 @@ from .connectivity_regulariser import ConnectivityRegulariser
 from .dag_regulariser import DAGRegulariser
 from .laplacian_regulariser import LaplacianRegulariser
 from .notears_regulariser import NOTEARSRegulariser
-from .sparsity_regulariser import SparsityRegulariser
+from .sparsity_regulariser import (IrrelevanceSparsityRegulariser,
+                                   SparsityRegulariser)
+from .transitivity_regulariser import TransitivityRegulariser
 from .utils import (apply_threshold_to_model, filter_to_attacks,
                     filter_to_supports, threshold_adjacency)
 
@@ -25,4 +27,6 @@ __all__ = [
     "filter_to_supports",
     "threshold_adjacency",
     "AttackDefaultsRegulariser",
+    "IrrelevanceSparsityRegulariser",
+    "TransitivityRegulariser",
 ]
