@@ -21,6 +21,7 @@ let currentMinFStrength = 0.0;
 let currentMaxFStrength = 1.0;
 let showImages = false;     // Toggle to render images
 let hasImages = false;      // True if X_train is 3D/4D
+let isTabularData = false;  // True if X_train is Tabular
 
 let visibleClasses = new Set();
 let showDefaultCases = true;
@@ -279,8 +280,9 @@ function precomputeEdges(matrixData) {
 }
 
 /**
- * Detects if X_train contains images and precomputes Base64 URIs.
- * Expects shape: (n, H, W) or (n, C, H, W) or (n, H, W, C)
+ * Detects if X_train contains images or tabular data and precomputes Base64 URIs.
+ * Expects shape: (n, H, W) or (n, C, H, W) or (n, H, W, C) for images
+ * Expects shape: (n, features) for tabular data
  */
 function precomputeImages() {
     hasImages = false;
@@ -292,147 +294,237 @@ function precomputeImages() {
     
     // Check array depth to infer shape
     let isImage = false;
+    let isTabular = false;
     let isGrayscale = true;
     let H = 0, W = 0;
 
-    if (Array.isArray(sample) && Array.isArray(sample[0])) {
-        if (!Array.isArray(sample[0][0])) {
-            // Shape: (H, W) -> Grayscale
-            isImage = true;
-            H = sample.length;
-            W = sample[0].length;
-        } else if (Array.isArray(sample[0][0])) {
-            // Shape: (C, H, W) or (H, W, C)
-            isImage = true;
-            if (sample.length === 1 || sample.length === 3) {
-                // (C, H, W)
-                isGrayscale = sample.length === 1;
-                H = sample[0].length;
-                W = sample[0][0].length;
-            } else {
-                // (H, W, C)
-                isGrayscale = sample[0][0].length === 1;
+    if (Array.isArray(sample)) {
+        if (typeof sample[0] === 'number') {
+            isTabular = true;
+        } else if (Array.isArray(sample[0])) {
+            if (!Array.isArray(sample[0][0])) {
+                // Shape: (H, W) -> Grayscale
+                isImage = true;
                 H = sample.length;
                 W = sample[0].length;
+            } else if (Array.isArray(sample[0][0])) {
+                // Shape: (C, H, W) or (H, W, C)
+                isImage = true;
+                if (sample.length === 1 || sample.length === 3) {
+                    // (C, H, W)
+                    isGrayscale = sample.length === 1;
+                    H = sample[0].length;
+                    W = sample[0][0].length;
+                } else {
+                    // (H, W, C)
+                    isGrayscale = sample[0][0].length === 1;
+                    H = sample.length;
+                    W = sample[0].length;
+                }
             }
         }
     }
 
-    if (!isImage) return;
+    if (!isImage && !isTabular) return;
 
     hasImages = true;
+    isTabularData = isTabular;
     imageToggleContainer.style.display = 'flex';
     showImagesCheckbox.disabled = false;
     showImagesCheckbox.checked = false;
+    
+    const labelElem = document.querySelector('label[for="show-images-checkbox"]');
+    if (labelElem) {
+        labelElem.textContent = isTabular ? "Show Features Bar Chart" : "Show Node Images";
+    }
 
-    // Create an off-screen canvas for rendering
-    // Scale up small images (like 32x32 CIFAR) directly on the canvas using nearest-neighbor
-    // to avoid browser anti-aliasing blur when Cytoscape draws them.
-    const SCALE = 2; 
-    const canvas = document.createElement('canvas');
-    canvas.width = W * SCALE;
-    canvas.height = H * SCALE;
-    const ctx = canvas.getContext('2d');
-    const imgData = ctx.createImageData(canvas.width, canvas.height);
-
-    function renderItemToDataUrl(item) {
-        // Use dynamically provided normalization parameters or fallback to CIFAR-10 defaults
-        // X = (X - mean) / std  -->  Original = (X * std) + mean
-        let means = [0.4914, 0.4822, 0.4465];
-        let stds = [0.2470, 0.2435, 0.2616];
-
-        if (normalizationMean && normalizationStd) {
-            means = Array.isArray(normalizationMean) ? normalizationMean.flat() : [normalizationMean];
-            stds = Array.isArray(normalizationStd) ? normalizationStd.flat() : [normalizationStd];
-        }
-        
-        // Flatten and un-normalize values
-        const unnormalizedVals = []; // will store objects {r,g,b} or just single values
-        
-        if (H > 0 && W > 0 && !Array.isArray(item[0][0])) {
-            // (H, W) -> Grayscale, just map back assuming typical 0-1 or we use first channel mean/std
-            for(let r=0; r<H; r++){
-                for(let c=0; c<W; c++){
-                    const v = (item[r][c] * stds[0]) + means[0]; 
-                    unnormalizedVals.push({ r: v, g: v, b: v });
-                }
-            }
-        } else if (item.length === 1 || item.length === 3) {
-            // (C, H, W)
-            const numChannels = item.length;
-            for(let r=0; r<H; r++){
-                for(let w=0; w<W; w++){
-                    let rv = 0, gv = 0, bv = 0;
-                    if (numChannels === 3) {
-                        rv = (item[0][r][w] * stds[0]) + means[0];
-                        gv = (item[1][r][w] * stds[1]) + means[1];
-                        bv = (item[2][r][w] * stds[2]) + means[2];
-                    } else {
-                        const v = (item[0][r][w] * stds[0]) + means[0];
-                        rv = v; gv = v; bv = v;
-                    }
-                    unnormalizedVals.push({ r: rv, g: gv, b: bv });
-                }
-            }
-        } else {
-            // (H, W, C)
-            const numChannels = item[0][0].length;
-            for(let r=0; r<H; r++){
-                for(let w=0; w<W; w++){
-                    let rv = 0, gv = 0, bv = 0;
-                    if (numChannels === 3) {
-                        rv = (item[r][w][0] * stds[0]) + means[0];
-                        gv = (item[r][w][1] * stds[1]) + means[1];
-                        bv = (item[r][w][2] * stds[2]) + means[2];
-                    } else {
-                        const v = (item[r][w][0] * stds[0]) + means[0];
-                        rv = v; gv = v; bv = v;
-                    }
-                    unnormalizedVals.push({ r: rv, g: gv, b: bv });
-                }
-            }
-        }
-
-        // Fill ImageData (apply manual nearest-neighbor scaling)
-        for (let i = 0; i < unnormalizedVals.length; i++) {
-            const pixel = unnormalizedVals[i];
+    if (isTabular) {
+        function renderTabularToDataUrl(item) {
+            const canvas = document.createElement('canvas');
+            const width = 800;
+            const height = 200;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
             
-            // Map from [0, 1] range to [0, 255] and clamp
-            const rScaled = Math.max(0, Math.min(255, Math.round(pixel.r * 255)));
-            const gScaled = Math.max(0, Math.min(255, Math.round(pixel.g * 255)));
-            const bScaled = Math.max(0, Math.min(255, Math.round(pixel.b * 255)));
-
-            // Calculate original row/col
-            const origR = Math.floor(i / W);
-            const origC = i % W;
-
-            // Fill a SCALE x SCALE block of pixels in the scaled image
-            for (let sr = 0; sr < SCALE; sr++) {
-                for (let sc = 0; sc < SCALE; sc++) {
-                    const destR = (origR * SCALE) + sr;
-                    const destC = (origC * SCALE) + sc;
-                    
-                    const destIdx = (destR * (W * SCALE) + destC) * 4;
-                    
-                    imgData.data[destIdx] = rScaled;    // R
-                    imgData.data[destIdx+1] = gScaled;  // G
-                    imgData.data[destIdx+2] = bScaled;  // B
-                    imgData.data[destIdx+3] = 255;      // Alpha
-                }
+            // Draw background
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Find min/max for scaling
+            let minVal = Math.min(...item);
+            let maxVal = Math.max(...item);
+            if (minVal === maxVal) {
+                minVal -= 1;
+                maxVal += 1;
             }
+            const range = maxVal - minVal;
+            
+            const padding = 10;
+            const drawWidth = width - 2 * padding;
+            const drawHeight = height - 2 * padding;
+            
+            const numFeatures = item.length;
+            const barWidth = Math.max(1, (drawWidth / numFeatures) - 1);
+            
+            // Draw axes
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, height - padding);
+            ctx.lineTo(width - padding, height - padding); // X axis
+            const zeroY = height - padding - ((0 - minVal) / range) * drawHeight;
+            if (minVal < 0 && maxVal > 0) {
+                ctx.moveTo(padding, zeroY);
+                ctx.lineTo(width - padding, zeroY); // Zero line
+                ctx.strokeStyle = '#aaa';
+            }
+            ctx.stroke();
+            
+            // Draw bars
+            for (let i = 0; i < numFeatures; i++) {
+                const val = item[i];
+                const normalizedH = (Math.abs(val) / range) * drawHeight;
+                const x = padding + i * (drawWidth / numFeatures);
+                let y;
+                if (val >= 0) {
+                    y = (minVal < 0 && maxVal > 0) ? zeroY - normalizedH : height - padding - normalizedH;
+                    ctx.fillStyle = '#3498db'; // blue
+                } else {
+                    y = zeroY;
+                    ctx.fillStyle = '#e74c3c'; // red
+                }
+                
+                ctx.fillRect(x, y, barWidth, Math.max(1, normalizedH));
+            }
+            
+            // Add border
+            ctx.strokeStyle = '#ccc';
+            ctx.strokeRect(0, 0, width, height);
+            
+            return canvas.toDataURL('image/png');
         }
 
-        ctx.putImageData(imgData, 0, 0);
-        return canvas.toDataURL('image/png');
-    }
+        for (let n = 0; n < xTrainData.length; n++) {
+            nodeImages[n] = renderTabularToDataUrl(xTrainData[n]);
+        }
 
-    for (let n = 0; n < xTrainData.length; n++) {
-        nodeImages[n] = renderItemToDataUrl(xTrainData[n]);
-    }
+        if (newCasesData && newCasesData.length > 0) {
+            for (let i = 0; i < newCasesData.length; i++) {
+                newCaseImages[i] = renderTabularToDataUrl(newCasesData[i]);
+            }
+        }
+        
+    } else {
+        // Create an off-screen canvas for rendering
+        // Scale up small images (like 32x32 CIFAR) directly on the canvas using nearest-neighbor
+        // to avoid browser anti-aliasing blur when Cytoscape draws them.
+        const SCALE = 2; 
+        const canvas = document.createElement('canvas');
+        canvas.width = W * SCALE;
+        canvas.height = H * SCALE;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(canvas.width, canvas.height);
 
-    if (newCasesData && newCasesData.length > 0) {
-        for (let i = 0; i < newCasesData.length; i++) {
-            newCaseImages[i] = renderItemToDataUrl(newCasesData[i]);
+        function renderItemToDataUrl(item) {
+            // Use dynamically provided normalization parameters or fallback to CIFAR-10 defaults
+            // X = (X - mean) / std  -->  Original = (X * std) + mean
+            let means = [0.4914, 0.4822, 0.4465];
+            let stds = [0.2470, 0.2435, 0.2616];
+
+            if (normalizationMean && normalizationStd) {
+                means = Array.isArray(normalizationMean) ? normalizationMean.flat() : [normalizationMean];
+                stds = Array.isArray(normalizationStd) ? normalizationStd.flat() : [normalizationStd];
+            }
+            
+            // Flatten and un-normalize values
+            const unnormalizedVals = []; // will store objects {r,g,b} or just single values
+            
+            if (H > 0 && W > 0 && !Array.isArray(item[0][0])) {
+                // (H, W) -> Grayscale, just map back assuming typical 0-1 or we use first channel mean/std
+                for(let r=0; r<H; r++){
+                    for(let c=0; c<W; c++){
+                        const v = (item[r][c] * stds[0]) + means[0]; 
+                        unnormalizedVals.push({ r: v, g: v, b: v });
+                    }
+                }
+            } else if (item.length === 1 || item.length === 3) {
+                // (C, H, W)
+                const numChannels = item.length;
+                for(let r=0; r<H; r++){
+                    for(let w=0; w<W; w++){
+                        let rv = 0, gv = 0, bv = 0;
+                        if (numChannels === 3) {
+                            rv = (item[0][r][w] * stds[0]) + means[0];
+                            gv = (item[1][r][w] * stds[1]) + means[1];
+                            bv = (item[2][r][w] * stds[2]) + means[2];
+                        } else {
+                            const v = (item[0][r][w] * stds[0]) + means[0];
+                            rv = v; gv = v; bv = v;
+                        }
+                        unnormalizedVals.push({ r: rv, g: gv, b: bv });
+                    }
+                }
+            } else {
+                // (H, W, C)
+                const numChannels = item[0][0].length;
+                for(let r=0; r<H; r++){
+                    for(let w=0; w<W; w++){
+                        let rv = 0, gv = 0, bv = 0;
+                        if (numChannels === 3) {
+                            rv = (item[r][w][0] * stds[0]) + means[0];
+                            gv = (item[r][w][1] * stds[1]) + means[1];
+                            bv = (item[r][w][2] * stds[2]) + means[2];
+                        } else {
+                            const v = (item[r][w][0] * stds[0]) + means[0];
+                            rv = v; gv = v; bv = v;
+                        }
+                        unnormalizedVals.push({ r: rv, g: gv, b: bv });
+                    }
+                }
+            }
+
+            // Fill ImageData (apply manual nearest-neighbor scaling)
+            for (let i = 0; i < unnormalizedVals.length; i++) {
+                const pixel = unnormalizedVals[i];
+                
+                // Map from [0, 1] range to [0, 255] and clamp
+                const rScaled = Math.max(0, Math.min(255, Math.round(pixel.r * 255)));
+                const gScaled = Math.max(0, Math.min(255, Math.round(pixel.g * 255)));
+                const bScaled = Math.max(0, Math.min(255, Math.round(pixel.b * 255)));
+
+                // Calculate original row/col
+                const origR = Math.floor(i / W);
+                const origC = i % W;
+
+                // Fill a SCALE x SCALE block of pixels in the scaled image
+                for (let sr = 0; sr < SCALE; sr++) {
+                    for (let sc = 0; sc < SCALE; sc++) {
+                        const destR = (origR * SCALE) + sr;
+                        const destC = (origC * SCALE) + sc;
+                        
+                        const destIdx = (destR * (W * SCALE) + destC) * 4;
+                        
+                        imgData.data[destIdx] = rScaled;    // R
+                        imgData.data[destIdx+1] = gScaled;  // G
+                        imgData.data[destIdx+2] = bScaled;  // B
+                        imgData.data[destIdx+3] = 255;      // Alpha
+                    }
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            return canvas.toDataURL('image/png');
+        }
+
+        for (let n = 0; n < xTrainData.length; n++) {
+            nodeImages[n] = renderItemToDataUrl(xTrainData[n]);
+        }
+
+        if (newCasesData && newCasesData.length > 0) {
+            for (let i = 0; i < newCasesData.length; i++) {
+                newCaseImages[i] = renderItemToDataUrl(newCasesData[i]);
+            }
         }
     }
 }
@@ -1017,8 +1109,8 @@ function initCytoscape() {
 
         if (showImages && hasImages && nodeImages[i]) {
             bgImage = nodeImages[i];
-            nWidth = 60;
-            nHeight = 60;
+            nWidth = isTabularData ? 480 : 60;
+            nHeight = isTabularData ? 120 : 60;
             if (!useBorderBaseScore) {
                 bWidth = isDefault ? 6 : 4;
             }
@@ -1074,8 +1166,8 @@ function initCytoscape() {
 
         if (showImages && hasImages && newCaseImages[selectedNewCaseIndex]) {
             bgImage = newCaseImages[selectedNewCaseIndex];
-            nWidth = 70;
-            nHeight = 70;
+            nWidth = isTabularData ? 560 : 70;
+            nHeight = isTabularData ? 140 : 70;
             if (!useBorderBaseScore) {
                 bWidth = 6;
             }
@@ -1310,8 +1402,8 @@ function updateGraphElements() {
 
             if (showImages && hasImages && nodeImages[nodeId]) {
                 bgImage = nodeImages[nodeId];
-                nWidth = 60;
-                nHeight = 60;
+                nWidth = isTabularData ? 480 : 60;
+                nHeight = isTabularData ? 120 : 60;
                 if (!useBorderBaseScore) {
                     bWidth = isDefault ? 6 : 4;
                 }
@@ -1368,8 +1460,8 @@ function updateGraphElements() {
 
             if (showImages && hasImages && newCaseImages[selectedNewCaseIndex]) {
                 bgImage = newCaseImages[selectedNewCaseIndex];
-                nWidth = 70;
-                nHeight = 70;
+                nWidth = isTabularData ? 560 : 70;
+                nHeight = isTabularData ? 140 : 70;
                 if (!useBorderBaseScore) {
                     bWidth = 6;
                 }

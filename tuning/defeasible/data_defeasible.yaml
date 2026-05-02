@@ -7,7 +7,7 @@ data:
       value: 11
     path:
       type: value
-      value: "./data/defeasible/defeasible.csv"
+      value: "./data/defeasible/defeasible_noisy.csv"
     has_header:
       type: value
       value: true

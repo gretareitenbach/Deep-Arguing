@@ -6,7 +6,7 @@ np.random.seed(123)
 # Number of samples
 n = 10_000
 
-# Generate synthetic features
+# --- Generate synthetic features ---
 data = pd.DataFrame(
     {
         "temperature": np.random.uniform(0, 40, n),
@@ -24,6 +24,7 @@ data = pd.DataFrame(
 )
 
 
+# --- Classification function ---
 def classify(row):
     score = 0
 
@@ -31,7 +32,7 @@ def classify(row):
     score += 0.1
 
     # LEVEL 1 RULES
-    if row.temperature > 18 and row.temperature < 30:
+    if 18 < row.temperature < 30:
         score += 2.0
 
     if row.cloud_cover > 0.75:
@@ -53,14 +54,14 @@ def classify(row):
     if row.pollution > 110 and row.green_space > 0.7:
         score += 2.0
 
-    # LEVEL 3 EXCEPTIONS TO EXCEPTIONS
+    # LEVEL 3 EXCEPTIONS
     if row.cloud_cover > 0.75 and row.uv_index > 7 and row.wind_speed > 14:
         score -= 1.0
 
     if row.precipitation > 8 and row.visibility > 9 and row.humidity > 80:
         score -= 0.5
 
-    # ADDITIONAL PRIORITY-ORDERED RULES
+    # ADDITIONAL RULES
     if row.temperature < 16:
         score -= 1.0
 
@@ -82,9 +83,67 @@ def classify(row):
         return "Neutral"
 
 
+# --- STEP 1: Initial labels (clean) ---
 data["class"] = data.apply(classify, axis=1)
 
-file_path = "data/defeasible/defeasible.csv"
-data.to_csv(file_path, index=False)
 
-print(data["class"].value_counts())
+# --- STEP 2: Gaussian noise ---
+def add_gaussian_noise(df, noise_level=0.08):
+    noisy_df = df.copy()
+
+    for col in df.columns:
+        if col != "class":
+            std = df[col].std()
+            noise = np.random.normal(0, noise_level * std, size=len(df))
+            noisy_df[col] += noise
+
+    return noisy_df
+
+
+data_noisy = add_gaussian_noise(data, noise_level=0.08)
+
+
+# --- STEP 3: Structured noise ---
+data_noisy["precipitation"] += data_noisy["humidity"] * 0.015
+data_noisy["visibility"] -= data_noisy["wind_speed"] * 0.05
+
+# Rare anomalies
+mask_pollution = np.random.rand(n) < 0.02
+data_noisy.loc[mask_pollution, "pollution"] *= 1.4
+
+mask_visibility = np.random.rand(n) < 0.015
+data_noisy.loc[mask_visibility, "visibility"] *= 0.6
+
+
+# --- STEP 4: Clip to valid bounds ---
+bounds = {
+    "temperature": (0, 40),
+    "humidity": (15, 95),
+    "wind_speed": (0, 20),
+    "cloud_cover": (0, 1),
+    "pollution": (5, 160),
+    "uv_index": (0, 11),
+    "visibility": (0.5, 12),
+    "precipitation": (0, 20),
+    "pressure": (970, 1040),
+    "hour": (0, 23),
+    "green_space": (0, 1),
+}
+
+for col, (low, high) in bounds.items():
+    data_noisy[col] = data_noisy[col].clip(low, high)
+
+
+
+# --- STEP 5: Add label noise ---
+flip_mask = np.random.rand(n) < 0.04
+data_noisy.loc[flip_mask, "class"] = np.random.choice(
+    ["Favourable", "Neutral", "Unfavourable"], size=flip_mask.sum()
+)
+
+
+# --- Save ---
+file_path = "data/defeasible/defeasible_noisy.csv"
+data_noisy.to_csv(file_path, index=False)
+
+print(data_noisy["class"].value_counts())

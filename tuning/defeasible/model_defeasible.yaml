@@ -15,6 +15,10 @@ sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
 
+irrelevance_sparsity_regulariser:
+  type: class
+  class_name: IrrelevanceSparsityRegulariser
+
 community_preservation_regulariser:
   type: class
   class_name: CommunityPreservationRegulariser
@@ -58,6 +62,12 @@ regularisers:
               value: sparsity_regulariser
             - type: ref
               value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: irrelevance_sparsity_regulariser
+            - type: ref
+              value: gamma_irrelevance_sparsity
         # - type: list
         #   value:
         #     - type: ref
@@ -279,7 +289,7 @@ model:
       value: true
     use_supports:
       type: value
-      value: true
+      value: false
     post_process_func:
       type: function
       value: identity

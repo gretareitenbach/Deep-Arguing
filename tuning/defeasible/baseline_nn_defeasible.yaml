@@ -15,14 +15,15 @@ cross_entropy:
     label_smoothing:
       type: ref
       value: label_smoothing
-    # weight:
-    #   type: tensor
-    #   value:
-    #     - type: value
-    #       value: 1.62
-    #     - type: value
-    #       value: 2.89
-    #
+    weight:
+      type: tensor
+      value:
+        - type: value
+          value: 1.031
+        - type: value
+          value: 0.943
+        - type: value
+          value: 1.030
 
 losses:
   type: class
