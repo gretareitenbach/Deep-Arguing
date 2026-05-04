@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict
 import torch
 import yaml
 from optuna import Trial
+from sklearn.model_selection import train_test_split
 from torch.nn import *
 from torch.optim import *
 from torch.optim.lr_scheduler import *
@@ -81,18 +82,45 @@ def load_data_dict(
         k: parse_entry(v, config, ref_stack, trial, device)
         for k, v in entry.get("params", {}).items()
     }
+    
+    test_path = params.pop("test_path", None)
+    use_test_set = params.pop("use_test_set", False)
+    
     if entry["sub_type"] == "tabular":
-        X, y = load_tabular_data(device=device, **params)
+        X, y, state = load_tabular_data(device=device, **params)
         image_mean, image_std = None, None
+        
+        if test_path is not None:
+            X_train_full, X_val, y_train_full, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+            X_train = X_train_full
+            y_train = y_train_full
+            test_params = params.copy()
+            test_params["path"] = test_path
+            test_params["state"] = state
+            X_test, y_test, _ = load_tabular_data(device=device, **test_params)
+        else:
+            X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=42)
+            
     elif entry["sub_type"] == "torch_imaging":
         # We store the image_mean and image_std so we can unnormalise in the visualizer
-        X, y, image_mean, image_std = load_torch_images(device=device, **params)
+        X, y, image_mean, image_std = load_torch_images(device=device, train=True, **params)
         data_dict["image_mean"] = image_mean
         data_dict["image_std"] = image_std
+        
+        if use_test_set:
+            X_train_full, X_val, y_train_full, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+            X_train = X_train_full
+            y_train = y_train_full
+            test_params = params.copy()
+            test_params["train"] = False
+            test_params["mean"] = image_mean
+            test_params["std"] = image_std
+            X_test, y_test, _, _ = load_torch_images(device=device, **test_params)
+        else:
+            X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=42)
     else:
         raise ValueError(f"Unknown data subtype: {entry['sub_type']}")
 
-    X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=42)
     data_dict["labels"] = torch.unique(y, dim=0)
     data_dict["no_features"] = X.shape[-1]
     data_dict["y_train"] = y_train

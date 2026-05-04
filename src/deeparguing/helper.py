@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -26,38 +27,40 @@ def apply_binary_map(X, column_indices, binary_maps):
     return X
 
 
-def apply_scaling(X, column_indices):
-    scaler = StandardScaler()
-    X[:, column_indices] = scaler.fit_transform(X[:, column_indices].astype(float))
-    return X
+def apply_scaling(X, column_indices, scaler=None):
+    if scaler is None:
+        scaler = StandardScaler()
+        X[:, column_indices] = scaler.fit_transform(X[:, column_indices].astype(float))
+    else:
+        X[:, column_indices] = scaler.transform(X[:, column_indices].astype(float))
+    return X, scaler
 
 
-def apply_one_hot(X, column_indices):
-    encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-
-    subset = X[:, column_indices]
-
-    encoded = encoder.fit_transform(subset)
+def apply_one_hot(X, column_indices, encoder=None):
+    if encoder is None:
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+        encoded = encoder.fit_transform(X[:, column_indices])
+    else:
+        encoded = encoder.transform(X[:, column_indices])
 
     remaining_indices = [i for i in range(X.shape[1]) if i not in column_indices]
-
     remaining = X[:, remaining_indices]
+    return np.concatenate([remaining, encoded], axis=1), encoder
 
-    return np.concatenate([remaining, encoded], axis=1)
 
+def one_hot_encode(data, encoder=None):
+    if encoder is None:
+        encoder = OneHotEncoder(sparse_output=False)
+        encoder.fit(data)
 
-def one_hot_encode(data):
-    encoder = OneHotEncoder(sparse_output=False)
-    encoder.fit(data)
+        categories = encoder.categories_[0]
+        logging.debug("Label One-Hot Encoding Mapping:")
+        for i, category in enumerate(categories):
+            one_hot_vec = [0] * len(categories)
+            one_hot_vec[i] = 1
+            logging.debug(f"  {category} -> {one_hot_vec} -> Class {i}")
 
-    categories = encoder.categories_[0]
-    print("Label One-Hot Encoding Mapping:")
-    for i, category in enumerate(categories):
-        one_hot_vec = [0] * len(categories)
-        one_hot_vec[i] = 1
-        print(f"  {category} -> {one_hot_vec} -> Class {i}")
-
-    return encoder.transform(data)
+    return encoder.transform(data), encoder
 
 
 def load_tabular_data(
@@ -75,11 +78,15 @@ def load_tabular_data(
     continuous_cols: List[int] = [],
     binary_maps: Optional[Dict[int, Dict]] = None,
     sep: str = ",",
+    state: Optional[Dict[str, Any]] = None,
 ):
     """
     Generic tabular dataset loader with flexible preprocessing support.
     Column selections must be passed as integer indices.
     """
+
+    if state is None:
+        state = {}
 
     # ---------- load data ----------
 
@@ -123,17 +130,20 @@ def load_tabular_data(
     # ---------- scaling continuous columns ----------
 
     if continuous_cols:
-        X = apply_scaling(X, continuous_cols)
+        X, scaler = apply_scaling(X, continuous_cols, state.get("scaler"))
+        state["scaler"] = scaler
 
     # ---------- one-hot encode categorical columns ----------
 
     if categorical_cols:
-        X = apply_one_hot(X, categorical_cols)
+        X, cat_encoder = apply_one_hot(X, categorical_cols, state.get("cat_encoder"))
+        state["cat_encoder"] = cat_encoder
 
     # ---------- encode target ----------
 
     y = y.reshape(-1, 1)
-    y = one_hot_encode(y)
+    y, target_encoder = one_hot_encode(y, state.get("target_encoder"))
+    state["target_encoder"] = target_encoder
 
     # ---------- truncate dataset ----------
 
@@ -148,7 +158,7 @@ def load_tabular_data(
     X = torch.tensor(X, dtype=torch.float32, device=device)
     y = torch.tensor(y, dtype=torch.float32, device=device)
 
-    return X, y
+    return X, y, state
 
 
 def load_torch_images(
@@ -159,6 +169,9 @@ def load_torch_images(
     labels: list[int] = [],
     shuffle: bool = False,
     seed: float = 42,
+    train: bool = True,
+    mean: Optional[Tensor] = None,
+    std: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """
     Loads an image dataset (e.g., MNIST, CIFAR10) directly as torch tensors.
@@ -171,13 +184,16 @@ def load_torch_images(
         labels: Optional list of label integers to filter by.
         shuffle: Shuffle the data if True.
         seed: Random seed for reproducibility.
+        train: Whether to load the training or test split.
+        mean: Optional mean to use for normalization.
+        std: Optional std to use for normalization.
 
     Returns:
         (X, y): Tensors of images and one-hot encoded labels.
     """
 
     dataset_class = globals()[class_name]
-    dataset = dataset_class("./temp/", train=True, download=True)
+    dataset = dataset_class("./temp/", train=train, download=True)
 
     if size == -1 or size > len(dataset):
         size = len(dataset)
@@ -202,9 +218,13 @@ def load_torch_images(
     else:
         X = X.unsqueeze(1).float() / 255.0
 
+    if mean is None or std is None:
+        mean = X.mean(dim=(0, 2, 3), keepdim=True)
+        std = X.std(dim=(0, 2, 3), keepdim=True)
+    else:
+        mean = mean.view(1, -1, 1, 1)
+        std = std.view(1, -1, 1, 1)
 
-    mean = X.mean(dim=(0, 2, 3), keepdim=True)
-    std = X.std(dim=(0, 2, 3), keepdim=True)
     X = (X - mean) / std
 
     mean_out = mean.view(-1)
@@ -222,11 +242,11 @@ def load_torch_images(
     unique_labels = torch.unique(y).tolist()
     num_classes = len(unique_labels)
 
-    print("Label One-Hot Encoding Mapping:")
+    logging.debug("Label One-Hot Encoding Mapping:")
     for i, label in enumerate(unique_labels):
         one_hot_vec = [0] * num_classes
         one_hot_vec[i] = 1
-        print(f"  {label} -> {one_hot_vec} -> Class {i}")
+        logging.debug(f"  {label} -> {one_hot_vec} -> Class {i}")
 
     y = torch.nn.functional.one_hot(y, num_classes=num_classes).float()
 

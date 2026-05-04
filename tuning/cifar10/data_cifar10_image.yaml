@@ -5,6 +5,9 @@ data:
     class_name:
       type: value
       value: "CIFAR10"
+    use_test_set:
+      type: value
+      value: true
     shuffle:
       type: value
       value: true

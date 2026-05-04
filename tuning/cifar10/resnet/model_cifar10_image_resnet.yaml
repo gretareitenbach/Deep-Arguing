@@ -178,7 +178,7 @@ feature_weights:
       value: resnet_30.pt
     freeze_weights:
       type: value
-      value: true
+      value: false
 
 feature_weights_1:
   type: class

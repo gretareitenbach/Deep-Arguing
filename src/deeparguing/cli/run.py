@@ -58,9 +58,14 @@ def run(project: str = "gradual-aa-cbr"):
         model_config = read_config_files(args.config)
 
         total = 0
-        f1s = []
+        val_f1s = []
+        val_accs = []
         max_val_accs = []
         max_val_f1s = []
+        test_f1s = []
+        test_accs = []
+        train_f1s = []
+        train_accs = []
 
         trial_id = uuid.uuid4()
 
@@ -218,6 +223,8 @@ def run(project: str = "gradual-aa-cbr"):
                 print_results(
                     acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels
                 )
+                test_f1s.append(f1_test)
+                test_accs.append(acc_test)
 
             if args.run_train:
                 X_train = data_dict["X_train"]
@@ -242,6 +249,8 @@ def run(project: str = "gradual-aa-cbr"):
                     "TRAIN",
                     labels,
                 )
+                train_f1s.append(f1_train)
+                train_accs.append(acc_train)
 
             if args.plot_loss and isinstance(trainer, NeuralTrainer):
                 trainer.plot_loss_curve()
@@ -256,13 +265,15 @@ def run(project: str = "gradual-aa-cbr"):
             if f1 > 0.7:
                 total += 1
             if len(args.seed) > 1:
-                logging.info(
+                # Count how many seeds f1 > 0.7 - informal way to check for model collapse
+                logging.debug(
                     f"F1 > 0.7 in {total}/{seed_idx + 1} seeds, which is {total / (seed_idx + 1) * 100}%"
                 )
-            f1s.append(f1)
+            val_f1s.append(f1)
+            val_accs.append(acc)
             max_val_accs.append(max_val_acc)
             max_val_f1s.append(max_val_f1)
-            logging.info(f"Average f1 score: {np.mean(f1s)}")
+            logging.info(f"Average f1 score: {np.mean(val_f1s)}")
 
             if args.visualise_loss_landscape and isinstance(trainer, NeuralTrainer):
                 visualize_overlayed_loss_landscapes(
@@ -292,15 +303,32 @@ def run(project: str = "gradual-aa-cbr"):
                     new_cases_labels=y_new_cases[: args.num_new_vis],
                 )
 
-        average_f1 = np.mean(f1s)
-        std_f1 = np.std(f1s)
         average_max_val_acc = np.mean(max_val_accs)
         average_max_val_f1 = np.mean(max_val_f1s)
 
-        logging.info(f"Average F1: {average_f1}")
-        logging.info(f"F1 STD: {std_f1}")
+        logging.info("--- VALIDATION RESULTS ---")
+        logging.info(f"Average Val Acc: {np.mean(val_accs)}")
+        logging.info(f"Val F1 STD: {np.std(val_accs)}")
+        logging.info(f"Average Val F1: {np.mean(val_f1s)}")
+        logging.info(f"Val F1 STD: {np.std(val_f1s)}")
+
+
         logging.info(f"Average Max Val Acc: {average_max_val_acc}")
         logging.info(f"Average Max Val F1: {average_max_val_f1}")
+
+        if args.run_train and train_f1s:
+            logging.info("--- TRAIN RESULTS ---")
+            logging.info(f"Average Train Acc: {np.mean(train_accs)}")
+            logging.info(f"Train Acc STD: {np.std(train_accs)}")
+            logging.info(f"Average Train F1: {np.mean(train_f1s)}")
+            logging.info(f"Train F1 STD: {np.std(train_f1s)}")
+            
+        if args.run_test and test_f1s:
+            logging.info("--- TEST RESULTS ---")
+            logging.info(f"Average Test Acc: {np.mean(test_accs)}")
+            logging.info(f"Test Acc STD: {np.std(test_accs)}")
+            logging.info(f"Average Test F1: {np.mean(test_f1s)}")
+            logging.info(f"Test F1 STD: {np.std(test_f1s)}")
 
         if args.ht_obj == "f1":
             return average_max_val_f1

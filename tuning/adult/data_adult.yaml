@@ -8,6 +8,9 @@ data:
     path:
       type: value
       value: "./data/adult/adult.data"
+    test_path:
+      type: value
+      value: "./data/adult/adult.test"
     has_header:
       type: value
       value: false
