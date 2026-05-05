@@ -1,5 +1,7 @@
+from .baselines import (DecisionTreeBaseline, FitPredictBaseline,
+                        LogisticRegressionBaseline, NeuralNetworkBaseline,
+                        RandomForestBaseline, ResnetBaseline, LSTMBaseline)
 from .model import Model
-from .baselines import FitPredictBaseline, LogisticRegressionBaseline, DecisionTreeBaseline, RandomForestBaseline, NeuralNetworkBaseline
 
 __all__ = [
     "Model",
@@ -7,5 +9,7 @@ __all__ = [
     "LogisticRegressionBaseline",
     "DecisionTreeBaseline",
     "RandomForestBaseline",
-    "NeuralNetworkBaseline"
+    "NeuralNetworkBaseline",
+    "ResnetBaseline",
+    "LSTMBaseline"
 ]

@@ -6,6 +6,7 @@ from .scaler import Scaler
 from .simple_cnn import SimpleCNN
 from .threshold_extractor import ThresholdFeatureExtractor
 from .resnet import Resnet32, ResNetCIFAR
+from .lstm import LSTMFeatureExtractor
 
 __all__ = [
     "FeatureExtractor",
@@ -16,5 +17,6 @@ __all__ = [
     "SimpleCNN",
     "ThresholdFeatureExtractor",
     "Resnet32",
-    "ResNetCIFAR"
+    "ResNetCIFAR",
+    "LSTMFeatureExtractor"
 ]

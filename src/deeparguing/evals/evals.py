@@ -98,7 +98,7 @@ def evaluate_model(
         y_new_cases_orig, y_predicted, average="macro", zero_division=0.0
     )
     f1 = f1_score(y_new_cases_orig, y_predicted, average="macro", zero_division=0.0)
-    cm = confusion_matrix(y_new_cases_orig, y_predicted)
+    cm = confusion_matrix(y_new_cases_orig, y_predicted, labels=np.arange(y_new_cases.shape[1]))
 
     assert type(accuracy) == float
     assert type(precision) == float

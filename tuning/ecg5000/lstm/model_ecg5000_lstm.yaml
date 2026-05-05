@@ -1,9 +1,4 @@
 # =================== REGULARISERS ===================
-
-attacks_defaults_regulariser:
-  type: class
-  class_name: AttackDefaultsRegulariser
-
 dag_regulariser:
   type: class
   class_name: DAGRegulariser
@@ -11,6 +6,10 @@ dag_regulariser:
     alpha:
       type: ref
       value: dag_alpha
+
+class_balance_regulariser:
+  type: class
+  class_name: ClassBalanceRegulariser
 
 sparsity_regulariser:
   type: class
@@ -20,6 +19,17 @@ irr_sparsity_regulariser:
   type: class
   class_name: IrrelevanceSparsityRegulariser
 
+transitivity_regulariser:
+  type: class
+  class_name: TransitivityRegulariser
+
+community_preservation_regulariser:
+  type: class
+  class_name: CommunityPreservationRegulariser
+  params:
+    method:
+      type: value
+      value: fro
 
 regularisers:
   type: class
@@ -37,9 +47,21 @@ regularisers:
         - type: list
           value:
             - type: ref
+              value: transitivity_regulariser
+            - type: value
+              value: 1.0
+        - type: list
+          value:
+            - type: ref
               value: dag_regulariser
             - type: ref
               value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: class_balance_regulariser
+            - type: ref
+              value: gamma_cbr
         - type: list
           value:
             - type: ref
@@ -52,6 +74,12 @@ regularisers:
               value: irr_sparsity_regulariser
             - type: ref
               value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: community_preservation_regulariser
+            - type: ref
+              value: gamma_cp
 
 # ====================== LOSSES ======================
 cross_entropy:
@@ -82,6 +110,12 @@ losses:
               value: cross_entropy
             - type: value
               value: 1
+        - type: list
+          value:
+            - type: ref
+              value: batch_entropy
+            - type: ref
+              value: gamma_batch_entropy
 
 # ================ TRAINING SETTINGS =================
 trainer:
@@ -124,8 +158,18 @@ build_casebase:
   class_name: kMeansCluster
   params:
     cluster_size:
-      type: ref
-      value: cluster_size
+      type: list
+      value: 
+        - type: value
+          value: 2
+        - type: value
+          value: 5
+        - type: value
+          value: 5
+        - type: value
+          value: 5
+        - type: value
+          value: 5
     nearest_sample:
       type: value
       value: true
@@ -137,18 +181,30 @@ build_new_cases:
 # ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
-  class_name: "ResNetCIFAR"
+  class_name: LSTMFeatureExtractor
   params:
-    weights_path:
+    input_size:
+      type: ref
+      value: lstm_input_size
+    hidden_size:
+      type: ref
+      value: lstm_hidden_size
+    num_layers:
+      type: ref
+      value: lstm_num_layers
+    bidirectional:
+      type: ref
+      value: lstm_bidirectional
+    dropout:
+      type: ref
+      value: lstm_dropout
+    output_features:
       type: value
-      value: "resnet_30.pt"
-    freeze_weights:
-      type: value
-      value: True
+      value: 64
 
 feature_weights_1:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: value
@@ -159,18 +215,19 @@ feature_weights_1:
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 64
 
 feature_weights_2:
   type: class
-  class_name: "MLPExtractor"
+  class_name: MLPExtractor
   params:
     input_size:
       type: value
@@ -181,43 +238,45 @@ feature_weights_2:
     hidden_sizes:
       type: list
       value:
-        [
-          { type: ref, value: first_layer },
-          { type: ref, value: second_layer },
-          { type: ref, value: third_layer },
-        ]
+        - type: ref
+          value: first_layer
+        - type: ref
+          value: second_layer
+        - type: ref
+          value: third_layer
     output_size:
       type: value
       value: 1
 
+# ====================== MODEL =======================
 semantics:
   type: class
-  class_name: "ReluSemantics"
+  class_name: ReluSemantics
   params:
     max_iters:
       type: ref
       value: max_iters
     use_soft_relu:
       type: value
-      value: False
+      value: false
     damping:
       type: value
       value: 1.0
 
 partial_order:
   type: class
-  class_name: "LearnedPartialOrder"
+  class_name: LearnedPartialOrder
   params:
     feature_extractors:
       type: list
       value:
-        [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "feature_weights_1" },
-        ]
+        - type: ref
+          value: feature_weights
+        - type: ref
+          value: feature_weights_1
     comparison_func:
       type: class
-      class_name: "SoftCoordinateDominance"
+      class_name: SoftCoordinateDominance
       params:
         temperature:
           type: ref
@@ -225,42 +284,43 @@ partial_order:
 
 irrelevance:
   type: class
-  class_name: "RegularIrrelevance"
+  class_name: RegularIrrelevance
   params:
     compute_partial_order:
       type: ref
-      value: "partial_order"
+      value: partial_order
 
 base_score:
   type: class
-  class_name: "LearnedBaseScore"
+  class_name: LearnedBaseScore
   params:
     feature_extractors:
       type: list
-      value: [
-          { type: ref, value: "feature_weights" },
-          { type: ref, value: "feature_weights_2" },
-        ]
+      value:
+        - type: ref
+          value: feature_weights
+        - type: ref
+          value: feature_weights_2
     activation:
       type: function
-      value: "sigmoid"
+      value: sigmoid
 
 model:
   type: class
-  class_name: "GradualAACBR"
+  class_name: GradualAACBR
   params:
     gradual_semantics:
       type: ref
-      value: "semantics"
+      value: semantics
     compute_base_score:
       type: ref
-      value: "base_score"
+      value: base_score
     irrelevance_edge_weights:
       type: ref
-      value: "irrelevance"
+      value: irrelevance
     casebase_edge_weights:
       type: ref
-      value: "partial_order"
+      value: partial_order
     use_symmetric_attacks:
       type: value
       value: false
@@ -275,11 +335,17 @@ model:
       value: true
     post_process_func:
       type: function
-      value: "identity"
+      value: identity
     rescale_edges:
       type: ref
       value: rescale_edges
     t_norm_str:
       type: ref
       value: t_norm_str
+    rand_weight:
+      type: ref
+      value: rand_weight
 
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser

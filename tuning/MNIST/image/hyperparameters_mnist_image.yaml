@@ -1,6 +1,6 @@
 epochs:
   type: value
-  value: 1912
+  value: 200
 
 lr:
   type: value
@@ -8,7 +8,7 @@ lr:
 
 batch_size:
   type: value
-  value: 32
+  value: 512
 
 gamma_dag:
   type: value
@@ -24,53 +24,29 @@ epsilon:
 
 temperature:
   type: value
-  value: 0.06777341894709812
+  value: 100
 
 dag_alpha:
   type: value
   value: 0.0040839538230620556
 
-hidden_weight_1:
+first_layer:
   type: value
-  value: 100
+  value: 64
 
-hidden_weight_2:
+second_layer:
+  type: value
+  value: 64
+
+third_layer:
   type: value
   value: 70
 
-hidden_weight_3:
-  type: value
-  value: 60
-
-hidden_weight_4:
-  type: value
-  value: 40
-
-mlp_hidden_sizes:
-  type: list
-  value:
-    [
-      { type: ref, value: hidden_weight_1 },
-      { type: ref, value: hidden_weight_2 },
-      { type: ref, value: hidden_weight_3 },
-      { type: ref, value: hidden_weight_4 },
-    ]
 
 cluster_size:
   type: value
   value: 5
 
-# Best trial:
-# Value: 0.4860914967267469
-# Params:
-#   dag_alpha: 0.02678924218025782
-#   gamma_dag: 0.0001977665242176584
-#   cluter_size: 5
-#   epochs: 1470
-#   lr: 0.003934682825195239
-#   max_iters: 111
-#   hidden_weight_1: 30
-#   hidden_weight_2: 20
-#   hidden_weight_3: 10
-#   hidden_weight_4: 40
-#   temperature: 0.0327887251304392
+batch_norm:
+  type: value
+  value: false

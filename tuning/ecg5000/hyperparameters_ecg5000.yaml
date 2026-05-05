@@ -1,10 +1,10 @@
 epochs:
   type: value
-  value: 5
+  value: 256
 
 lr:
   type: value
-  value: 0.0017516780759110426
+  value: 0.0001
 
 gamma_dag:
   type: value
@@ -28,11 +28,11 @@ gamma_sparsity:
 
 max_iters:
   type: value
-  value: 10
+  value: 20
 
 temperature:
   type: value
-  value: 1000.0
+  value: 1000
 
 dag_alpha:
   type: value
@@ -40,7 +40,8 @@ dag_alpha:
 
 cluster_size:
   type: value
-  value: 5
+  # value: 40
+  value: 10
 
 batch_size:
   type: value
@@ -48,7 +49,7 @@ batch_size:
 
 gradient_max_norm:
   type: value
-  value: 0.5
+  value: 0.1
 
 weight_decay:
   type: value
@@ -56,7 +57,7 @@ weight_decay:
 
 label_smoothing:
   type: value
-  value: 0.3
+  value: 0.000
 
 batch_norm:
   type: value
@@ -72,7 +73,7 @@ t_norm_str:
 
 first_layer:
   type: value
-  value: 64
+  value: 128
 
 second_layer:
   type: value
@@ -83,5 +84,9 @@ third_layer:
   value: 32
 
 rand_weight:
+  type: value
+  value: 0
+
+noise_value:
   type: value
   value: 0

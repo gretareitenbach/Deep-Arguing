@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple, override
 
 import numpy as np
@@ -68,7 +69,7 @@ class kMeansCluster(Cluster):
                 cluster_size = self.cluster_size
             else:
                 cluster_size = self.cluster_size[i]
-                print(
+                logging.debug(
                     f"Class {i}, group_size: {group_size}, cluster_size: {cluster_size}"
                 )
 

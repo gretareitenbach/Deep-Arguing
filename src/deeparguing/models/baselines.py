@@ -7,7 +7,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 
+from deeparguing.feature_extractor.lstm import LSTMFeatureExtractor
 from deeparguing.feature_extractor.mlp_extractor import MLPExtractor
+from deeparguing.feature_extractor.resnet import Resnet32
 
 from .model import Model
 
@@ -105,6 +107,85 @@ class NeuralNetworkBaseline(Model, torch.nn.Module):
             bias,
             dropout,
             batch_norm,
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters(), torch.tensor(0)).device
+
+    @override
+    def forward(self, input: ArrayLike):
+        return self.model(input)
+
+    @override
+    def fit(
+        self,
+        X_train: ArrayLike,
+        y_train: ArrayLike,
+        X_default: Optional[ArrayLike] = None,
+        y_default: Optional[ArrayLike] = None,
+        batch_size: Optional[int] = None,
+    ):
+        pass
+
+
+class ResnetBaseline(Model, torch.nn.Module):
+    def __init__(
+        self,
+        num_classes: int = 10,
+        weights_path: Optional[str] = None,
+        freeze_weights: bool = False,
+    ):
+        super(ResnetBaseline, self).__init__()
+
+        self.model = Resnet32(
+            num_classes=num_classes,
+            weights_path=weights_path,
+            freeze_weights=freeze_weights
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters(), torch.tensor(0)).device
+
+    @override
+    def forward(self, input: ArrayLike):
+        return self.model(input, use_classification_head=True)
+
+    @override
+    def fit(
+        self,
+        X_train: ArrayLike,
+        y_train: ArrayLike,
+        X_default: Optional[ArrayLike] = None,
+        y_default: Optional[ArrayLike] = None,
+        batch_size: Optional[int] = None,
+    ):
+        pass
+
+
+class LSTMBaseline(Model, torch.nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        output_features: int = 2,
+        num_layers: int = 1,
+        bidirectional: bool = False,
+        dropout: float = 0.0,
+        weights_path: Optional[str] = None,
+        freeze_weights: bool = False,
+    ):
+        super(LSTMBaseline, self).__init__()
+        self.model = LSTMFeatureExtractor(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_features=output_features,
+            num_layers=num_layers,
+            bidirectional=bidirectional,
+            dropout=dropout,
+            weights_path=weights_path,
+            freeze_weights=freeze_weights,
         )
 
     @property

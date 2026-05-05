@@ -13,7 +13,7 @@ from deeparguing.helper import load_torch_images, split_data
 # HYPERPARAMETERS
 # ------------------------------
 config = {
-    "dataset": "CIFAR10",
+    "dataset": "MNIST",
     "batch_size": 256,
     "dropout": 0.4,
     "output_features": 64,
@@ -23,9 +23,10 @@ config = {
     "weight_decay": 0.001,
     "label_smoothing": 0.05,
     "grad_clip": 5.0,
+    "in_channels": 1
 }
 
-wandb.init(project="deeparguing-cnn", config=config)
+wandb.init(project=f"deeparguing-cnn-{config["dataset"]}", config=config)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(config["seed"])
@@ -41,7 +42,7 @@ batch_size = config["batch_size"]
 # ------------------------------
 # Model setup
 # ------------------------------
-model = SimpleCNN(in_channels=3, output_features=config["output_features"], dropout = config["dropout"]).to(device)
+model = SimpleCNN(in_channels=config["in_channels"], output_features=config["output_features"], dropout = config["dropout"]).to(device)
 classification_head = nn.Linear(config["output_features"], 10).to(device)
 
 all_params = list(model.parameters()) + list(classification_head.parameters())

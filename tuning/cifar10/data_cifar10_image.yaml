@@ -11,9 +11,6 @@ data:
     shuffle:
       type: value
       value: true
-    size:
-      type: value
-      value: 50000
     labels:
       type: list
       value:

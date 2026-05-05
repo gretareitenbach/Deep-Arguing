@@ -5,12 +5,12 @@ data:
     class_name:
       type: value
       value: "MNIST"
+    use_test_set:
+      type: value
+      value: true
     shuffle:
       type: value
       value: true
-    size:
-      type: value
-      value: 60000
     labels:
       type: list
       value:

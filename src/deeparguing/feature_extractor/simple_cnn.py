@@ -55,9 +55,22 @@ class SimpleCNN(FeatureExtractor):
         if weights_path is not None:
             self.load_state_dict(torch.load(weights_path))
 
+        self.freeze_weights = freeze_weights
+
         if freeze_weights:
             for p in self.parameters():
                 p.requires_grad = False
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+    @override
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_weights:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+        return self
 
     @override
     def forward(self, case: Tensor) -> Tensor:

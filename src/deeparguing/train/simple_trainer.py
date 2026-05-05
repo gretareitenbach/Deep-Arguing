@@ -11,7 +11,7 @@ from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
 from deeparguing.train.neural_trainer import NeuralTrainer
-from deeparguing.train.strategies import ValidationLogStrategy
+from deeparguing.train.strategies import StandardValidationLog, ValidationLogStrategy
 
 
 class SimpleTrainer(NeuralTrainer):
@@ -21,7 +21,7 @@ class SimpleTrainer(NeuralTrainer):
         epochs: int,
         optimizer: Optimizer,
         criterion: CriterionType,
-        validation_log_strategy: ValidationLogStrategy,
+        validation_log_strategy: ValidationLogStrategy = StandardValidationLog(),
         regulariser: CriterionType = lambda _m, _p, _t: 0,
         batch_size: int | None = None,
         scheduler: LRScheduler | None = None,
