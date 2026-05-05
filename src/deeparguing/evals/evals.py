@@ -81,7 +81,7 @@ def evaluate_model(
 
     for i in range(0, len(X_new_cases), batch_size):
         X_batch = X_new_cases[i : i + batch_size]
-        predictions = model(X_batch).squeeze().cpu().detach().numpy()
+        predictions = model(X_batch).cpu().detach().numpy()
         if i == 0:
             y_predicted = predictions
         else:

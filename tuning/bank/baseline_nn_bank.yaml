@@ -1,7 +1,7 @@
 # ====================== Hyperparameters =======================
 epochs:
   type: value
-  value: 6
+  value: 10
 
 lr:
   type: value
@@ -59,10 +59,9 @@ cross_entropy:
       type: tensor
       value:
         - type: value
-          value: 1.62
+          value: 0.75
         - type: value
-          value: 2.89
-
+          value: 2.08
 
 losses:
   type: class

@@ -1,3 +1,43 @@
+# ====================== Hyperparameters =======================
+epochs:
+  type: value
+  value: 32
+
+lr:
+  type: value
+  value: 0.003
+
+batch_size:
+  type: value
+  value: 64
+
+gradient_max_norm:
+  type: value
+  value: 0.5
+
+weight_decay:
+  type: value
+  value: 0.0001
+
+label_smoothing:
+  type: value
+  value: 0.00
+
+first_layer:
+  type: value
+  value: 64
+
+second_layer:
+  type: value
+  value: 64
+
+third_layer:
+  type: value
+  value: 64
+
+
+
+
 # ====================== Regulariser =======================
 
 regularisers:
@@ -13,15 +53,8 @@ cross_entropy:
       type: value
       value: CrossEntropyLoss
     label_smoothing:
-      type: value
-      value: 0.0
-    weight:
-      type: tensor
-      value:
-        - type: value
-          value: 0.885
-        - type: value
-          value: 1.18
+      type: ref
+      value: label_smoothing
 
 
 losses:

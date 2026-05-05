@@ -126,6 +126,7 @@ def load_data_dict(
     data_dict["y_train"] = y_train
     data_dict["y_val"] = y_val
     data_dict["y_test"] = y_test
+    data_dict["no_classes"] = len(torch.unique(y, dim=0))
 
     X_train_mean = X_train.mean(dim=0)
     X_train_std = X_train.std(dim=0) + 1e-8
@@ -152,9 +153,25 @@ def load_data_dict(
         X_test, X_train_mean, X_train_std
     )
 
-    logging.debug(f"Test Size: {len(X_test)}")
-    logging.debug(f"Train Size: {len(X_train)}")
+    def print_label_dist(y_labels):
+        y_unique = torch.unique(y_labels, return_counts = True, dim = 0)
+
+        counts_str = "\n\tLabel: count"
+        for i in range(len(y_unique[0])):
+            counts_str += f"\n\t{y_unique[0][i]} : {y_unique[1][i]}"
+        logging.debug(counts_str)
+        
+
     logging.debug(f"Validation Size, {len(X_val)}")
+    logging.debug(f"Train label dist")
+    print_label_dist(y_val)
+    logging.debug(f"Test Size: {len(X_test)}")
+    logging.debug(f"Test label dist")
+    print_label_dist(y_test)
+    logging.debug(f"Train Size: {len(X_train)}")
+    logging.debug(f"Train label dist")
+    print_label_dist(y_train)
+
     return data_dict
 
 

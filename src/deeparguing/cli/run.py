@@ -273,7 +273,7 @@ def run(project: str = "gradual-aa-cbr"):
             val_accs.append(acc)
             max_val_accs.append(max_val_acc)
             max_val_f1s.append(max_val_f1)
-            logging.info(f"Average f1 score: {np.mean(val_f1s)}")
+            logging.info(f"Average validation f1 score: {np.mean(val_f1s)}")
 
             if args.visualise_loss_landscape and isinstance(trainer, NeuralTrainer):
                 visualize_overlayed_loss_landscapes(

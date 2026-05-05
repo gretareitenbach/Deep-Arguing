@@ -1,3 +1,45 @@
+# ====================== Hyperparameters =======================
+
+epochs:
+  type: value
+  value: 32
+
+lr:
+  type: value
+  value: 0.0005
+
+batch_size:
+  type: value
+  value: 2048
+
+gradient_max_norm:
+  type: value
+  value: 4.5
+
+weight_decay:
+  type: value
+  value: 0.001
+
+label_smoothing:
+  type: value
+  value: 0.0
+
+t_norm_str:
+  type: value
+  value: GodelTNorm
+
+first_layer:
+  type: value
+  value: 512
+
+second_layer:
+  type: value
+  value: 256
+
+third_layer:
+  type: value
+  value: 128
+
 # ====================== Regulariser =======================
 
 regularisers:

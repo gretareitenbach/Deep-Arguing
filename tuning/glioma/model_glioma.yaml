@@ -7,6 +7,19 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
+
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+
+irrelevance_sparsity_regulariser:
+  type: class
+  class_name: IrrelevanceSparsityRegulariser
+
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser
+
 regularisers:
   type: class
   class_name: CriterionList
@@ -26,6 +39,18 @@ regularisers:
               value: dag_regulariser
             - type: ref
               value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: irrelevance_sparsity_regulariser
+            - type: ref
+              value: gamma_irrelevance_sparsity
 
 # ================ TRAINING SETTINGS =================
 trainer:
@@ -40,8 +65,8 @@ trainer:
           type: value
           value: CrossEntropyLoss
         label_smoothing:
-          type: value
-          value: 0.05
+          type: ref
+          value: label_smoothing
     epochs:
       type: ref
       value: epochs
@@ -86,7 +111,7 @@ build_new_cases:
   value: use_train
 
 # ================ FEATURE EXTRACTORS ================
-feature_weights:
+shared_weights:
   type: class
   class_name: MLPExtractor
   params:
@@ -98,8 +123,20 @@ feature_weights:
       value:
         - type: ref
           value: first_layer
-        - type: ref
-          value: second_layer
+    output_size:
+      type: ref
+      value: second_layer
+
+feature_weights_0:
+  type: class
+  class_name: MLPExtractor
+  params:
+    input_size:
+      type: ref
+      value: second_layer
+    hidden_sizes:
+      type: list
+      value:
         - type: ref
           value: third_layer
     output_size:
@@ -111,15 +148,11 @@ feature_weights_1:
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: ref
+      value: second_layer
     hidden_sizes:
       type: list
       value:
-        - type: ref
-          value: first_layer
-        - type: ref
-          value: second_layer
         - type: ref
           value: third_layer
     output_size:
@@ -143,7 +176,9 @@ partial_order:
       type: list
       value:
         - type: ref
-          value: feature_weights
+          value: shared_weights
+        - type: ref
+          value: feature_weights_0
     comparison_func:
       type: class
       class_name: SoftCoordinateDominance
@@ -167,6 +202,8 @@ base_score:
     feature_extractors:
       type: list
       value:
+        - type: ref
+          value: shared_weights
         - type: ref
           value: feature_weights_1
     activation:
@@ -208,6 +245,4 @@ model:
       type: ref
       value: t_norm_str
 
-attacks_defaults_regulariser:
-  type: class
-  class_name: AttackDefaultsRegulariser
+

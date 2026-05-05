@@ -10,19 +10,11 @@ gamma_dag:
   type: value
   value: 0.0001
 
-gamma_cbr:
+gamma_sparsity:
   type: value
   value: 0.0001
 
-gamma_batch_entropy:
-  type: value
-  value: 0
-
-gamma_cp:
-  type: value
-  value: 0.0
-
-gamma_sparsity:
+gamma_irrelevance_sparsity:
   type: value
   value: 0.0001
 
@@ -40,7 +32,6 @@ dag_alpha:
 
 cluster_size:
   type: value
-  # value: 40
   value: 5
 
 batch_size:
@@ -53,23 +44,14 @@ gradient_max_norm:
 
 weight_decay:
   type: value
-  value: 0.02
+  value: 0.01
 
 label_smoothing:
   type: value
   value: 0.000
 
-batch_norm:
-  type: value
-  value: False
-
-rescale_edges:
-  type: value
-  value: false
-
 t_norm_str:
   type: value
-  # value: ProductTNorm
   value: GodelTNorm
 
 first_layer:
@@ -82,12 +64,5 @@ second_layer:
 
 third_layer:
   type: value
-  value: 32
+  value: 64
 
-rand_weight:
-  type: value
-  value: 0
-
-noise_value:
-  type: value
-  value: 0

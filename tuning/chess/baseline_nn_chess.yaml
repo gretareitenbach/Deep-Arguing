@@ -1,32 +1,34 @@
 # ====================== Hyperparameters =======================
+
 epochs:
   type: value
-  value: 6
+  value: 1024
 
 lr:
   type: value
-  value: 0.003
-
+  value: 0.007
 
 batch_size:
   type: value
-  value: 256
+  value: 1024
+  # value: 1024
+  # value: 256
 
 gradient_max_norm:
   type: value
-  value: 3.0
+  value: 0.1
 
 weight_decay:
   type: value
-  value: 0.01
+  value: 0.09
 
 label_smoothing:
   type: value
-  value: 0.000
+  value: 0.0
 
 first_layer:
   type: value
-  value: 64
+  value: 128
 
 second_layer:
   type: value
@@ -35,6 +37,14 @@ second_layer:
 third_layer:
   type: value
   value: 64
+  
+fourth_layer:
+  type: value
+  value: 64
+
+
+
+
 
 
 
@@ -59,10 +69,41 @@ cross_entropy:
       type: tensor
       value:
         - type: value
-          value: 1.62
+          value: 0.5430048992923244
         - type: value
-          value: 2.89
-
+          value: 1.0949506037321624
+        - type: value
+          value: 0.5495867768595041
+        - type: value
+          value: 0.7150537634408602
+        - type: value
+          value: 3.1971153846153846
+        - type: value
+          value: 7.854330708661418
+        - type: value
+          value: 0.3450363196125908
+        - type: value
+          value: 0.9117915904936015
+        - type: value
+          value: 22.670454545454547
+        - type: value
+          value: 2.197136563876652
+        - type: value
+          value: 2.8177966101694913
+        - type: value
+          value: 3.99
+        - type: value
+          value: 0.769082498072475
+        - type: value
+          value: 0.37220149253731344
+        - type: value
+          value: 19.95
+        - type: value
+          value: 0.44039735099337746
+        - type: value
+          value: 6.157407407407407
+        - type: value
+          value: 58.6764705882353
 
 losses:
   type: class
@@ -140,7 +181,9 @@ model:
           value: second_layer
         - type: ref
           value: third_layer
+        - type: ref
+          value: fourth_layer
     output_size:
-      type: value
-      value: 2
+      type: data_ref
+      value: no_classes
 

@@ -4,25 +4,22 @@ data:
   params:
     target_field:
       type: value
-      value: 0
-    excluded_fields:
-      type: list
-      value:
-        - { type: value, value: 7 }
+      value: 6
     path:
       type: value
-      value: "./data/monks_problems/monks-2.train"
+      value: "./data/chess/krkopt.data"
     has_header:
       type: value
       value: false
     categorical_cols:
-      type: range
+      type: list
       value:
         - { type: value, value: 0 }
-        - { type: value, value: 6 }
-    sep:
-      type: value
-      value: " "
+        - { type: value, value: 1 }
+        - { type: value, value: 2 }
+        - { type: value, value: 3 }
+        - { type: value, value: 4 }
+        - { type: value, value: 5 }
 
 data_pre_process:
   type: dict

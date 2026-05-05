@@ -7,21 +7,15 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
-class_balance_regulariser:
-  type: class
-  class_name: ClassBalanceRegulariser
 
 sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
 
-community_preservation_regulariser:
+irrelevance_sparsity_regulariser:
   type: class
-  class_name: CommunityPreservationRegulariser
-  params:
-    method:
-      type: value
-      value: fro
+  class_name: IrrelevanceSparsityRegulariser
+
 
 attacks_defaults_regulariser:
   type: class
@@ -49,21 +43,15 @@ regularisers:
         - type: list
           value:
             - type: ref
-              value: class_balance_regulariser
-            - type: ref
-              value: gamma_cbr
-        - type: list
-          value:
-            - type: ref
               value: sparsity_regulariser
             - type: ref
               value: gamma_sparsity
         - type: list
           value:
             - type: ref
-              value: community_preservation_regulariser
+              value: irrelevance_sparsity_regulariser
             - type: ref
-              value: gamma_cp
+              value: gamma_irrelevance_sparsity
 
 # ====================== LOSSES ======================
 cross_entropy:
@@ -84,10 +72,6 @@ cross_entropy:
         - type: value
           value: 2.89
 
-batch_entropy:
-  type: class
-  class_name: BatchEntropyRegularisation
-
 losses:
   type: class
   class_name: CriterionList
@@ -101,12 +85,6 @@ losses:
               value: cross_entropy
             - type: value
               value: 1
-        - type: list
-          value:
-            - type: ref
-              value: batch_entropy
-            - type: ref
-              value: gamma_batch_entropy
 
 # ================ TRAINING SETTINGS =================
 trainer:
@@ -160,7 +138,7 @@ build_new_cases:
   value: use_train
 
 # ================ FEATURE EXTRACTORS ================
-feature_weights:
+shared_weights:
   type: class
   class_name: MLPExtractor
   params:
@@ -172,33 +150,80 @@ feature_weights:
       value:
         - type: ref
           value: first_layer
-        - type: ref
-          value: second_layer
+    output_size:
+      type: ref
+      value: second_layer
+
+feature_weights_0:
+  type: class
+  class_name: MLPExtractor
+  params:
+    input_size:
+      type: ref
+      value: second_layer
+    hidden_sizes:
+      type: list
+      value:
         - type: ref
           value: third_layer
     output_size:
       type: value
-      value: 64
+      value: 128
+
+# feature_weights:
+#   type: class
+#   class_name: MLPExtractor
+#   params:
+#     input_size:
+#       type: data_ref
+#       value: no_features
+#     hidden_sizes:
+#       type: list
+#       value:
+#         - type: ref
+#           value: first_layer
+#         - type: ref
+#           value: second_layer
+#         - type: ref
+#           value: third_layer
+#     output_size:
+#       type: value
+#       value: 64
 
 feature_weights_1:
   type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: ref
+      value: second_layer
     hidden_sizes:
       type: list
       value:
-        - type: ref
-          value: first_layer
-        - type: ref
-          value: second_layer
         - type: ref
           value: third_layer
     output_size:
       type: value
       value: 1
+# feature_weights_1:
+#   type: class
+#   class_name: MLPExtractor
+#   params:
+#     input_size:
+#       type: data_ref
+#       value: no_features
+#     hidden_sizes:
+#       type: list
+#       value:
+#         - type: ref
+#           value: first_layer
+#         - type: ref
+#           value: second_layer
+#         - type: ref
+#           value: third_layer
+#     output_size:
+#       type: value
+#       value: 1
 
 # ====================== MODEL =======================
 semantics:
@@ -217,7 +242,9 @@ partial_order:
       type: list
       value:
         - type: ref
-          value: feature_weights
+          value: shared_weights
+        - type: ref
+          value: feature_weights_0
     comparison_func:
       type: class
       class_name: SoftCoordinateDominance
@@ -225,9 +252,7 @@ partial_order:
         temperature:
           type: ref
           value: temperature
-        noise_value:
-          type: ref
-          value: noise_value
+
 
 irrelevance:
   type: class
@@ -244,6 +269,8 @@ base_score:
     feature_extractors:
       type: list
       value:
+        - type: ref
+          value: shared_weights
         - type: ref
           value: feature_weights_1
     activation:
@@ -281,12 +308,7 @@ model:
     post_process_func:
       type: function
       value: identity
-    rescale_edges:
-      type: ref
-      value: rescale_edges
     t_norm_str:
       type: ref
       value: t_norm_str
-    rand_weight:
-      type: ref
-      value: rand_weight
+
