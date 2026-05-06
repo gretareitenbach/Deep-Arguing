@@ -11,6 +11,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from deeparguing.feature_extractor.lstm import LSTMFeatureExtractor
 from deeparguing.feature_extractor.mlp_extractor import MLPExtractor
 from deeparguing.feature_extractor.resnet import Resnet32
+from deeparguing.feature_extractor.simple_cnn import SimpleCNN
 
 from .model import Model
 
@@ -192,6 +193,30 @@ class LSTMBaseline(Model, torch.nn.Module):
             weights_path=weights_path,
             freeze_weights=freeze_weights,
         )
+
+    @property
+    def device(self):
+        return next(self.parameters(), torch.tensor(0)).device
+
+    @override
+    def forward(self, input: ArrayLike):
+        return self.model(input)
+
+    @override
+    def fit(
+        self,
+        X_train: ArrayLike,
+        y_train: ArrayLike,
+        X_default: Optional[ArrayLike] = None,
+        y_default: Optional[ArrayLike] = None,
+        batch_size: Optional[int] = None,
+    ):
+        pass
+
+class SimpleCNNBaseline(Model, torch.nn.Module):
+    def __init__(self, **kwargs):
+        super(SimpleCNNBaseline, self).__init__()
+        self.model = SimpleCNN(**kwargs)
 
     @property
     def device(self):

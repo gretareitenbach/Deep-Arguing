@@ -4,7 +4,10 @@ data:
   params:
     class_name:
       type: value
-      value: "MNIST"
+      value: "FashionMNIST"
+    as_vector:
+      type: value
+      value: false
     use_test_set:
       type: value
       value: true
@@ -32,4 +35,4 @@ data_pre_process:
   value:
     pre_process_func:
       type: function
-      value: "normalize_data"
+      value: "no_normalize"

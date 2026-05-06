@@ -1,27 +1,19 @@
 epochs:
   type: value
-  value: 64
+  value: 32
 
 lr:
   type: tune
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.00001 }
+    low: { type: "value", value: 0.0001 }
     high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
 dag_alpha:
   type: value
   value: 0.001
-  # type: tune
-  # tune_type: float
-  # params:
-  #   name: { type: "value", value: "dag_alpha" }
-  #   low: { type: "value", value: 0.00001 }
-  #   high: { type: "value", value: 0.01 }
-  #   log: { type: "value", value: True }
-#
 
 gamma_dag:
   type: tune
@@ -39,6 +31,21 @@ gamma_dag:
         {type: value, value: 0.1},
       ]
 
+gamma_irrelevance_sparsity:
+  type: tune
+  tune_type: categorical
+  params:
+    name: { type: "value", value: "gamma_irrelevance_sparsity" }
+    choices:
+      type: list
+      value: [
+        {type: value, value: 0},
+        {type: value, value: 0.00001},
+        {type: value, value: 0.0001},
+        {type: value, value: 0.001},
+        {type: value, value: 0.01},
+        {type: value, value: 0.1},
+      ]
 
 gamma_sparsity:
   type: tune
@@ -78,7 +85,7 @@ batch_size:
         # {type: value, value: 1024},
         {type: value, value: 512},
         {type: value, value: 256},
-        {type: value, value: 128},
+        # {type: value, value: 128},
       ]
 
 
@@ -121,8 +128,8 @@ cluster_size:
       type: list
       value: [
         {type: value, value: 5},
-        {type: value, value: 10},
-        {type: value, value: 15},
+        # {type: value, value: 10},
+        # {type: value, value: 15},
         # {type: value, value: 20},
         # {type: value, value: 25},
       ]
@@ -154,47 +161,16 @@ batch_norm:
 
 
 first_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "first_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 128},
-        {type: value, value: 64},
-        # {type: value, value: 32},
-      ]
+  type: value
+  value: 64
 
 second_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "second_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 64},
-        {type: value, value: 48},
-        # {type: value, value: 32},
-        # {type: value, value: 16},
-      ]
+  type: value
+  value: 64
 
 third_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "third_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 48},
-        {type: value, value: 32},
-        # {type: value, value: 16},
-      ]
+  type: value
+  value: 64
 
 t_norm_str:
   type: tune
@@ -204,34 +180,8 @@ t_norm_str:
     choices:
       type: list
       value: [
-        {type: value, value: ProductTNorm},
-        # {type: value, value: GodelTNorm},
+        # {type: value, value: ProductTNorm},
+        {type: value, value: GodelTNorm},
         # {type: value, value: LukasiewiczTNorm},
       ]
 
-rescale_edges:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "rescale_edges" }
-    choices:
-      type: list
-      value: [
-        # {type: value, value: True},
-        {type: value, value: False},
-      ]
-
-rand_weight:
-  type: value
-  value: 0
-  # type: tune
-  # tune_type: float
-  # params:
-  #   name: { type: "value", value: "rand_weight" }
-  #   low: { type: "value", value: 0.00001 }
-  #   high: { type: "value", value: 1 }
-  #   log: { type: "value", value: True }
-
-noise_value:
-  type: value
-  value: 0
