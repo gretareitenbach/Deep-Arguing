@@ -68,7 +68,7 @@ rescale_edges:
 
 t_norm_str:
   type: value
-  value: ProductTNorm
+  value: GodelTNorm
 
 first_layer:
   type: value

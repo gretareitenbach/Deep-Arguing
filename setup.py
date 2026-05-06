@@ -7,14 +7,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name='deeparguing',  # Replace with your package name
     version='0.0.1',
-    author="Adam Gould",
-    author_email="adam.gould19@imperial.ac.uk",
-    description="CLArg's Implementation of Deep Arguing",
+    author="Anonymous Authors",
+    author_email="anonymous@example.com",
+    description="Anonymous Implementation of Deep Arguing",
     long_description="file: README.md",
     long_description_content_type="text/markdown",
-    url='https://github.com/TheAdamG/gradual-aacbr',
+    url='https://github.com/anonymous/gradual-aacbr',
     project_urls = {
-        "Bug Tracker": "https://github.com/TheAdamG/gradual-aacbr/issues",
+        "Bug Tracker": "https://github.com/anonymous/gradual-aacbr/issues",
     },
     classifiers=[
         " Programming Language :: Python :: 3",
