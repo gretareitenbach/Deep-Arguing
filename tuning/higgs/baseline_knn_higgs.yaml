@@ -1,0 +1,19 @@
+trainer:
+  type: class
+  class_name: "BaselineTrainer"
+
+build_casebase:
+  type: class
+  class_name: "IdentityCluster"
+
+build_new_cases:
+  type: function
+  value: "use_train"
+
+model:
+  type: class
+  class_name: "KNNBaseline"
+  params:
+    n_neighbors:
+      type: value
+      value: 3

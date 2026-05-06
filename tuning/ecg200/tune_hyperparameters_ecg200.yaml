@@ -7,7 +7,7 @@ lr:
   tune_type: float
   params:
     name: { type: "value", value: "lr" }
-    low: { type: "value", value: 0.00001 }
+    low: { type: "value", value: 0.0001 }
     high: { type: "value", value: 0.01 }
     log: { type: "value", value: True }
 
@@ -22,21 +22,6 @@ dag_alpha:
   #   high: { type: "value", value: 0.01 }
   #   log: { type: "value", value: True }
 #
-gamma_cbr:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "gamma_cbr" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 0.00001},
-        {type: value, value: 0.0001},
-        {type: value, value: 0.001},
-        {type: value, value: 0.01},
-        {type: value, value: 0.1},
-      ]
 
 gamma_dag:
   type: tune
@@ -54,21 +39,6 @@ gamma_dag:
         {type: value, value: 0.1},
       ]
 
-gamma_batch_entropy:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "gamma_batch_entropy" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 0.00001},
-        {type: value, value: 0.0001},
-        {type: value, value: 0.001},
-        {type: value, value: 0.01},
-        {type: value, value: 0.1},
-      ]
 
 gamma_sparsity:
   type: tune
@@ -86,11 +56,11 @@ gamma_sparsity:
         {type: value, value: 0.1},
       ]
 
-gamma_cp:
+gamma_irrelevance_sparsity:
   type: tune
   tune_type: categorical
   params:
-    name: { type: "value", value: "gamma_cp" }
+    name: { type: "value", value: "gamma_sparsity" }
     choices:
       type: list
       value: [
@@ -107,9 +77,9 @@ max_iters:
   tune_type: int
   params:
     name: { type: "value", value: "max_iters" }
-    low: { type: "value", value: 60 }
+    low: { type: "value", value: 40 }
     high: { type: "value", value: 80 }
-    step: { type: "value", value: 1 }
+    step: { type: "value", value: 10 }
     log: { type: "value", value: False }
 
 batch_size:
@@ -121,9 +91,12 @@ batch_size:
       type: list
       value: [
         # {type: value, value: 1024},
-        {type: value, value: 512},
-        {type: value, value: 256},
-        {type: value, value: 128},
+        # {type: value, value: 512},
+        # {type: value, value: 256},
+        # {type: value, value: 128},
+        {type: value, value: 10},
+        {type: value, value: 20},
+        {type: value, value: 40},
       ]
 
 
@@ -167,7 +140,7 @@ cluster_size:
       value: [
         {type: value, value: 5},
         {type: value, value: 10},
-        {type: value, value: 15},
+        # {type: value, value: 15},
         # {type: value, value: 20},
         # {type: value, value: 25},
       ]
@@ -198,85 +171,38 @@ batch_norm:
 
 
 
+t_norm_str:
+  type: value
+  value: GodelTNorm
+
 first_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "first_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 128},
-        {type: value, value: 64},
-        # {type: value, value: 32},
-      ]
+  type: value
+  value: 64
 
 second_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "second_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 64},
-        {type: value, value: 48},
-        # {type: value, value: 32},
-        # {type: value, value: 16},
-      ]
+  type: value
+  value: 48
 
 third_layer:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "third_layer" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: 0},
-        {type: value, value: 48},
-        {type: value, value: 32},
-        # {type: value, value: 16},
-      ]
-
-t_norm_str:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "t_norm_str" }
-    choices:
-      type: list
-      value: [
-        {type: value, value: ProductTNorm},
-        # {type: value, value: GodelTNorm},
-        # {type: value, value: LukasiewiczTNorm},
-      ]
-
-rescale_edges:
-  type: tune
-  tune_type: categorical
-  params:
-    name: { type: "value", value: "rescale_edges" }
-    choices:
-      type: list
-      value: [
-        # {type: value, value: True},
-        {type: value, value: False},
-      ]
-
-rand_weight:
   type: value
-  value: 0
-  # type: tune
-  # tune_type: float
-  # params:
-  #   name: { type: "value", value: "rand_weight" }
-  #   low: { type: "value", value: 0.00001 }
-  #   high: { type: "value", value: 1 }
-  #   log: { type: "value", value: True }
+  value: 32
 
-noise_value:
+lstm_input_size:
   type: value
-  value: 0
+  value: 1
+
+lstm_hidden_size:
+  type: value
+  value: 32
+
+lstm_num_layers:
+  type: value
+  value: 1
+
+lstm_bidirectional:
+  type: value
+  value: false
+
+lstm_dropout:
+  type: value
+  value: 0.0

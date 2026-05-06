@@ -6,6 +6,7 @@ from numpy.typing import ArrayLike
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
 
 from deeparguing.feature_extractor.lstm import LSTMFeatureExtractor
 from deeparguing.feature_extractor.mlp_extractor import MLPExtractor
@@ -79,6 +80,10 @@ class DecisionTreeBaseline(FitPredictBaseline):
 class RandomForestBaseline(FitPredictBaseline):
     def __init__(self, **kwargs):
         super().__init__(model=RandomForestClassifier(**kwargs))
+
+class KNNBaseline(FitPredictBaseline):
+    def __init__(self, **kwargs):
+        super().__init__(model=KNeighborsClassifier(**kwargs))
 
 
 """

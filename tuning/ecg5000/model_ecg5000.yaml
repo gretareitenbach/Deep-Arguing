@@ -15,6 +15,14 @@ sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
 
+irr_sparsity_regulariser:
+  type: class
+  class_name: IrrelevanceSparsityRegulariser
+
+transitivity_regulariser:
+  type: class
+  class_name: TransitivityRegulariser
+
 community_preservation_regulariser:
   type: class
   class_name: CommunityPreservationRegulariser
@@ -22,10 +30,6 @@ community_preservation_regulariser:
     method:
       type: value
       value: fro
-
-attacks_defaults_regulariser:
-  type: class
-  class_name: AttackDefaultsRegulariser
 
 regularisers:
   type: class
@@ -38,6 +42,12 @@ regularisers:
           value:
             - type: ref
               value: attacks_defaults_regulariser
+            - type: value
+              value: 1.0
+        - type: list
+          value:
+            - type: ref
+              value: transitivity_regulariser
             - type: value
               value: 1.0
         - type: list
@@ -56,6 +66,12 @@ regularisers:
           value:
             - type: ref
               value: sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: irr_sparsity_regulariser
             - type: ref
               value: gamma_sparsity
         - type: list
@@ -142,8 +158,18 @@ build_casebase:
   class_name: kMeansCluster
   params:
     cluster_size:
-      type: ref
-      value: cluster_size
+      type: list
+      value: 
+        - type: value
+          value: 2
+        - type: value
+          value: 5
+        - type: value
+          value: 5
+        - type: value
+          value: 5
+        - type: value
+          value: 5
     nearest_sample:
       type: value
       value: true
@@ -155,11 +181,37 @@ build_new_cases:
 # ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
+  class_name: LSTMFeatureExtractor
+  params:
+    input_size:
+      type: ref
+      value: lstm_input_size
+    hidden_size:
+      type: ref
+      value: lstm_hidden_size
+    num_layers:
+      type: ref
+      value: lstm_num_layers
+    bidirectional:
+      type: ref
+      value: lstm_bidirectional
+    dropout:
+      type: ref
+      value: lstm_dropout
+    output_features:
+      type: value
+      value: 64
+
+feature_weights_1:
+  type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
     hidden_sizes:
       type: list
       value:
@@ -173,13 +225,16 @@ feature_weights:
       type: value
       value: 64
 
-feature_weights_1:
+feature_weights_2:
   type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
     hidden_sizes:
       type: list
       value:
@@ -201,6 +256,12 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
+    use_soft_relu:
+      type: value
+      value: false
+    damping:
+      type: value
+      value: 1.0
 
 partial_order:
   type: class
@@ -211,6 +272,8 @@ partial_order:
       value:
         - type: ref
           value: feature_weights
+        - type: ref
+          value: feature_weights_1
     comparison_func:
       type: class
       class_name: SoftCoordinateDominance
@@ -218,9 +281,6 @@ partial_order:
         temperature:
           type: ref
           value: temperature
-        noise_value:
-          type: ref
-          value: noise_value
 
 irrelevance:
   type: class
@@ -238,7 +298,9 @@ base_score:
       type: list
       value:
         - type: ref
-          value: feature_weights_1
+          value: feature_weights
+        - type: ref
+          value: feature_weights_2
     activation:
       type: function
       value: sigmoid
@@ -283,3 +345,7 @@ model:
     rand_weight:
       type: ref
       value: rand_weight
+
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser

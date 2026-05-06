@@ -1,4 +1,9 @@
 # =================== REGULARISERS ===================
+#
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser
+
 dag_regulariser:
   type: class
   class_name: DAGRegulariser
@@ -7,25 +12,13 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
-class_balance_regulariser:
-  type: class
-  class_name: ClassBalanceRegulariser
-
 sparsity_regulariser:
   type: class
   class_name: SparsityRegulariser
 
-community_preservation_regulariser:
+irrelevance_sparsity_regulariser:
   type: class
-  class_name: CommunityPreservationRegulariser
-  params:
-    method:
-      type: value
-      value: fro
-
-attacks_defaults_regulariser:
-  type: class
-  class_name: AttackDefaultsRegulariser
+  class_name: IrrelevanceSparsityRegulariser
 
 regularisers:
   type: class
@@ -49,21 +42,15 @@ regularisers:
         - type: list
           value:
             - type: ref
-              value: class_balance_regulariser
-            - type: ref
-              value: gamma_cbr
-        - type: list
-          value:
-            - type: ref
               value: sparsity_regulariser
             - type: ref
               value: gamma_sparsity
         - type: list
           value:
             - type: ref
-              value: community_preservation_regulariser
+              value: irrelevance_sparsity_regulariser
             - type: ref
-              value: gamma_cp
+              value: gamma_irrelevance_sparsity
 
 # ====================== LOSSES ======================
 cross_entropy:
@@ -80,13 +67,10 @@ cross_entropy:
       type: tensor
       value:
         - type: value
-          value: 1.22
+          value: 1.26
         - type: value
-          value: 0.867
+          value: 0.852
 
-batch_entropy:
-  type: class
-  class_name: BatchEntropyRegularisation
 
 losses:
   type: class
@@ -101,12 +85,6 @@ losses:
               value: cross_entropy
             - type: value
               value: 1
-        - type: list
-          value:
-            - type: ref
-              value: batch_entropy
-            - type: ref
-              value: gamma_batch_entropy
 
 # ================ TRAINING SETTINGS =================
 trainer:
@@ -162,11 +140,37 @@ build_new_cases:
 # ================ FEATURE EXTRACTORS ================
 feature_weights:
   type: class
+  class_name: LSTMFeatureExtractor
+  params:
+    input_size:
+      type: ref
+      value: lstm_input_size
+    hidden_size:
+      type: ref
+      value: lstm_hidden_size
+    num_layers:
+      type: ref
+      value: lstm_num_layers
+    bidirectional:
+      type: ref
+      value: lstm_bidirectional
+    dropout:
+      type: ref
+      value: lstm_dropout
+    output_features:
+      type: value
+      value: 128
+
+feature_weights_1:
+  type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: value
+      value: 128
+    batch_norm:
+      type: ref
+      value: batch_norm
     hidden_sizes:
       type: list
       value:
@@ -180,13 +184,16 @@ feature_weights:
       type: value
       value: 64
 
-feature_weights_1:
+feature_weights_2:
   type: class
   class_name: MLPExtractor
   params:
     input_size:
-      type: data_ref
-      value: no_features
+      type: value
+      value: 128
+    batch_norm:
+      type: ref
+      value: batch_norm
     hidden_sizes:
       type: list
       value:
@@ -208,6 +215,12 @@ semantics:
     max_iters:
       type: ref
       value: max_iters
+    use_soft_relu:
+      type: value
+      value: false
+    damping:
+      type: value
+      value: 1.0
 
 partial_order:
   type: class
@@ -218,6 +231,8 @@ partial_order:
       value:
         - type: ref
           value: feature_weights
+        - type: ref
+          value: feature_weights_1
     comparison_func:
       type: class
       class_name: SoftCoordinateDominance
@@ -225,9 +240,6 @@ partial_order:
         temperature:
           type: ref
           value: temperature
-        noise_value:
-          type: ref
-          value: noise_value
 
 irrelevance:
   type: class
@@ -245,7 +257,9 @@ base_score:
       type: list
       value:
         - type: ref
-          value: feature_weights_1
+          value: feature_weights
+        - type: ref
+          value: feature_weights_2
     activation:
       type: function
       value: sigmoid
@@ -281,12 +295,6 @@ model:
     post_process_func:
       type: function
       value: identity
-    rescale_edges:
-      type: ref
-      value: rescale_edges
     t_norm_str:
       type: ref
       value: t_norm_str
-    rand_weight:
-      type: ref
-      value: rand_weight

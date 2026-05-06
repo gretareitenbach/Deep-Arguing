@@ -1,3 +1,107 @@
+# ====================== Hyperparameters =======================
+epochs:
+  type: value
+  value: 32
+
+lr:
+  type: value
+  # value: 0.0017516780759110426
+  value: 0.0005
+
+gamma_dag:
+  type: value
+  value: 0.00001
+
+gamma_cbr:
+  type: value
+  value: 0.01
+
+gamma_batch_entropy:
+  type: value
+  value: 0.01
+
+gamma_cp:
+  type: value
+  value: 0.01
+
+gamma_sparsity:
+  type: value
+  value: 0.01
+
+max_iters:
+  type: value
+  value: 10
+
+temperature:
+  type: value
+  # value: 100
+  value: 100
+
+dag_alpha:
+  type: value
+  value: 0.001
+
+cluster_size:
+  type: value
+  value: 5
+
+batch_size:
+  type: value
+  value: 2048
+  # value: 1024
+  # value: 256
+
+gradient_max_norm:
+  type: value
+  value: 4.5
+
+weight_decay:
+  type: value
+  value: 0.001
+
+label_smoothing:
+  type: value
+  value: 0.0
+
+batch_norm:
+  type: value
+  value: False
+
+rescale_edges:
+  type: value
+  value: false
+
+t_norm_str:
+  type: value
+  value: ProductTNorm
+  # value: LukasiewiczTNorm
+
+first_layer:
+  type: value
+  # value: 128
+  value: 512
+
+second_layer:
+  type: value
+  # value: 64
+  value: 256
+
+third_layer:
+  type: value
+  # value: 32
+  value: 128
+
+rand_weight:
+  type: value
+  value: 0
+
+noise_value:
+  type: value
+  value: 0
+
+
+
+
 # ====================== Regulariser =======================
 
 regularisers:
@@ -15,13 +119,6 @@ cross_entropy:
     label_smoothing:
       type: ref
       value: label_smoothing
-    weight:
-      type: tensor
-      value:
-        - type: value
-          value: 1.22
-        - type: value
-          value: 0.867
 
 
 losses:
