@@ -4,16 +4,13 @@ data:
   params:
     class_name:
       type: value
-      value: "FashionMNIST"
-    as_vector:
+      value: "MNIST"
+    use_test_set:
       type: value
       value: true
     shuffle:
       type: value
       value: true
-    size:
-      type: value
-      value: 60000
     labels:
       type: list
       value:
@@ -35,4 +32,4 @@ data_pre_process:
   value:
     pre_process_func:
       type: function
-      value: "normalize_data"
+      value: "no_normalize"

@@ -1,22 +1,32 @@
 epochs:
   type: value
-  value: 200
+  value: 10
 
 lr:
   type: value
-  value: 0.0010773454579728057
+  # value: 0.0010773454579728057
+  value: 0.003
 
 batch_size:
   type: value
-  value: 512
+  # value: 512
+  value: 256
 
 gamma_dag:
   type: value
-  value: 0.08312338066981176
+  value: 0.0001
+
+gamma_sparsity:
+  type: value
+  value: 0.0000
+
+gamma_irrelevance_sparsity:
+  type: value
+  value: 0.0000
 
 max_iters:
   type: value
-  value: 58
+  value: 60
 
 epsilon:
   type: value
@@ -28,7 +38,11 @@ temperature:
 
 dag_alpha:
   type: value
-  value: 0.0040839538230620556
+  value: 0.001
+
+t_norm_str:
+  type: value
+  value: GodelTNorm
 
 first_layer:
   type: value
@@ -40,8 +54,7 @@ second_layer:
 
 third_layer:
   type: value
-  value: 70
-
+  value: 64
 
 cluster_size:
   type: value
@@ -50,3 +63,11 @@ cluster_size:
 batch_norm:
   type: value
   value: false
+
+weight_decay:
+  type: value
+  value: 0.001
+
+gradient_max_norm:
+  type: value
+  value: 3.0

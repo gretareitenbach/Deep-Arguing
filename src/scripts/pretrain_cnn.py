@@ -15,12 +15,12 @@ from deeparguing.helper import load_torch_images, split_data
 config = {
     "dataset": "MNIST",
     "batch_size": 256,
-    "dropout": 0.4,
+    "dropout": 0.2,
     "output_features": 64,
     "seed": 42,
-    "epochs": 15,
-    "lr": 0.00026,
-    "weight_decay": 0.001,
+    "epochs": 10,
+    "lr": 0.001,
+    "weight_decay": 1e-4,
     "label_smoothing": 0.05,
     "grad_clip": 5.0,
     "in_channels": 1

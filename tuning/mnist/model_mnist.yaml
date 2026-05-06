@@ -7,6 +7,18 @@ dag_regulariser:
       type: ref
       value: dag_alpha
 
+attacks_defaults_regulariser:
+  type: class
+  class_name: AttackDefaultsRegulariser
+
+sparsity_regulariser:
+  type: class
+  class_name: SparsityRegulariser
+
+irrelevance_sparsity_regulariser:
+  type: class
+  class_name: IrrelevanceSparsityRegulariser
+
 regularisers:
   type: class
   class_name: CriterionList
@@ -26,6 +38,18 @@ regularisers:
               value: dag_regulariser
             - type: ref
               value: gamma_dag
+        - type: list
+          value:
+            - type: ref
+              value: sparsity_regulariser
+            - type: ref
+              value: gamma_sparsity
+        - type: list
+          value:
+            - type: ref
+              value: irrelevance_sparsity_regulariser
+            - type: ref
+              value: gamma_irrelevance_sparsity
 
 # ================ TRAINING SETTINGS =================
 trainer:
@@ -55,17 +79,17 @@ trainer:
           type: ref
           value: lr
         weight_decay:
-          type: value
-          value: 0.0004
+          type: ref
+          value: weight_decay
     regulariser:
       type: ref
       value: regularisers
     batch_size:
-      type: value
-      value: 7680
+      type: ref
+      value: batch_size
     gradient_max_norm:
-      type: value
-      value: 1.0
+      type: ref
+      value: gradient_max_norm
     validation_log_strategy:
       type: class
       class_name: StandardValidationLog
@@ -83,27 +107,66 @@ build_new_cases:
   value: use_train
 
 # ================ FEATURE EXTRACTORS ================
-feature_weights:
+shared_weights:
   type: class
-  class_name: MLPExtractor
+  class_name: SimpleCNN
+  params:
+    # weights_path: 
+    #   type: value
+    #   value: "simple_cnn_64.pt"
+    # freeze_weights:
+    #   type: value
+    #   value: true
+    freeze_bn:
+      type: value
+      value: true
+    output_features:
+      type: value
+      value: 64
+
+feature_weights_1:
+  type: class
+  class_name: "MLPExtractor"
   params:
     input_size:
-      type: data_ref
-      value: no_features
-    hidden_sizes:
+      type: value
+      value: 64
+    batch_norm:
       type: ref
-      value: mlp_hidden_sizes
+      value: batch_norm
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
+        ]
+    output_size:
+      type: value
+      value: 128
+
+feature_weights_2:
+  type: class
+  class_name: "MLPExtractor"
+  params:
+    input_size:
+      type: value
+      value: 64
+    batch_norm:
+      type: ref
+      value: batch_norm
+    hidden_sizes:
+      type: list
+      value:
+        [
+          { type: ref, value: first_layer },
+          { type: ref, value: second_layer },
+          { type: ref, value: third_layer },
+        ]
     output_size:
       type: value
       value: 1
-
-scaler:
-  type: class
-  class_name: Scaler
-  params:
-    no_features:
-      type: data_ref
-      value: no_features
 
 # ====================== MODEL =======================
 semantics:
@@ -119,23 +182,22 @@ semantics:
 
 partial_order:
   type: class
-  class_name: LearnedPartialOrder
+  class_name: "LearnedPartialOrder"
   params:
     feature_extractors:
       type: list
       value:
-        - type: ref
-          value: feature_weights
+        [
+          { type: ref, value: "shared_weights" },
+          { type: ref, value: "feature_weights_1" },
+        ]
     comparison_func:
       type: class
-      class_name: Subtractor
+      class_name: "SoftCoordinateDominance"
       params:
         temperature:
           type: ref
           value: temperature
-        activation:
-          type: function
-          value: sigmoid
 
 irrelevance:
   type: class
@@ -147,18 +209,17 @@ irrelevance:
 
 base_score:
   type: class
-  class_name: LearnedBaseScore
+  class_name: "LearnedBaseScore"
   params:
     feature_extractors:
       type: list
-      value:
-        - type: ref
-          value: feature_weights
-        - type: ref
-          value: scaler
+      value: [
+          { type: ref, value: "shared_weights" },
+          { type: ref, value: "feature_weights_2" },
+        ]
     activation:
       type: function
-      value: sigmoid
+      value: "sigmoid"
 
 model:
   type: class
@@ -191,7 +252,7 @@ model:
     post_process_func:
       type: function
       value: identity
+    t_norm_str:
+      type: ref
+      value: t_norm_str
 
-attacks_defaults_regulariser:
-  type: class
-  class_name: AttackDefaultsRegulariser
