@@ -85,7 +85,7 @@ def evaluate_model(
         if i == 0:
             y_predicted = predictions
         else:
-            y_predicted = np.concat((y_predicted, predictions))
+            y_predicted = np.concatenate((y_predicted, predictions))
 
     y_predicted = np.argmax(y_predicted, axis=1)
     y_new_cases_orig = np.argmax(y_new_cases.cpu().detach().numpy(), axis=1)
@@ -100,10 +100,14 @@ def evaluate_model(
     f1 = f1_score(y_new_cases_orig, y_predicted, average="macro", zero_division=0.0)
     cm = confusion_matrix(y_new_cases_orig, y_predicted, labels=np.arange(y_new_cases.shape[1]))
 
-    assert type(accuracy) == float
-    assert type(precision) == float
-    assert type(recall) == float
-    assert type(f1) == float
+    # assert type(accuracy) == float
+    # assert type(precision) == float
+    # assert type(recall) == float
+    # assert type(f1) == float
+    accuracy = float(accuracy)
+    precision = float(precision)
+    recall = float(recall)
+    f1 = float(f1)
 
     if print_compute_graph:
         single_value = final_strengths.sum()
