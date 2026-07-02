@@ -542,7 +542,9 @@ class GradualAACBR(torch.nn.Module):
         strengths = self.gradual_semantics(A, base_scores)
 
         if return_all_strengths:
-            return strengths
+            if self.dimensions > 1:
+                return strengths
+            return strengths.squeeze(-1)
 
         # Only apply linear combination when d > 1
         if self.dimensions > 1:

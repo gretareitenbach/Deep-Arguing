@@ -11,3 +11,4 @@ wandb/
 *.pt
 profiler_logs*/
 graphs/
+.venv/

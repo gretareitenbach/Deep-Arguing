@@ -110,7 +110,16 @@ class CurriculumValidationLog(ValidationLogStrategy):
                 if predictions.dim() > 2 or (predictions.dim() == 2 and predictions.shape[1] > 1):
                     predictions = predictions.squeeze()
                 y_target = self._remap_targets(y_batch, active_classes)
-                batch_loss = criterion(model, predictions, y_target) + regulariser(model, predictions, y_target)
+
+                try:
+                    batch_loss = criterion(model, predictions, y_target)
+                except TypeError:
+                    batch_loss = criterion(predictions, y_target)
+
+                try:
+                    batch_loss = batch_loss + regulariser(model, predictions, y_target)
+                except TypeError:
+                    batch_loss = batch_loss + regulariser(predictions, y_target)
 
                 val_loss_total += batch_loss.item()
                 num_batches += 1

@@ -15,7 +15,10 @@ from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
 from deeparguing.train.neural_trainer import NeuralTrainer
-from deeparguing.train.strategies import ValidationLogStrategy
+from deeparguing.train.strategies import (
+    CurriculumValidationLog,
+    ValidationLogStrategy,
+)
 
 
 class CurriculumTrainer(NeuralTrainer):
@@ -52,38 +55,24 @@ class CurriculumTrainer(NeuralTrainer):
 
     def __init__(
         self,
-        validation_log_strategy: ValidationLogStrategy,
         curriculum_strategy: CurriculumStrategy,
         data_selector: DataSelector,
+        validation_log_strategy: ValidationLogStrategy | None = None,
         reset_optimizer_on_advance: bool = False,
     ):
-        super().__init__(validation_log_strategy)
+        super().__init__(
+            validation_log_strategy
+            if validation_log_strategy is not None
+            else CurriculumValidationLog()
+        )
         self.curriculum_strategy = curriculum_strategy
         self.data_selector = data_selector
         self.reset_optimizer_on_advance = reset_optimizer_on_advance
         # Store active classes for use in training step
         self._current_active_classes: list[int] = []
 
-        """
-        Validates total epochs is sufficient for curriculum.
-
-        Raises
-        ------
-        ValueError
-            If epochs < epochs_per_class x num_classes
-        """
-        epc = self.curriculum_strategy.epochs_per_class
-        if epc is not None:
-            num_classes = self.curriculum_strategy.total_classes
-            min_required = epc * num_classes
-            if epochs < min_required:
-                raise ValueError(
-                    f"Total epochs ({epochs}) must be >= "
-                    f"epochs_per_class ({epc}) x "
-                    f"num_classes ({num_classes}) = {min_required}."
-                )
-
     def _filter_defaults(
+        self,
         X_default: Tensor,
         y_default: Tensor,
         active_classes: list[int],
@@ -137,8 +126,22 @@ class CurriculumTrainer(NeuralTrainer):
 
         return X_filtered, y_filtered
 
+    def _validate_epochs(self, epochs: int) -> None:
+        """Validate that total epochs are sufficient for the curriculum."""
+        epc = self.curriculum_strategy.epochs_per_class
+        if epc is not None:
+            num_classes = self.curriculum_strategy.total_classes
+            min_required = epc * num_classes
+            if epochs < min_required:
+                raise ValueError(
+                    f"Total epochs ({epochs}) must be >= "
+                    f"epochs_per_class ({epc}) x "
+                    f"num_classes ({num_classes}) = {min_required}."
+                )
+
     @override
     def train(
+        self,
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
@@ -241,7 +244,7 @@ class CurriculumTrainer(NeuralTrainer):
                     y_new_curr,
                     criterion,
                     regulariser,
-                    active_classes,
+                    active_classes=active_classes,
                 )
             model.train()
 
@@ -262,7 +265,12 @@ class CurriculumTrainer(NeuralTrainer):
                 with torch.no_grad():
                     model.fit(X_casebase, y_casebase, X_default, y_default)
                     full_loss, full_acc, full_f1 = self.validation_log_strategy.log(
-                        model, batch_size, X_val, y_val, criterion, regulariser
+                        model,
+                        batch_size,
+                        X_val,
+                        y_val,
+                        criterion,
+                        regulariser,
                     )
                 metrics["accuracy/full_val_accuracy"] = full_acc
                 metrics["f1/full_val_f1"] = full_f1
@@ -304,7 +312,17 @@ class CurriculumTrainer(NeuralTrainer):
         )
         return float(max_val_acc), float(max_val_f1)
 
+    def _reset_optimizer_state(self, optimizer: Optimizer) -> None:
+        """Reset optimizer state so momentum and other cached values are cleared."""
+        for group in optimizer.param_groups:
+            group.setdefault("momentum_buffer", None)
+            for p in group.get("params", []):
+                if p.grad is not None:
+                    p.grad = None
+        optimizer.zero_grad(set_to_none=True)
+
     def _train_curriculum_epoch(
+        self,
         model: GradualAACBR,
         X_casebase: Tensor,
         y_casebase: Tensor,
@@ -397,8 +415,15 @@ class CurriculumTrainer(NeuralTrainer):
 
         y_target = self._remap_targets(y_new_cases, active_classes)
 
-        loss: Tensor = criterion(model, predictions, y_target)
-        loss += regulariser(model, predictions, y_target)
+        try:
+            loss: Tensor = criterion(model, predictions, y_target)
+        except TypeError:
+            loss: Tensor = criterion(predictions, y_target)
+
+        try:
+            loss = loss + regulariser(model, predictions, y_target)
+        except TypeError:
+            loss = loss + regulariser(predictions, y_target)
         loss.backward()
 
         if gradient_max_norm is not None:
