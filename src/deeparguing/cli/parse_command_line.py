@@ -164,6 +164,16 @@ def parse_command_line():
         help="Log the gradients during training",
     )
 
+    parser.add_argument(
+        "--misclassified_log",
+        "-ml",
+        action="store_true",
+        help=(
+            "Export misclassified test samples and their QBAF tensors to "
+            "graphs/misclassified_qbaf.json (requires --run_test)"
+        ),
+    )
+
     return parser.parse_args()
 
 

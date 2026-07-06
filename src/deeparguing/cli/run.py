@@ -230,52 +230,53 @@ def run(project: str = "gradual-aa-cbr"):
                 test_f1s.append(f1_test)
                 test_accs.append(acc_test)
 
-                # ======================================================
-                # MISCLASSIFIED SAMPLE & QBAF TENSOR EXTRACTION
-                # ======================================================
-                logging.info("Isolating misclassified test samples...")
-                model.eval()
-                
-                all_preds = []
-                # Batched inference to prevent Out-Of-Memory errors
-                current_batch_size = batch_size if batch_size is not None else len(X_test)
-                for i in range(0, len(X_test), current_batch_size):
-                    batch_preds = model(X_test[i : i + current_batch_size]).cpu().detach().numpy()
-                    all_preds.append(batch_preds)
-                
-                y_predicted = np.concatenate(all_preds, axis=0)
-                y_predicted_classes = np.argmax(y_predicted, axis=1)
-                y_true_classes = np.argmax(y_test.cpu().detach().numpy(), axis=1)
+                if args.misclassified_log:
+                    # ======================================================
+                    # MISCLASSIFIED SAMPLE & QBAF TENSOR EXTRACTION
+                    # ======================================================
+                    logging.info("Isolating misclassified test samples...")
+                    model.eval()
 
-                # Find indices where the model prediction does not match the ground truth
-                misclassified_indices = np.where(y_predicted_classes != y_true_classes)[0]
-                
-                # Isolate up to 100 samples
-                num_to_extract = min(100, len(misclassified_indices))
-                selected_indices = misclassified_indices[:num_to_extract]
-                
-                X_misc = X_test[selected_indices]
-                y_misc = y_test[selected_indices]
+                    all_preds = []
+                    # Batched inference to prevent Out-Of-Memory errors
+                    current_batch_size = batch_size if batch_size is not None else len(X_test)
+                    for i in range(0, len(X_test), current_batch_size):
+                        batch_preds = model(X_test[i : i + current_batch_size]).cpu().detach().numpy()
+                        all_preds.append(batch_preds)
 
-                # Export to JSON
-                OUT_DIR = "graphs"
-                Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-                export_path = f"{OUT_DIR}/misclassified_qbaf.json"
-                
-                image_mean = data_dict.get("image_mean", None)
-                image_std = data_dict.get("image_std", None)
-                
-                # This triggers a forward pass internally to populate new_cases_base_scores 
-                # and new_cases_attacks_adjacency before exporting
-                model.export_to_json(
-                    export_path,
-                    image_mean=image_mean,
-                    image_std=image_std,
-                    new_cases=X_misc,
-                    new_cases_labels=y_misc
-                )
-                logging.info(f"Successfully exported {num_to_extract} misclassified samples and their QBAF tensors to {export_path}")
-                # ======================================================
+                    y_predicted = np.concatenate(all_preds, axis=0)
+                    y_predicted_classes = np.argmax(y_predicted, axis=1)
+                    y_true_classes = np.argmax(y_test.cpu().detach().numpy(), axis=1)
+
+                    # Find indices where the model prediction does not match the ground truth
+                    misclassified_indices = np.where(y_predicted_classes != y_true_classes)[0]
+
+                    # Isolate up to 100 samples
+                    num_to_extract = min(100, len(misclassified_indices))
+                    selected_indices = misclassified_indices[:num_to_extract]
+
+                    X_misc = X_test[selected_indices]
+                    y_misc = y_test[selected_indices]
+
+                    # Export to JSON
+                    OUT_DIR = "graphs"
+                    Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+                    export_path = f"{OUT_DIR}/misclassified_qbaf.json"
+
+                    image_mean = data_dict.get("image_mean", None)
+                    image_std = data_dict.get("image_std", None)
+
+                    # This triggers a forward pass internally to populate new_cases_base_scores
+                    # and new_cases_attacks_adjacency before exporting
+                    model.export_to_json(
+                        export_path,
+                        image_mean=image_mean,
+                        image_std=image_std,
+                        new_cases=X_misc,
+                        new_cases_labels=y_misc
+                    )
+                    logging.info(f"Successfully exported {num_to_extract} misclassified samples and their QBAF tensors to {export_path}")
+                    # ======================================================
 
             if args.run_train:
                 X_train = data_dict["X_train"]
