@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Tuple
 
 import torch
 import yaml

@@ -7,12 +7,12 @@ from numpy.typing import NDArray
 from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
                              precision_score, recall_score)
 from torch import Tensor
-from torchviz import make_dot
 
 from deeparguing import GradualAACBR
 from deeparguing.base_scores import *
 from deeparguing.casebase_edge_weights import *
 from deeparguing.clustering import *
+from deeparguing.evals.compute_graph import make_dot
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
