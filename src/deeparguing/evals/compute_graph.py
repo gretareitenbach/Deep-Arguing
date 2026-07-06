@@ -6,6 +6,8 @@ the removed `distutils` module. Trimmed to drop the legacy `distutils`
 version check and `torch.autograd.Variable` alias.
 """
 
+# pyright: reportMissingTypeStubs=false, reportMissingParameterType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false
+
 from graphviz import Digraph
 import torch
 

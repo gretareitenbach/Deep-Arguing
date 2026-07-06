@@ -81,11 +81,12 @@ def evaluate_model(
 
     for i in range(0, len(X_new_cases), batch_size):
         X_batch = X_new_cases[i : i + batch_size]
-        predictions = model(X_batch).cpu().detach().numpy()
+        final_strengths = model(X_batch)
+        batch_predictions = final_strengths.cpu().detach().numpy()
         if i == 0:
-            y_predicted = predictions
+            y_predicted = batch_predictions
         else:
-            y_predicted = np.concatenate((y_predicted, predictions))
+            y_predicted = np.concatenate((y_predicted, batch_predictions))
 
     y_predicted = np.argmax(y_predicted, axis=1)
     y_new_cases_orig = np.argmax(y_new_cases.cpu().detach().numpy(), axis=1)
