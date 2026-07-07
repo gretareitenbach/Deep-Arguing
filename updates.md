@@ -90,3 +90,34 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     - Input-validation tests (unfitted model, `target_indices` length
       mismatch, batch size > 1 for the finite-difference path) and
       result-shape/detachment checks.
+
+- **Updated visualizer for edge perturbation** (`6b7f8ea`)
+  - `gradual_aacbr.py`: `export_to_json` gained optional `grae_casebase_edges`/
+    `grae_new_case_edges`/`grae_target_indices` params, serialized under a
+    `"grae"` key, so a G-RAE result can ride along in the same JSON the
+    visualizer already reads instead of a separate file.
+  - `cli/run.py`: reordered the `--grae_log` block to run before the JSON
+    export (it previously only wrote `misclassified_grae.pt`), and now passes
+    the computed G-RAEs into `export_to_json` too. The `.pt` export is
+    unchanged/still written, since it's more compact for large casebases and
+    carries `selected_indices`, which the JSON export doesn't.
+  - `visualizer/app.js` / `index.html`: added a "G-RAE Perturbation" sidebar
+    panel. Clicking an edge (while a new case is selected) selects it for
+    perturbation; a Δ slider live-computes `predicted = original_strength +
+    gradient * Δ` (a linear/first-order approximation) and pulses the
+    differentiated default node's opacity/border accordingly.
+  - Extended the panel to handle multi-target exports (`target_indices` as a
+    list-of-lists instead of one index per sample, with a matching extra
+    axis on `casebase_edges`/`new_case_edges`): renders a live "competition"
+    table of every candidate class's predicted strength, bolds the current
+    winner, and computes the exact crossing Δ (closed-form, since predicted
+    strength is linear in Δ) at which another class would overtake it.
+    `run.py`'s real export still only produces the single-target shape;
+    multi-target is currently only exercised by hand-built demo fixtures.
+  - Fixed a latent bug in the upload handler: the actual precompute/render
+    work ran inside a `setTimeout` nested outside the surrounding
+    `try`/`catch`, so any exception there (regardless of cause) was silently
+    swallowed — no alert, and `hideLoading()` never ran, leaving the loading
+    overlay stuck indefinitely. Wrapped that block (and the `initCytoscape`
+    step) in their own `try`/`catch` so failures now surface an alert and
+    clear the overlay.
