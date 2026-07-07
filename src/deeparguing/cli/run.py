@@ -26,6 +26,7 @@ from deeparguing.cli import (parse_command_line, parse_model_config, plots,
 from deeparguing.cli.loggers import DummyLogger, ExperimentLogger, WandbLogger
 from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
+from deeparguing.counterfactuals.grae import compute_grae
 from deeparguing.criterion import *
 from deeparguing.evals import (evaluate_model, print_results,
                                visualize_overlayed_loss_landscapes)
@@ -277,6 +278,41 @@ def run(project: str = "gradual-aa-cbr"):
                     )
                     logging.info(f"Successfully exported {num_to_extract} misclassified samples and their QBAF tensors to {export_path}")
                     # ======================================================
+
+                    if args.grae_log:
+                        # ==================================================
+                        # G-RAE (GRADIENT-BASED RELATION ATTRIBUTION) EXPORT
+                        # ==================================================
+                        logging.info(
+                            f"Computing G-RAEs for {num_to_extract} misclassified samples..."
+                        )
+
+                        # default_indexes rows are ordered the same as
+                        # X_defaults/y_defaults, which is labels.flip([0]) --
+                        # so the default row for class-column c sits at
+                        # len(labels) - 1 - c.
+                        true_classes_misc = y_true_classes[selected_indices]
+                        target_indices = (len(labels) - 1 - true_classes_misc).tolist()
+
+                        grae_result = compute_grae(
+                            model, X_misc, target_indices, per_sample=True
+                        )
+
+                        grae_export_path = f"{OUT_DIR}/misclassified_grae.pt"
+                        torch.save(
+                            {
+                                "casebase_edges": grae_result.casebase_edges,
+                                "new_case_edges": grae_result.new_case_edges,
+                                "target_indices": grae_result.target_indices,
+                                "selected_indices": selected_indices,
+                            },
+                            grae_export_path,
+                        )
+                        logging.info(
+                            f"Successfully exported G-RAEs for {num_to_extract} "
+                            f"misclassified samples to {grae_export_path}"
+                        )
+                        # ==================================================
 
             if args.run_train:
                 X_train = data_dict["X_train"]

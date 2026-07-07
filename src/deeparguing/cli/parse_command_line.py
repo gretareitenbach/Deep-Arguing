@@ -174,6 +174,18 @@ def parse_command_line():
         ),
     )
 
+    parser.add_argument(
+        "--grae_log",
+        "-gl",
+        action="store_true",
+        help=(
+            "Compute G-RAEs (gradient-based relation attribution "
+            "explanations) for the exported misclassified samples and "
+            "save them to graphs/misclassified_grae.pt (requires "
+            "--misclassified_log)"
+        ),
+    )
+
     return parser.parse_args()
 
 
