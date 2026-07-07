@@ -60,19 +60,33 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
   - `compute_graph.py`: added a `pyright` ignore-comment for the vendored,
     untyped `torchviz` code.
 
-## Uncommitted (working tree, as of this session)
+## 2026-07-07
 
-Not yet committed — flagged separately since it doesn't have a commit hash yet:
-
-- **New `src/deeparguing/counterfactuals/grae.py` module**: implements
-  Gradient-based Relation Attribution Explanations (G-RAEs, Definition 13 of the
-  Contestability paper). `compute_grae` detaches `model.A` and
-  `model.new_cases_attacks_adjacency` into fresh leaf tensors, replays the
-  aggregation -> influence -> `gradual_semantics` computation on those leaves,
-  and reads `.grad` off both after a single `.backward()` (with an optional
-  per-sample mode for the casebase-edge gradient). `finite_difference_grae`
-  provides a perturbation-based cross-check of the analytic gradients.
-- **CLI wiring**: added `--grae_log`/`-gl` to `parse_command_line.py`; `run.py`
-  now computes G-RAEs for the exported misclassified samples (when
-  `--misclassified_log` is also set) and saves them to
-  `graphs/misclassified_grae.pt`.
+- **Created grae module** (`ef43211`)
+  - New `src/deeparguing/counterfactuals/grae.py` module: implements
+    Gradient-based Relation Attribution Explanations (G-RAEs, Definition 13
+    of the Contestability paper). `compute_grae` detaches `model.A` and
+    `model.new_cases_attacks_adjacency` into fresh leaf tensors, replays the
+    aggregation -> influence -> `gradual_semantics` computation on those
+    leaves, and reads `.grad` off both after a single `.backward()` (with an
+    optional per-sample mode for the casebase-edge gradient).
+    `finite_difference_grae` provides a perturbation-based cross-check of
+    the analytic gradients (Algorithm 1 of the paper).
+  - CLI wiring: added `--grae_log`/`-gl` to `parse_command_line.py`; `run.py`
+    now computes G-RAEs for the exported misclassified samples (when
+    `--misclassified_log` is also set) and saves them to
+    `graphs/misclassified_grae.pt`.
+  - Added `tests/grae_test.py` (25 tests) covering the new module:
+    - Cross-checks `compute_grae`'s analytic gradients against
+      `finite_difference_grae` (Algorithm 1) across new cases/iteration
+      counts, checks the finite-difference error shrinks with `epsilon`, and
+      checks the batched/aggregate code path sums the per-sample Algorithm 1
+      estimates correctly.
+    - Property-based tests for Propositions 4-6 (Direct/Indirect Influence,
+      Irrelevance) on a hand-built EW-QBAF that bypasses `fit()` by setting
+      `model.A`/`X_train`/`default_indexes` directly, confirming G-RAEs have
+      the expected sign for direct, indirect (odd/even downstream-attack
+      parity), and independent edges.
+    - Input-validation tests (unfitted model, `target_indices` length
+      mismatch, batch size > 1 for the finite-difference path) and
+      result-shape/detachment checks.
