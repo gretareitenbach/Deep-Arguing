@@ -44,6 +44,20 @@ let finalStrengths = []; // Final strengths when a new case is active
 let newCaseImages = {}; // Map of newCaseIndex -> Base64 Image URL
 let selectedNewCaseIndex = -1;
 
+// G-RAE Perturbation Data
+// Legacy (single-target) shape: casebase_edges (B,n,n,d), new_case_edges (B,n,d),
+// target_indices (B,) -- one target default per sample.
+// Multi-target shape: casebase_edges (B,T,n,n,d), new_case_edges (B,T,n,d),
+// target_indices (B,T) -- several candidate target defaults per sample, so a
+// single perturbed edge's effect on every class can be compared at once.
+let graeCasebaseEdges = [];
+let graeNewCaseEdges = [];
+let graeTargetIndices = [];
+let graeTargetLabels = []; // (B,T) optional class label per target column
+let graeMultiTarget = false;
+let selectedPerturbationEdge = null; // { type: 'casebase', i, j } | { type: 'new_case', j }
+let currentGraeDelta = 0;
+
 // UI Elements
 const jsonUpload = document.getElementById('json-upload');
 const graphSlider = document.getElementById('graph-slider');
@@ -78,6 +92,21 @@ const newCasesList = document.getElementById('new-cases-list');
 const finalStrengthControls = document.getElementById('final-strength-controls');
 const finalStrengthSlider = document.getElementById('final-strength-slider');
 const finalStrengthLabel = document.getElementById('final-strength-label');
+
+// G-RAE Perturbation UI
+const graePanel = document.getElementById('grae-panel');
+const graeNoSelection = document.getElementById('grae-no-selection');
+const graeSelection = document.getElementById('grae-selection');
+const graeEdgeLabel = document.getElementById('grae-edge-label');
+const graeDeltaSlider = document.getElementById('grae-delta-slider');
+const graeDeltaLabel = document.getElementById('grae-delta-label');
+const graeOriginalStrengthEl = document.getElementById('grae-original-strength');
+const graePredictedStrengthEl = document.getElementById('grae-predicted-strength');
+const graeClearBtn = document.getElementById('grae-clear-btn');
+const graeSingleTarget = document.getElementById('grae-single-target');
+const graeMultiTargetEl = document.getElementById('grae-multi-target');
+const graeCompetitionTable = document.getElementById('grae-competition-table').querySelector('tbody');
+const graeFlipHint = document.getElementById('grae-flip-hint');
 
 const graphLabel = document.getElementById('graph-label');
 const thresholdLabel = document.getElementById('threshold-label');
@@ -611,6 +640,10 @@ function renderNewCasesList() {
                     updateFStrengthBounds();
                 }
             }
+            selectedPerturbationEdge = null;
+            currentGraeDelta = 0;
+            graeDeltaSlider.value = 0;
+            updateGraePanel();
             renderNewCasesList(); // re-render to update classes/buttons
             if (precomputedEdges.length > 0) handleSliderChange();
             
@@ -662,15 +695,24 @@ jsonUpload.addEventListener('change', (event) => {
                     finalStrengths = data.final_strengths || [];
                     selectedNewCaseIndex = -1;
 
+                    graeCasebaseEdges = (data.grae && data.grae.casebase_edges) || [];
+                    graeNewCaseEdges = (data.grae && data.grae.new_case_edges) || [];
+                    graeTargetIndices = (data.grae && data.grae.target_indices) || [];
+                    graeTargetLabels = (data.grae && data.grae.target_labels) || [];
+                    graeMultiTarget = Array.isArray(graeTargetIndices[0]);
+                    selectedPerturbationEdge = null;
+                    currentGraeDelta = 0;
+
                     // Initialize filter states
                     visibleClasses = new Set(yTrainData);
                     showDefaultCases = true;
                     hideDefaultsPerClass = false;
 
                     setTimeout(() => {
+                      try {
                         precomputeImages();
                         precomputeEdges(data.adjacency_matrix);
-                        
+
                         // Handle Colors and Legend
                         let uniqueClasses = [];
                         if (yTrainData.length > 0) {
@@ -740,14 +782,28 @@ jsonUpload.addEventListener('change', (event) => {
                         
                         removeSpikesCheckbox.checked = false;
                         removeSpikesCheckbox.disabled = false;
-                        
+
+                        graeDeltaSlider.value = 0;
+                        updateGraePanel();
+
                         updateLabels();
                         showLoading("Rendering graph...");
-                        
+
                         setTimeout(() => {
-                            initCytoscape();
-                            hideLoading();
+                            try {
+                                initCytoscape();
+                            } catch (err) {
+                                console.error("Error rendering graph:", err);
+                                alert(`Error rendering graph: ${err.message}`);
+                            } finally {
+                                hideLoading();
+                            }
                         }, 50);
+                      } catch (err) {
+                          console.error("Error precomputing graph data:", err);
+                          alert(`Error precomputing graph data: ${err.message}`);
+                          hideLoading();
+                      }
                     }, 50);
                 } else {
                     alert("Invalid JSON format. Must contain 'adjacency_matrix'.");
@@ -781,6 +837,7 @@ graphSlider.addEventListener('input', (e) => {
     currentGraphIndex = parseInt(e.target.value, 10);
     updateFStrengthBounds();
     updateLabels();
+    updateGraePanel();
     if (precomputedEdges.length > 0) handleSliderChange();
 });
 
@@ -892,6 +949,212 @@ function updateFStrengthBounds() {
         finalStrengthSlider.value = currentFinalStrengthThreshold;
     }
 }
+
+/**
+ * Looks up the G-RAE gradient (d(target strength)/d(edge weight)) for the
+ * currently selected perturbation edge, for every candidate target default
+ * of the active new case (just one, in the common single-target export;
+ * several, when the export was built with multiple targets per sample so
+ * competing classes can be compared side by side).
+ */
+function getSelectedGraeTargets() {
+    if (!selectedPerturbationEdge || selectedNewCaseIndex === -1) return null;
+    const caseIdx = selectedNewCaseIndex;
+    const rawTargets = graeTargetIndices[caseIdx];
+    if (rawTargets === undefined) return null;
+
+    const d = currentGraphIndex;
+    const targetDefaultIdxList = graeMultiTarget ? rawTargets : [rawTargets];
+    const labelsForCase = graeMultiTarget ? (graeTargetLabels[caseIdx] || []) : [];
+
+    let edgeLabelText = '';
+    const targets = targetDefaultIdxList.map((targetDefaultIdx, t) => {
+        let gradient = 0;
+
+        if (selectedPerturbationEdge.type === 'casebase') {
+            const { i, j } = selectedPerturbationEdge;
+            const sampleEdges = graeMultiTarget ? graeCasebaseEdges[caseIdx] && graeCasebaseEdges[caseIdx][t] : graeCasebaseEdges[caseIdx];
+            const row = sampleEdges && sampleEdges[i] && sampleEdges[i][j];
+            gradient = row ? row[d] : 0;
+            edgeLabelText = `Casebase edge: n${i} → n${j}`;
+        } else {
+            const { j } = selectedPerturbationEdge;
+            const sampleEdges = graeMultiTarget ? graeNewCaseEdges[caseIdx] && graeNewCaseEdges[caseIdx][t] : graeNewCaseEdges[caseIdx];
+            const row = sampleEdges && sampleEdges[j];
+            gradient = row ? row[d] : 0;
+            edgeLabelText = `New Case ${caseIdx} → n${j}`;
+        }
+
+        const targetNodeId = defaultIndexesData[targetDefaultIdx];
+        const originalStrength = getFinalStrength(caseIdx, targetNodeId, d);
+        const classLabel = labelsForCase[t];
+        return { targetDefaultIdx, targetNodeId, gradient, originalStrength, classLabel };
+    });
+
+    return { edgeLabelText, targets };
+}
+
+/**
+ * Whether the currently selected new case has any G-RAE data to perturb.
+ */
+function graeAvailableForCurrentCase() {
+    return selectedNewCaseIndex !== -1 && graeTargetIndices[selectedNewCaseIndex] !== undefined;
+}
+
+/**
+ * Refreshes the G-RAE sidebar panel and the live linear-approximation
+ * readout, and pulses the differentiated default node so the effect of the
+ * perturbation is visible directly on the graph.
+ */
+function updateGraePanel() {
+    if (!graeAvailableForCurrentCase()) {
+        graePanel.style.display = 'none';
+        clearGraeNodeHighlight();
+        return;
+    }
+
+    graePanel.style.display = 'block';
+
+    if (!selectedPerturbationEdge) {
+        graeNoSelection.style.display = 'block';
+        graeSelection.style.display = 'none';
+        clearGraeNodeHighlight();
+        return;
+    }
+
+    const info = getSelectedGraeTargets();
+    if (!info) {
+        selectedPerturbationEdge = null;
+        graeNoSelection.style.display = 'block';
+        graeSelection.style.display = 'none';
+        clearGraeNodeHighlight();
+        return;
+    }
+
+    graeNoSelection.style.display = 'none';
+    graeSelection.style.display = 'block';
+
+    graeEdgeLabel.textContent = info.edgeLabelText;
+    graeDeltaLabel.textContent = `Δ = ${currentGraeDelta.toFixed(2)}`;
+
+    if (graeMultiTarget && info.targets.length > 1) {
+        graeSingleTarget.style.display = 'none';
+        graeMultiTargetEl.style.display = 'block';
+        renderGraeCompetitionTable(info.targets);
+    } else {
+        graeSingleTarget.style.display = 'block';
+        graeMultiTargetEl.style.display = 'none';
+
+        const t = info.targets[0];
+        const predicted = t.originalStrength + t.gradient * currentGraeDelta;
+        graeOriginalStrengthEl.textContent = t.originalStrength.toFixed(4);
+        graePredictedStrengthEl.textContent = predicted.toFixed(4);
+        highlightGraeTargetNode(t.targetNodeId, predicted);
+    }
+}
+
+/**
+ * Renders the per-class "competition" table for multi-target G-RAE data:
+ * every candidate target's live predicted strength under the current Δ,
+ * with the current winner bolded, plus a closed-form hint for the nearest
+ * Δ (within the slider's [-1, 1] range) at which some other target would
+ * overtake it -- since predicted strength is linear in Δ, the crossing
+ * point of two targets' lines is exact, not searched for.
+ */
+function renderGraeCompetitionTable(targets) {
+    const uniqueClasses = [...new Set(yTrainData)].sort((a, b) => a - b);
+    const predicted = targets.map(t => t.originalStrength + t.gradient * currentGraeDelta);
+    const winnerIdx = predicted.indexOf(Math.max(...predicted));
+
+    graeCompetitionTable.innerHTML = '';
+    targets.forEach((t, idx) => {
+        const tr = document.createElement('tr');
+        if (idx === winnerIdx) tr.className = 'fw-bold table-warning';
+
+        const labelTd = document.createElement('td');
+        if (t.classLabel !== undefined) {
+            const classIndex = uniqueClasses.indexOf(t.classLabel);
+            const color = getClassColor(classIndex, uniqueClasses.length);
+            const colorBox = document.createElement('span');
+            colorBox.className = 'color-box';
+            colorBox.style.backgroundColor = color;
+            colorBox.style.width = '10px';
+            colorBox.style.height = '10px';
+            colorBox.style.marginRight = '4px';
+            labelTd.appendChild(colorBox);
+            labelTd.appendChild(document.createTextNode(`Class ${t.classLabel}`));
+        } else {
+            labelTd.textContent = `Target ${idx}`;
+        }
+
+        const valTd = document.createElement('td');
+        valTd.textContent = predicted[idx].toFixed(4);
+        valTd.className = 'text-end';
+
+        tr.appendChild(labelTd);
+        tr.appendChild(valTd);
+        graeCompetitionTable.appendChild(tr);
+    });
+
+    // Closed-form crossing: predicted[t](delta) = orig[t] + grad[t]*delta,
+    // so predicted[t] == predicted[winner] at
+    // delta* = (orig[winner] - orig[t]) / (grad[t] - grad[winner]).
+    const winner = targets[winnerIdx];
+    const hints = [];
+    targets.forEach((t, idx) => {
+        if (idx === winnerIdx) return;
+        const gradDiff = t.gradient - winner.gradient;
+        if (Math.abs(gradDiff) < 1e-9) return; // parallel lines never cross
+        const deltaStar = (winner.originalStrength - t.originalStrength) / gradDiff;
+        if (deltaStar >= -1 && deltaStar <= 1) {
+            hints.push({ idx, deltaStar });
+        }
+    });
+
+    if (hints.length > 0) {
+        hints.sort((a, b) => Math.abs(a.deltaStar - currentGraeDelta) - Math.abs(b.deltaStar - currentGraeDelta));
+        const nearest = hints[0];
+        const label = targets[nearest.idx].classLabel !== undefined ? `Class ${targets[nearest.idx].classLabel}` : `Target ${nearest.idx}`;
+        graeFlipHint.textContent = `⚡ ${label} overtakes at Δ ≈ ${nearest.deltaStar.toFixed(2)}`;
+    } else {
+        graeFlipHint.textContent = 'No flip within Δ ∈ [-1, 1] for this edge.';
+    }
+
+    highlightGraeTargetNode(targets[winnerIdx].targetNodeId, predicted[winnerIdx]);
+}
+
+/**
+ * Temporarily overrides the differentiated default node's opacity/border to
+ * reflect the linearly-predicted strength under the current perturbation.
+ * This override is re-applied any time the panel refreshes, and cleared by
+ * clearGraeNodeHighlight (e.g. on "Clear" or when the graph re-renders).
+ */
+function highlightGraeTargetNode(nodeId, predictedStrength) {
+    if (!cy) return;
+    const node = cy.getElementById(`n${nodeId}`);
+    if (!node || node.length === 0) return;
+
+    const clamped = Math.max(0, Math.min(1, predictedStrength));
+    node.data('opacity', 0.10 + (0.90 * clamped));
+    node.data('borderColor', '#e67e22');
+    node.data('borderWidth', 6);
+}
+
+function clearGraeNodeHighlight() {
+    if (precomputedEdges.length > 0) updateGraphElements();
+}
+
+graeDeltaSlider.addEventListener('input', (e) => {
+    currentGraeDelta = parseFloat(e.target.value);
+    updateGraePanel();
+});
+
+graeClearBtn.addEventListener('click', () => {
+    selectedPerturbationEdge = null;
+    currentGraeDelta = 0;
+    graeDeltaSlider.value = 0;
+    updateGraePanel();
+});
 
 function getFilteredEdges() {
     let edges = precomputedEdges[currentGraphIndex].filter(edge => {
@@ -1295,13 +1558,32 @@ function initCytoscape() {
     cy.on('click', 'edge', (e) => {
         const edge = e.target;
         const weight = edge.data('weight');
-        
+
         let tooltipHtml = `<strong>Edge Weight:</strong> ${weight.toFixed(4)}`;
+        if (graeAvailableForCurrentCase()) {
+            tooltipHtml += `<br/><em>Selected for G-RAE perturbation</em>`;
+        }
         nodeTooltip.innerHTML = tooltipHtml;
-        
+
         nodeTooltip.style.left = e.originalEvent.clientX + 15 + 'px';
         nodeTooltip.style.top = e.originalEvent.clientY + 15 + 'px';
         nodeTooltip.classList.remove('hidden');
+
+        if (graeAvailableForCurrentCase()) {
+            const source = edge.data('source');
+            const target = edge.data('target');
+            const j = parseInt(target.substring(1));
+
+            if (source === 'new_case_node') {
+                selectedPerturbationEdge = { type: 'new_case', j };
+            } else {
+                const i = parseInt(source.substring(1));
+                selectedPerturbationEdge = { type: 'casebase', i, j };
+            }
+            currentGraeDelta = 0;
+            graeDeltaSlider.value = 0;
+            updateGraePanel();
+        }
     });
 
     // Hide tooltip when clicking the background

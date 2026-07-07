@@ -259,29 +259,13 @@ def run(project: str = "gradual-aa-cbr"):
                     X_misc = X_test[selected_indices]
                     y_misc = y_test[selected_indices]
 
-                    # Export to JSON
                     OUT_DIR = "graphs"
                     Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-                    export_path = f"{OUT_DIR}/misclassified_qbaf.json"
 
-                    image_mean = data_dict.get("image_mean", None)
-                    image_std = data_dict.get("image_std", None)
-
-                    # This triggers a forward pass internally to populate new_cases_base_scores
-                    # and new_cases_attacks_adjacency before exporting
-                    model.export_to_json(
-                        export_path,
-                        image_mean=image_mean,
-                        image_std=image_std,
-                        new_cases=X_misc,
-                        new_cases_labels=y_misc
-                    )
-                    logging.info(f"Successfully exported {num_to_extract} misclassified samples and their QBAF tensors to {export_path}")
-                    # ======================================================
-
+                    grae_result = None
                     if args.grae_log:
                         # ==================================================
-                        # G-RAE (GRADIENT-BASED RELATION ATTRIBUTION) EXPORT
+                        # G-RAE (GRADIENT-BASED RELATION ATTRIBUTION)
                         # ==================================================
                         logging.info(
                             f"Computing G-RAEs for {num_to_extract} misclassified samples..."
@@ -313,6 +297,33 @@ def run(project: str = "gradual-aa-cbr"):
                             f"misclassified samples to {grae_export_path}"
                         )
                         # ==================================================
+
+                    # Export to JSON
+                    export_path = f"{OUT_DIR}/misclassified_qbaf.json"
+
+                    image_mean = data_dict.get("image_mean", None)
+                    image_std = data_dict.get("image_std", None)
+
+                    # This triggers a forward pass internally to populate new_cases_base_scores
+                    # and new_cases_attacks_adjacency before exporting
+                    model.export_to_json(
+                        export_path,
+                        image_mean=image_mean,
+                        image_std=image_std,
+                        new_cases=X_misc,
+                        new_cases_labels=y_misc,
+                        grae_casebase_edges=(
+                            grae_result.casebase_edges if grae_result else None
+                        ),
+                        grae_new_case_edges=(
+                            grae_result.new_case_edges if grae_result else None
+                        ),
+                        grae_target_indices=(
+                            grae_result.target_indices if grae_result else None
+                        ),
+                    )
+                    logging.info(f"Successfully exported {num_to_extract} misclassified samples and their QBAF tensors to {export_path}")
+                    # ======================================================
 
             if args.run_train:
                 X_train = data_dict["X_train"]

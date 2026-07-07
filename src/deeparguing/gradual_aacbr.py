@@ -1,5 +1,5 @@
 import json
-from typing import Callable, Tuple, override
+from typing import Callable, Sequence, Tuple, override
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -730,6 +730,9 @@ class GradualAACBR(torch.nn.Module):
         image_std: Tensor | None = None,
         new_cases: Tensor | None = None,
         new_cases_labels: Tensor | None = None,
+        grae_casebase_edges: Tensor | None = None,
+        grae_new_case_edges: Tensor | None = None,
+        grae_target_indices: Sequence[int] | None = None,
     ) -> None:
         """
         Exports the base scores of the casebase (X_train) and the adjacency matrix to a JSON file.
@@ -746,6 +749,16 @@ class GradualAACBR(torch.nn.Module):
             Optional tensor of new cases.
         new_cases_labels : Tensor | None
             Optional tensor of new cases labels.
+        grae_casebase_edges : Tensor | None
+            Optional per-sample G-RAE gradients w.r.t. ``self.A``, shape
+            (B, n, n, d) -- see ``compute_grae(..., per_sample=True)``.
+            Only meaningful alongside ``new_cases``.
+        grae_new_case_edges : Tensor | None
+            Optional G-RAE gradients w.r.t. each new case's own edges into
+            the casebase, shape (B, n, d).
+        grae_target_indices : Sequence[int] | None
+            The default-argument index (into ``self.default_indexes``) each
+            sample's G-RAE was differentiated against.
         """
         if self.A is None:
             raise Exception("Ensure the model has been fit first.")
@@ -807,6 +820,17 @@ class GradualAACBR(torch.nn.Module):
                 self.new_cases_attacks_adjacency.detach().cpu().numpy().tolist()
             )
             data["final_strengths"] = final_strengths.detach().cpu().numpy().tolist()
+
+        if (
+            grae_casebase_edges is not None
+            and grae_new_case_edges is not None
+            and grae_target_indices is not None
+        ):
+            data["grae"] = {
+                "casebase_edges": grae_casebase_edges.detach().cpu().numpy().tolist(),
+                "new_case_edges": grae_new_case_edges.detach().cpu().numpy().tolist(),
+                "target_indices": list(grae_target_indices),
+            }
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
