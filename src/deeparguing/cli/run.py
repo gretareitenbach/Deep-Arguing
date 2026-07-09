@@ -51,6 +51,29 @@ torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
 
 
+def write_markdown_summary(lines: list[str], mode: str = "w") -> None:
+    """Render CLI summary log lines as markdown in graphs/summary.md.
+
+    Lines of the form "--- X ---" become level-2 headings; everything else
+    becomes a bullet point. ``mode="a"`` appends -- used for the tuning
+    best-trial block, which is logged after the per-trial summary this
+    function is also called for.
+    """
+    Path("graphs").mkdir(parents=True, exist_ok=True)
+    rendered = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("---") and stripped.endswith("---"):
+            rendered.append(f"## {stripped.strip('- ').strip()}")
+        else:
+            rendered.append(f"- {stripped}")
+
+    with open("graphs/summary.md", mode, encoding="utf-8") as f:
+        if mode == "w":
+            f.write("# Run Summary\n\n")
+        f.write("\n".join(rendered) + "\n\n")
+
+
 def run(project: str = "gradual-aa-cbr"):
     def objective(trial: Trial | None = None):
 
@@ -67,6 +90,7 @@ def run(project: str = "gradual-aa-cbr"):
         test_accs = []
         train_f1s = []
         train_accs = []
+        grae_magnitudes_per_seed = []
 
         trial_id = uuid.uuid4()
 
@@ -296,6 +320,42 @@ def run(project: str = "gradual-aa-cbr"):
                             f"Successfully exported G-RAEs for {num_to_extract} "
                             f"misclassified samples to {grae_export_path}"
                         )
+
+                        # Break down G-RAE magnitude by edge type: sign of the
+                        # underlying adjacency entry (model.A / model.new_cases_attacks_adjacency)
+                        # determines attack (negative) vs support (positive); zero entries are
+                        # non-edges and excluded from both buckets.
+                        def _mean_abs_grae(grae_values: torch.Tensor, mask: torch.Tensor) -> float:
+                            mask = mask.expand_as(grae_values)
+                            selected = grae_values.abs()[mask]
+                            return selected.mean().item() if selected.numel() > 0 else float("nan")
+
+                        A_signs = model.A.detach()
+                        new_case_signs = model.new_cases_attacks_adjacency.detach()
+
+                        grae_magnitudes = {
+                            "evals/grae_casebase_attack_magnitude": _mean_abs_grae(
+                                grae_result.casebase_edges, A_signs < 0
+                            ),
+                            "evals/grae_casebase_support_magnitude": _mean_abs_grae(
+                                grae_result.casebase_edges, A_signs > 0
+                            ),
+                            "evals/grae_new_case_attack_magnitude": _mean_abs_grae(
+                                grae_result.new_case_edges, new_case_signs < 0
+                            ),
+                            "evals/grae_new_case_support_magnitude": _mean_abs_grae(
+                                grae_result.new_case_edges, new_case_signs > 0
+                            ),
+                        }
+                        logging.info(
+                            "Average G-RAE magnitude per edge type -- "
+                            f"self.A attacks: {grae_magnitudes['evals/grae_casebase_attack_magnitude']:.6g}, "
+                            f"self.A supports: {grae_magnitudes['evals/grae_casebase_support_magnitude']:.6g}, "
+                            f"new-case attacks: {grae_magnitudes['evals/grae_new_case_attack_magnitude']:.6g}, "
+                            f"new-case supports: {grae_magnitudes['evals/grae_new_case_support_magnitude']:.6g}"
+                        )
+                        ExperimentLogger.current().log_metrics(grae_magnitudes)
+                        grae_magnitudes_per_seed.append(grae_magnitudes)
                         # ==================================================
 
                     # Export to JSON
@@ -405,29 +465,50 @@ def run(project: str = "gradual-aa-cbr"):
         average_max_val_acc = np.mean(max_val_accs)
         average_max_val_f1 = np.mean(max_val_f1s)
 
-        logging.info("--- VALIDATION RESULTS ---")
-        logging.info(f"Average Val Acc: {np.mean(val_accs)}")
-        logging.info(f"Val F1 STD: {np.std(val_accs)}")
-        logging.info(f"Average Val F1: {np.mean(val_f1s)}")
-        logging.info(f"Val F1 STD: {np.std(val_f1s)}")
-
-
-        logging.info(f"Average Max Val Acc: {average_max_val_acc}")
-        logging.info(f"Average Max Val F1: {average_max_val_f1}")
+        summary_lines = [
+            "--- VALIDATION RESULTS ---",
+            f"Average Val Acc: {np.mean(val_accs)}",
+            f"Val F1 STD: {np.std(val_accs)}",
+            f"Average Val F1: {np.mean(val_f1s)}",
+            f"Val F1 STD: {np.std(val_f1s)}",
+            f"Average Max Val Acc: {average_max_val_acc}",
+            f"Average Max Val F1: {average_max_val_f1}",
+        ]
 
         if args.run_train and train_f1s:
-            logging.info("--- TRAIN RESULTS ---")
-            logging.info(f"Average Train Acc: {np.mean(train_accs)}")
-            logging.info(f"Train Acc STD: {np.std(train_accs)}")
-            logging.info(f"Average Train F1: {np.mean(train_f1s)}")
-            logging.info(f"Train F1 STD: {np.std(train_f1s)}")
-            
+            summary_lines += [
+                "--- TRAIN RESULTS ---",
+                f"Average Train Acc: {np.mean(train_accs)}",
+                f"Train Acc STD: {np.std(train_accs)}",
+                f"Average Train F1: {np.mean(train_f1s)}",
+                f"Train F1 STD: {np.std(train_f1s)}",
+            ]
+
         if args.run_test and test_f1s:
-            logging.info("--- TEST RESULTS ---")
-            logging.info(f"Average Test Acc: {np.mean(test_accs)}")
-            logging.info(f"Test Acc STD: {np.std(test_accs)}")
-            logging.info(f"Average Test F1: {np.mean(test_f1s)}")
-            logging.info(f"Test F1 STD: {np.std(test_f1s)}")
+            summary_lines += [
+                "--- TEST RESULTS ---",
+                f"Average Test Acc: {np.mean(test_accs)}",
+                f"Test Acc STD: {np.std(test_accs)}",
+                f"Average Test F1: {np.mean(test_f1s)}",
+                f"Test F1 STD: {np.std(test_f1s)}",
+            ]
+
+        if grae_magnitudes_per_seed:
+            grae_labels = {
+                "evals/grae_casebase_attack_magnitude": "Average self.A attack G-RAE magnitude",
+                "evals/grae_casebase_support_magnitude": "Average self.A support G-RAE magnitude",
+                "evals/grae_new_case_attack_magnitude": "Average new-case attack G-RAE magnitude",
+                "evals/grae_new_case_support_magnitude": "Average new-case support G-RAE magnitude",
+            }
+            summary_lines += ["--- GRAE RESULTS ---"]
+            for key, label in grae_labels.items():
+                values = [seed_mags[key] for seed_mags in grae_magnitudes_per_seed]
+                mean_value = np.nanmean(values) if not np.all(np.isnan(values)) else float("nan")
+                summary_lines.append(f"{label}: {mean_value}")
+
+        for line in summary_lines:
+            logging.info(line)
+        write_markdown_summary(summary_lines)
 
         if args.ht_obj == "f1":
             return average_max_val_f1
@@ -465,7 +546,10 @@ if __name__ == "__main__":
         best = study.best_trial
         logging.info(f"Value: {best.value}")
         logging.info("Params:")
+        best_trial_lines = ["--- BEST TRIAL ---", f"Value: {best.value}", "Params:"]
         for key, val in best.params.items():
             logging.info(f"  {key}: {val}")
+            best_trial_lines.append(f"{key}: {val}")
+        write_markdown_summary(best_trial_lines, mode="a")
     else:
         average_f1 = run(args.project)()
