@@ -141,3 +141,40 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `[0, 1]`, then negated -- new cases can only attack, never support), the
     new-case support bucket is expected to come out `nan` (empty mask, no
     positive entries to average).
+
+## 2026-07-10
+
+- **Created contest.py and test suite** (`a8cd256`)
+  - New `src/deeparguing/counterfactuals/contest.py` module: implements the
+    Week 3 heuristic contestability algorithm sketched in `grae.py`'s module
+    docstring. Each outer iteration computes G-RAEs for the current sample
+    against `target_class` (via `grae.compute_grae`), picks the top-`k`
+    entries of `model.A` by `|G-RAE|` (`select_top_k`), then runs a
+    backtracking line search (`backtracking_line_search`) that shrinks the
+    step size from `ALPHA_MAX` until the trial perturbation crosses
+    `threshold + margin` (or backtracks are exhausted, in which case the
+    smallest-alpha trial is taken as a fallback partial step). Accepted
+    steps are committed directly onto `model.A` -- the casebase-internal
+    adjacency, so a successful contest has a persistent, global effect on
+    the model, not just the queried sample. Returns a `ContestResult`
+    (`success`, `iterations`, `max_weight_delta`, `edge_trace`,
+    `final_strength`).
+  - The file started as pseudocode (`sample.edge_weights`,
+    `model.semantics_forward`, `NotImplementedError` stubs) that didn't
+    match this repo's actual API; rewired it to the real one -- gradients
+    come from the already-tested `grae.compute_grae`, and trial strengths
+    come from real forward passes (`model(sample)`) with `model.A`
+    temporarily swapped for a trial tensor. Also fixed a latent bug in the
+    original sketch where hitting `max_iters` always reported the constant
+    `MAX_ITERS` as the iteration count rather than how many iterations
+    actually ran.
+  - Exported `ContestResult`/`contest` from `counterfactuals/__init__.py`,
+    mirroring how `grae.py`'s API is already exposed there.
+  - Added `tests/contest_test.py` (10 tests) reusing the same synthetic
+    EW-QBAF fixture as `tests/grae_test.py`: unit tests for `select_top_k`
+    and `backtracking_line_search` (finds a crossing alpha, doesn't mutate
+    `model.A` itself, returns `None` when `max_backtracks=0`), and
+    end-to-end tests for `contest` (commits the accepted step to `model.A`,
+    touches only the traced edge indices, reports `success=False` with
+    `iterations == max_iters` when the threshold is unreachable in time,
+    and raises on an unfitted model / batch size > 1).
