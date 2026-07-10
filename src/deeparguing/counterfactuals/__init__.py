@@ -1,4 +1,4 @@
-from .contest import ContestResult, contest
+from .contest import ContestResult, EdgeTraceStep, contest
 from .grae import GRAEResult, compute_grae, finite_difference_grae
 
 __all__ = [
@@ -6,5 +6,6 @@ __all__ = [
     "compute_grae",
     "finite_difference_grae",
     "ContestResult",
+    "EdgeTraceStep",
     "contest",
 ]

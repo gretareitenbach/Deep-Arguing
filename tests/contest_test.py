@@ -190,8 +190,8 @@ def test_contest_only_changes_the_traced_edges_of_model_A():
     changed_indices = set(diff.nonzero().flatten().tolist())
 
     traced_indices = set()
-    for edge_ids, _alpha, _new_weights in result.edge_trace:
-        traced_indices.update(edge_ids)
+    for step in result.edge_trace:
+        traced_indices.update(step.edge_ids)
 
     assert changed_indices == traced_indices
 

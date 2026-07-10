@@ -22,6 +22,7 @@ exist yet).
 import argparse
 import json
 import logging
+from pathlib import Path
 
 import torch
 
@@ -106,12 +107,30 @@ def main() -> None:
     parser.add_argument(
         "--log", default="info", choices=["debug", "info", "warning", "error"]
     )
+    parser.add_argument(
+        "--log-dir",
+        default="outputs",
+        help=(
+            "Directory to additionally write a per-run contest log file to "
+            "(one line per iteration: edges perturbed, step size, weight "
+            "and strength deltas). Console logging is unaffected."
+        ),
+    )
     args = parser.parse_args()
 
+    Path(args.log_dir).mkdir(parents=True, exist_ok=True)
+    log_path = Path(args.log_dir) / f"contest_sample{args.sample_index}.log"
+
     logging.basicConfig(
-        level=args.log.upper(), format="%(asctime)s - %(levelname)s - %(message)s"
+        level=args.log.upper(),
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_path, mode="w", encoding="utf-8"),
+        ],
     )
 
+    logging.info(f"Writing run log to {log_path}")
     logging.info(f"Loading model checkpoint from {args.checkpoint} ...")
     model = load_model(args.checkpoint, args.device)
 
@@ -138,14 +157,25 @@ def main() -> None:
         max_iters=args.max_iters,
     )
 
+    boundary = args.threshold + args.margin
     logging.info(
         f"success={result.success} iterations={result.iterations} "
-        f"final_strength={result.final_strength:.4f} "
+        f"final_strength={result.final_strength:.4f} target_boundary={boundary:.4f} "
         f"max_weight_delta={result.max_weight_delta:.6f}"
     )
-    for i, (edge_ids, alpha, new_weights) in enumerate(result.edge_trace, start=1):
+    for i, step in enumerate(result.edge_trace, start=1):
+        weight_deltas = [
+            round(new - old, 6)
+            for old, new in zip(step.old_weights, step.new_weights)
+        ]
+        strength_gain = step.new_strength - step.old_strength
+        remaining = boundary - step.new_strength
         logging.info(
-            f"  step {i}: alpha={alpha:.4g} edges={edge_ids} new_weights={new_weights}"
+            f"  step {i}: edges={step.edge_ids} alpha={step.alpha:.4g} "
+            f"weights {step.old_weights} -> {step.new_weights} "
+            f"(delta={weight_deltas}) "
+            f"strength {step.old_strength:.4f} -> {step.new_strength:.4f} "
+            f"(closer by {strength_gain:+.4f}, {remaining:.4f} left to boundary)"
         )
 
 

@@ -13,6 +13,7 @@ Update rule summary:
 """
 
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 import torch
 from torch import Tensor
@@ -32,12 +33,25 @@ MAX_BACKTRACKS = 10       # per-iteration line-search retry cap
 MAX_ITERS = 50            # outer loop cap -> mark as failed-to-flip if hit
 
 
+class EdgeTraceStep(NamedTuple):
+    """One accepted perturbation step. Tuple-unpacking still works
+    (edge_ids, alpha, old_weights, new_weights, old_strength, new_strength)
+    but prefer the named fields for readability."""
+
+    edge_ids: list[int]
+    alpha: float
+    old_weights: list[float]
+    new_weights: list[float]
+    old_strength: float
+    new_strength: float
+
+
 @dataclass
 class ContestResult:
     success: bool
     iterations: int
     max_weight_delta: float
-    edge_trace: list = field(default_factory=list)   # (edge_ids, alpha, new_weights)
+    edge_trace: list[EdgeTraceStep] = field(default_factory=list)
     final_strength: float | None = None
 
 
@@ -128,7 +142,7 @@ def contest(
         )
 
     max_delta = 0.0
-    trace = []
+    trace: list[EdgeTraceStep] = []
     strength = _target_strength(model, sample, target_class, model.A)
     iters_run = 0
 
@@ -153,7 +167,16 @@ def contest(
         new_values = new_A.view(-1)[edge_indices]
         delta = (new_values - old_values).abs().max().item()
         max_delta = max(max_delta, delta)
-        trace.append((edge_indices.tolist(), alpha, new_values.tolist()))
+        trace.append(
+            EdgeTraceStep(
+                edge_indices.tolist(),
+                alpha,
+                old_values.tolist(),
+                new_values.tolist(),
+                strength,
+                new_strength,
+            )
+        )
 
         model.A = new_A
         strength = new_strength
