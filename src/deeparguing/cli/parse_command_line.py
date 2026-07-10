@@ -170,7 +170,9 @@ def parse_command_line():
         action="store_true",
         help=(
             "Export misclassified test samples and their QBAF tensors to "
-            "graphs/misclassified_qbaf.json (requires --run_test)"
+            "outputs/misclassified_qbaf.json (requires --run_test). A "
+            "reloadable model checkpoint is always saved to "
+            "outputs/model_checkpoint.pt, regardless of this flag."
         ),
     )
 
@@ -181,7 +183,7 @@ def parse_command_line():
         help=(
             "Compute G-RAEs (gradient-based relation attribution "
             "explanations) for the exported misclassified samples and "
-            "save them to graphs/misclassified_grae.pt (requires "
+            "save them to outputs/misclassified_grae.pt (requires "
             "--misclassified_log)"
         ),
     )

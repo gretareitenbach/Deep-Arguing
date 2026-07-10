@@ -52,14 +52,14 @@ torch.use_deterministic_algorithms(True)
 
 
 def write_markdown_summary(lines: list[str], mode: str = "w") -> None:
-    """Render CLI summary log lines as markdown in graphs/summary.md.
+    """Render CLI summary log lines as markdown in outputs/summary.md.
 
     Lines of the form "--- X ---" become level-2 headings; everything else
     becomes a bullet point. ``mode="a"`` appends -- used for the tuning
     best-trial block, which is logged after the per-trial summary this
     function is also called for.
     """
-    Path("graphs").mkdir(parents=True, exist_ok=True)
+    Path("outputs").mkdir(parents=True, exist_ok=True)
     rendered = []
     for line in lines:
         stripped = line.strip()
@@ -68,7 +68,7 @@ def write_markdown_summary(lines: list[str], mode: str = "w") -> None:
         else:
             rendered.append(f"- {stripped}")
 
-    with open("graphs/summary.md", mode, encoding="utf-8") as f:
+    with open("outputs/summary.md", mode, encoding="utf-8") as f:
         if mode == "w":
             f.write("# Run Summary\n\n")
         f.write("\n".join(rendered) + "\n\n")
@@ -182,7 +182,7 @@ def run(project: str = "gradual-aa-cbr"):
                 theta_pre = parameters_to_vector(model.parameters()).clone().detach()
 
             if args.json_out:
-                OUT_DIR = "graphs"
+                OUT_DIR = "outputs"
                 Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
                 model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
                 image_mean = data_dict.get("image_mean", None)
@@ -213,6 +213,30 @@ def run(project: str = "gradual-aa-cbr"):
             )
 
             model.eval()
+
+            # Persist the trained model + fitted casebase so a separate
+            # process can reload it and run e.g. counterfactuals/contest.py
+            # against a real sample -- state_dict() alone misses
+            # model.A/X_train/default_indexes, since fit() sets those as
+            # plain attributes, not buffers. Saved unconditionally (not just
+            # under --misclassified_log) so a checkpoint is always available.
+            OUT_DIR = "outputs"
+            Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+            checkpoint_path = f"{OUT_DIR}/model_checkpoint.pt"
+            torch.save(
+                {
+                    "config_paths": args.config,
+                    "state_dict": model.state_dict(),
+                    "A": model.A.detach().cpu(),
+                    "X_train": model.X_train.detach().cpu(),
+                    "y_train": model.y_train.detach().cpu(),
+                    "default_indexes": model.default_indexes.detach().cpu(),
+                },
+                checkpoint_path,
+            )
+            logging.info(
+                f"Saved model checkpoint (weights + fitted casebase) to {checkpoint_path}"
+            )
 
             acc, prec, rec, f1, cm = evaluate_model(
                 model,
@@ -283,7 +307,7 @@ def run(project: str = "gradual-aa-cbr"):
                     X_misc = X_test[selected_indices]
                     y_misc = y_test[selected_indices]
 
-                    OUT_DIR = "graphs"
+                    OUT_DIR = "outputs"
                     Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
 
                     grae_result = None
