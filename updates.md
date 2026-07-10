@@ -121,3 +121,23 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     overlay stuck indefinitely. Wrapped that block (and the `initCytoscape`
     step) in their own `try`/`catch` so failures now surface an alert and
     clear the overlay.
+
+## 2026-07-09
+
+- **Added summary markdown for CLI** (`d4b0028`)
+  - `cli/run.py`: new `write_markdown_summary` helper renders the CLI's
+    per-run summary lines (validation/train/test results, plus the new
+    GRAE breakdown below) to `graphs/summary.md` -- `--- X ---` lines become
+    `## X` headings, everything else becomes a bullet. Hyperparameter-tuning
+    runs append a `--- BEST TRIAL ---` block after the final trial's summary.
+  - Added a G-RAE magnitude breakdown by edge type: buckets each sample's
+    `compute_grae` output by the sign of the underlying adjacency entry
+    (`model.A` for casebase edges, `model.new_cases_attacks_adjacency` for
+    new-case edges) into attack (negative) vs. support (positive), and
+    averages `|gradient|` within each bucket via a new `_mean_abs_grae`
+    helper. Logged per-seed and averaged into the summary's new
+    `--- GRAE RESULTS ---` block. Since `new_cases_attacks_adjacency` is
+    always `<= 0` by construction (`RegularIrrelevance` returns a value in
+    `[0, 1]`, then negated -- new cases can only attack, never support), the
+    new-case support bucket is expected to come out `nan` (empty mask, no
+    positive entries to average).
