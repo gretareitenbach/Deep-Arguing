@@ -320,11 +320,14 @@ def run(project: str = "gradual-aa-cbr"):
                         )
 
                         # default_indexes rows are ordered the same as
-                        # X_defaults/y_defaults, which is labels.flip([0]) --
-                        # so the default row for class-column c sits at
-                        # len(labels) - 1 - c.
+                        # X_defaults/y_defaults ("labels.flip([0])"), but
+                        # "labels" itself (torch.unique(y, dim=0)) is already
+                        # in reverse-class order for one-hot rows, so the two
+                        # reversals cancel out: default row for class c sits
+                        # at c directly (verified against a real checkpoint's
+                        # y_train[default_indexes] -- no offset needed).
                         true_classes_misc = y_true_classes[selected_indices]
-                        target_indices = (len(labels) - 1 - true_classes_misc).tolist()
+                        target_indices = true_classes_misc.tolist()
 
                         grae_result = compute_grae(
                             model, X_misc, target_indices, per_sample=True

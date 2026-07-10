@@ -43,7 +43,6 @@ def main() -> None:
     args = parser.parse_args()
 
     model = load_model(args.checkpoint, args.device)
-    no_classes = len(model.default_indexes)
 
     with open(args.qbaf, "r", encoding="utf-8") as f:
         qbaf = json.load(f)
@@ -58,7 +57,7 @@ def main() -> None:
     live_indices = []
     for i in range(n):
         sample, true_class = load_sample(args.qbaf, i, args.device)
-        target_index = no_classes - 1 - true_class
+        target_index = true_class  # default_indexes[c] is class c directly, no reversal
 
         with torch.no_grad():
             strength = model(sample)[0, target_index].item()

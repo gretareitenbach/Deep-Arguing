@@ -135,12 +135,13 @@ def main() -> None:
     model = load_model(args.checkpoint, args.device)
 
     sample, true_class = load_sample(args.qbaf, args.sample_index, args.device)
-    no_classes = len(model.default_indexes)
     target_class = args.target_class if args.target_class is not None else true_class
-    # default_indexes rows are ordered labels.flip([0]) at fit time, so the
-    # default row for class c sits at len(labels) - 1 - c -- mirrors
-    # cli/run.py's target_indices computation for misclassified_grae.pt.
-    target_index = no_classes - 1 - target_class
+    # default_indexes rows are ordered the same as X_defaults/y_defaults
+    # ("labels.flip([0])"), but "labels" itself (torch.unique(y, dim=0)) is
+    # already in reverse-class order for one-hot rows, so the two reversals
+    # cancel out: default row for class c sits at c directly (verified
+    # against a real checkpoint's y_train[default_indexes] -- no offset).
+    target_index = target_class
 
     logging.info(
         f"Sample {args.sample_index}: true class {true_class}, contesting "
