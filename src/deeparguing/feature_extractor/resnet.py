@@ -170,7 +170,7 @@ class ResNetCIFAR(FeatureExtractor):
         if use_classification_head:
             x = self.fc(x)
 
-        return x.squeeze()
+        return x
 
     @override
     def get_output_features(self) -> int:
