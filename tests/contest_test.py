@@ -6,7 +6,7 @@ from deeparguing.counterfactuals.contest import (
     MARGIN,
     THRESHOLD,
     ContestResult,
-    backtracking_line_search,
+    bisection_line_search,
     contest,
     select_top_k,
 )
@@ -98,7 +98,7 @@ def test_select_top_k_respects_k():
 
 
 # ---------------------------------------------------------------------------
-# backtracking_line_search
+# bisection_line_search
 # ---------------------------------------------------------------------------
 
 
@@ -109,29 +109,33 @@ def _top_k_direction(model, new_case, target_class, k=2):
     return edge_indices, grae_vector[edge_indices]
 
 
-def test_backtracking_line_search_finds_a_crossing_alpha():
+def test_bisection_line_search_finds_a_crossing_alpha():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
     edge_indices, direction = _top_k_direction(model, new_case, TARGET_INDEX)
 
-    step = backtracking_line_search(
+    step = bisection_line_search(
         model, new_case, TARGET_INDEX, edge_indices, direction,
         threshold=THRESHOLD, margin=MARGIN,
     )
 
     assert step is not None
-    alpha, new_A, new_strength = step
-    assert new_strength >= THRESHOLD + MARGIN
+    alpha, new_A, new_target_strength, rival_class, rival_strength = step
+    # single-default-argument casebase -> no real rival, threshold is the
+    # fixed virtual competitor
+    assert rival_class is None
+    assert rival_strength == THRESHOLD
+    assert new_target_strength >= THRESHOLD + MARGIN
     assert new_A.shape == model.A.shape
 
 
-def test_backtracking_line_search_does_not_mutate_model_A():
+def test_bisection_line_search_does_not_mutate_model_A():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
     edge_indices, direction = _top_k_direction(model, new_case, TARGET_INDEX)
     original_A = model.A.detach().clone()
 
-    backtracking_line_search(
+    bisection_line_search(
         model, new_case, TARGET_INDEX, edge_indices, direction,
         threshold=THRESHOLD, margin=MARGIN,
     )
@@ -139,17 +143,38 @@ def test_backtracking_line_search_does_not_mutate_model_A():
     assert torch.equal(model.A, original_A)
 
 
-def test_backtracking_line_search_returns_none_when_max_backtracks_is_zero():
+def test_bisection_line_search_returns_none_when_max_backtracks_is_zero():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
     edge_indices, direction = _top_k_direction(model, new_case, TARGET_INDEX)
 
-    step = backtracking_line_search(
+    step = bisection_line_search(
         model, new_case, TARGET_INDEX, edge_indices, direction,
         threshold=THRESHOLD, margin=MARGIN, max_backtracks=0,
     )
 
     assert step is None
+
+
+def test_bisection_line_search_refines_below_alpha_max_when_it_overshoots():
+    """If alpha_max itself crosses the margin on the first trial, bisection
+    should keep narrowing instead of accepting alpha_max outright -- unlike
+    plain backtracking, which would return alpha_max unrefined."""
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+    edge_indices, direction = _top_k_direction(model, new_case, TARGET_INDEX)
+
+    # A very generous margin/threshold gap forces alpha_max to overshoot
+    # substantially, giving bisection real room to refine downward.
+    step = bisection_line_search(
+        model, new_case, TARGET_INDEX, edge_indices, direction,
+        threshold=0.0, margin=0.01, alpha_max=1.0,
+    )
+
+    assert step is not None
+    alpha, new_A, new_target_strength, rival_class, rival_strength = step
+    assert new_target_strength - rival_strength >= 0.01
+    assert alpha <= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -168,15 +193,18 @@ def test_contest_finds_a_crossing_step_and_commits_it_to_model_A():
 
     assert isinstance(result, ContestResult)
     assert result.success
-    assert result.final_strength is not None
-    assert result.final_strength >= THRESHOLD + MARGIN
+    assert result.final_target_strength is not None
+    assert result.final_target_strength >= THRESHOLD + MARGIN
+    # single-default-argument casebase -> no real rival, threshold stands in
+    assert result.final_rival_class is None
+    assert result.final_rival_strength == THRESHOLD
     assert result.iterations >= 1
     assert result.max_weight_delta > 0
     assert len(result.edge_trace) == result.iterations
 
     # the accepted step must persist on the model, not just a trial copy
     after = model(new_case)[0, TARGET_INDEX].item()
-    assert after == pytest.approx(result.final_strength)
+    assert after == pytest.approx(result.final_target_strength)
 
 
 def test_contest_only_changes_the_traced_edges_of_model_A():
@@ -206,8 +234,8 @@ def test_contest_reports_failure_when_threshold_is_unreachable_in_time():
 
     assert not result.success
     assert result.iterations == 3
-    assert result.final_strength is not None
-    assert result.final_strength < 0.999
+    assert result.final_target_strength is not None
+    assert result.final_target_strength < 0.999
 
 
 def test_contest_raises_if_model_not_fitted():

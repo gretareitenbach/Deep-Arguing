@@ -28,7 +28,8 @@ import torch
 
 from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
 from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
-                                                  MAX_ITERS, contest)
+                                                  MAX_ITERS, THRESHOLD,
+                                                  contest)
 from deeparguing.gradual_aacbr import GradualAACBR
 
 
@@ -108,6 +109,17 @@ def main() -> None:
             "class strengths are not normalized/mutually exclusive)."
         ),
     )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=THRESHOLD,
+        help=(
+            "Fallback virtual rival strength, only used if the model has a "
+            "single default/topic argument (no other class to compare "
+            "against). Irrelevant for this CIFAR-10 multiclass checkpoint, "
+            "which always has a real rival class."
+        ),
+    )
     parser.add_argument("--max-iters", type=int, default=MAX_ITERS)
     parser.add_argument(
         "--device", default="cuda" if torch.cuda.is_available() else "cpu"
@@ -161,14 +173,18 @@ def main() -> None:
         sample,
         target_class=target_index,
         k=args.k,
+        threshold=args.threshold,
         margin=args.margin,
         max_iters=args.max_iters,
     )
 
+    def _rival_label(rival_class: int | None) -> str:
+        return f"class{rival_class}" if rival_class is not None else "threshold(no rival)"
+
     logging.info(
         f"success={result.success} iterations={result.iterations} "
         f"final_target_strength={result.final_target_strength:.4f} "
-        f"final_rival=class{result.final_rival_class}:{result.final_rival_strength:.4f} "
+        f"final_rival={_rival_label(result.final_rival_class)}:{result.final_rival_strength:.4f} "
         f"margin_needed={args.margin:.4f} "
         f"max_weight_delta={result.max_weight_delta:.6f}"
     )
@@ -181,9 +197,9 @@ def main() -> None:
         old_margin = step.old_target_strength - step.old_rival_strength
         new_margin = step.new_target_strength - step.new_rival_strength
         rival_note = (
-            f"rival stayed class{step.old_rival_class}"
+            f"rival stayed {_rival_label(step.old_rival_class)}"
             if step.old_rival_class == step.new_rival_class
-            else f"rival changed class{step.old_rival_class}->class{step.new_rival_class}"
+            else f"rival changed {_rival_label(step.old_rival_class)}->{_rival_label(step.new_rival_class)}"
         )
         logging.info(
             f"  step {i}: edges={step.edge_ids} alpha={step.alpha:.4g} "

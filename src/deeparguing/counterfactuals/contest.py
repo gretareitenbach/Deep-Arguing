@@ -3,26 +3,33 @@ src/deeparguing/counterfactuals/contest.py
 
 Heuristic contestability algorithm: iteratively perturb the top-k edges of
 ``model.A`` (the casebase-internal adjacency, see ``grae.py``'s module
-docstring) by |G-RAE| along the gradient direction, using backtracking line
-search to find the minimal step that flips the model's argmax prediction
-onto the target class.
+docstring) by |G-RAE| along the gradient direction, using a bracket-and-bisect
+line search to find close to the minimal step that flips the model's argmax
+prediction onto the target class.
 
 Update rule summary:
   - Edges moved:  top-k by |G-RAE| magnitude (k is a tunable sweep param)
-  - Step size:    backtracking line search (minimizes weight delta)
-  - Stopping:     target class strength beats every other class's strength
-                   by at least ``margin``, or max_iters
+  - Step size:    bracket (geometric backtracking) then bisect within it to
+                   converge toward the minimal crossing alpha
+  - Stopping:     target class strength beats the best rival class's
+                   strength by at least ``margin``, or max_iters
 
 Note: strengths across classes are not mutually exclusive or bounded to
 [0, 1] (no softmax/normalization ties them together -- see
 ``GradualAACBR.forward``'s final ``strengths @ W`` combination), so a fixed
-absolute threshold cannot tell you whether the target class actually won
-the argmax. Every forward pass already computes every class's strength at
-once, so tracking the best rival costs nothing extra -- we just stop
-discarding it. This does *not* make the top-k edge selection rival-aware:
-``_casebase_grae`` still differentiates only the target class's strength,
-so a step can raise the rival too; the corrected stopping check below will
-simply reject such a step and try another top-k direction next iteration.
+absolute threshold cannot by itself tell you whether the target class
+actually won the argmax. Every forward pass already computes every class's
+strength at once, so tracking the best rival costs nothing extra -- we just
+stop discarding it. If ``target_class`` is the *only* default argument
+(the single-topic-argument setting from the original Contestability paper,
+with no classification competition to speak of), there is no rival to
+compare against; ``threshold`` is then used as a fixed virtual competitor,
+recovering the original absolute-threshold criterion for that case.
+
+This does *not* make the top-k edge selection rival-aware: ``_casebase_grae``
+still differentiates only the target class's strength, so a step can raise
+the rival too; the stopping check below will simply reject such a step and
+try another top-k direction next iteration.
 """
 
 from dataclasses import dataclass, field
@@ -38,17 +45,21 @@ from .grae import compute_grae
 # ---- Config -----------------------------------------------------------
 
 DEFAULT_K = 3             # edges perturbed per iteration; sweep 1,3,5
+THRESHOLD = 0.5           # virtual rival strength when target_class has no real rival
 MARGIN = 0.01             # target must beat the best rival class by this much
 ALPHA_MAX = 1.0           # initial line-search step size
-BACKTRACK_FACTOR = 0.5    # shrink factor per failed trial
-MAX_BACKTRACKS = 10       # per-iteration line-search retry cap
+BACKTRACK_FACTOR = 0.5    # shrink factor per failed bracketing trial
+MAX_BACKTRACKS = 10       # bracketing-phase retry cap (per iteration)
+MAX_BISECTIONS = 10       # refinement-phase retry cap, once a bracket is found
+BISECT_TOL = 1e-4         # stop bisecting once the bracket is this narrow
 MAX_ITERS = 50            # outer loop cap -> mark as failed-to-flip if hit
 
 
 class EdgeTraceStep(NamedTuple):
     """One accepted perturbation step. Tuple-unpacking still works but
     prefer the named fields for readability. ``*_rival_class`` is the
-    strongest non-target class at that point -- tracked separately
+    strongest non-target class at that point (``None`` if target_class has
+    no real rival -- see module docstring) -- tracked separately
     before/after because a step can change which class is the rival, not
     just its strength."""
 
@@ -58,9 +69,9 @@ class EdgeTraceStep(NamedTuple):
     new_weights: list[float]
     old_target_strength: float
     new_target_strength: float
-    old_rival_class: int
+    old_rival_class: int | None
     old_rival_strength: float
-    new_rival_class: int
+    new_rival_class: int | None
     new_rival_strength: float
 
 
@@ -78,7 +89,7 @@ class ContestResult:
 def _casebase_grae(model: GradualAACBR, sample: Tensor, target_class: int) -> Tensor:
     """Gradient of ``target_class``'s strength for ``sample`` w.r.t. every
     entry of ``model.A``, flattened to 1-D so it lines up with the flat
-    indices ``select_top_k``/``backtracking_line_search`` operate on."""
+    indices ``select_top_k``/``bisection_line_search`` operate on."""
     result = compute_grae(model, sample, target_indices=[target_class])
     return result.casebase_edges.reshape(-1)
 
@@ -99,11 +110,18 @@ def _forward_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor
 
 
 def _target_and_rival(
-    strengths: Tensor, target_class: int
-) -> tuple[float, int, float]:
+    strengths: Tensor, target_class: int, threshold: float
+) -> tuple[float, int | None, float]:
     """Split a strength vector into (target_strength, rival_class, rival_strength),
     where rival is the highest-strength class other than target_class -- the one
-    that must be overtaken for target_class to actually win the argmax."""
+    that must be overtaken for target_class to actually win the argmax.
+
+    If target_class is the only default argument, there are no other classes
+    to compare against: rival_class is None and rival_strength falls back to
+    the fixed threshold, so the caller's ``target - rival >= margin`` check
+    still recovers the original single-topic-argument criterion."""
+    if strengths.numel() == 1:
+        return strengths[target_class].item(), None, threshold
     other = strengths.clone()
     other[target_class] = -torch.inf
     rival_class = int(other.argmax().item())
@@ -125,36 +143,83 @@ def select_top_k(grae_vector: Tensor, k: int) -> Tensor:
     return grae_vector.abs().topk(k).indices
 
 
-def backtracking_line_search(
+def bisection_line_search(
     model: GradualAACBR,
     sample: Tensor,
     target_class: int,
     edge_indices: Tensor,
     direction: Tensor,
     margin: float,
+    threshold: float = THRESHOLD,
     alpha_max: float = ALPHA_MAX,
     factor: float = BACKTRACK_FACTOR,
     max_backtracks: int = MAX_BACKTRACKS,
-) -> tuple[float, Tensor, float, int, float] | None:
-    """Shrink alpha from alpha_max until the trial step makes target_class
-    beat the best rival class by at least margin, or backtracks are exhausted.
+    max_bisections: int = MAX_BISECTIONS,
+    bisect_tol: float = BISECT_TOL,
+) -> tuple[float, Tensor, float, int | None, float] | None:
+    """Two-phase search for close to the smallest alpha (along ``direction``)
+    that makes target_class beat the best rival class by at least margin.
+
+    Phase 1 (bracket): shrink alpha geometrically from alpha_max, same as
+    plain backtracking, until a trial crosses the margin -- this handles
+    "the direction is weak, a bigger step is needed." This gives a bracket
+    [last failing alpha (or 0), first crossing alpha].
+
+    Phase 2 (bisect): binary search inside that bracket to converge toward
+    the minimal crossing point, instead of accepting the first crossing
+    trial found. Plain backtracking stops at the first success, which can
+    accept a wildly oversized step whenever alpha_max itself overshoots the
+    margin on the very first trial (no shrinking ever happens in that case).
+
     Returns: (accepted_alpha, new_A, new_target_strength, rival_class,
-    rival_strength), or the smallest-alpha trial if none won cleanly, or
-    None if max_backtracks == 0.
+    rival_strength) for the smallest known-crossing alpha found, or the
+    smallest-alpha trial if none crossed within max_backtracks, or None if
+    max_backtracks == 0.
     """
     assert model.A is not None
 
-    alpha = alpha_max
-    best: tuple[float, Tensor, float, int, float] | None = None  # fallback: smallest-alpha trial
-    for _ in range(max_backtracks):
+    def trial(alpha: float) -> tuple[Tensor, float, int | None, float]:
         trial_A = _perturb_adjacency(model.A, edge_indices, direction, alpha)
         trial_strengths = _forward_strengths(model, sample, trial_A)
-        trial_target, rival_class, trial_rival = _target_and_rival(trial_strengths, target_class)
-        if trial_target - trial_rival >= margin:
-            return alpha, trial_A, trial_target, rival_class, trial_rival
+        trial_target, rival_class, trial_rival = _target_and_rival(
+            trial_strengths, target_class, threshold
+        )
+        return trial_A, trial_target, rival_class, trial_rival
+
+    def crossed(target: float, rival: float) -> bool:
+        return target - rival >= margin
+
+    # ---- Phase 1: bracket ----
+    alpha_lo, alpha_hi = 0.0, alpha_max
+    best: tuple[float, Tensor, float, int | None, float] | None = None  # fallback: smallest-alpha trial tried
+    hi_result: tuple[Tensor, float, int | None, float] | None = None
+
+    alpha = alpha_max
+    for _ in range(max_backtracks):
+        trial_A, trial_target, rival_class, trial_rival = trial(alpha)
+        if crossed(trial_target, trial_rival):
+            alpha_hi, hi_result = alpha, (trial_A, trial_target, rival_class, trial_rival)
+            break
         best = (alpha, trial_A, trial_target, rival_class, trial_rival)
+        alpha_lo = alpha
         alpha *= factor
-    return best  # None -> caller treats as no acceptable step this iteration
+    else:
+        return best  # never crossed within budget -> caller treats as no acceptable step
+
+    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] to refine toward the
+    # minimal crossing point ----
+    for _ in range(max_bisections):
+        if alpha_hi - alpha_lo < bisect_tol:
+            break
+        alpha_mid = (alpha_lo + alpha_hi) / 2
+        trial_A, trial_target, rival_class, trial_rival = trial(alpha_mid)
+        if crossed(trial_target, trial_rival):
+            alpha_hi, hi_result = alpha_mid, (trial_A, trial_target, rival_class, trial_rival)
+        else:
+            alpha_lo = alpha_mid
+
+    trial_A, trial_target, rival_class, trial_rival = hi_result
+    return alpha_hi, trial_A, trial_target, rival_class, trial_rival
 
 
 def contest(
@@ -162,6 +227,7 @@ def contest(
     sample: Tensor,
     target_class: int,
     k: int = DEFAULT_K,
+    threshold: float = THRESHOLD,
     margin: float = MARGIN,
     max_iters: int = MAX_ITERS,
 ) -> ContestResult:
@@ -177,7 +243,9 @@ def contest(
     max_delta = 0.0
     trace: list[EdgeTraceStep] = []
     strengths = _forward_strengths(model, sample, model.A)
-    target_strength, rival_class, rival_strength = _target_and_rival(strengths, target_class)
+    target_strength, rival_class, rival_strength = _target_and_rival(
+        strengths, target_class, threshold
+    )
     iters_run = 0
 
     for iters_run in range(1, max_iters + 1):
@@ -191,8 +259,9 @@ def contest(
         edge_indices = select_top_k(grae_vector, k)
         direction = grae_vector[edge_indices]
 
-        step = backtracking_line_search(
-            model, sample, target_class, edge_indices, direction, margin=margin,
+        step = bisection_line_search(
+            model, sample, target_class, edge_indices, direction,
+            margin=margin, threshold=threshold,
         )
 
         if step is None:
