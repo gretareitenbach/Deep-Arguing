@@ -178,3 +178,81 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     touches only the traced edge indices, reports `success=False` with
     `iterations == max_iters` when the threshold is unreachable in time,
     and raises on an unfitted model / batch size > 1).
+
+## 2026-07-13
+
+- **Changed threshold criteria for contestation** (`960e8ba`)
+  - `contest.py`: the original stopping rule (`target_strength >= threshold +
+    margin`, `THRESHOLD = 0.5`) assumed a single-argument acceptance boundary,
+    but `GradualAACBR.forward`'s per-class strengths are neither normalized
+    nor mutually exclusive (no softmax -- see `forward`'s `strengths @ W`
+    combination), so crossing 0.5 says nothing about whether `target_class`
+    actually wins the model's `argmax` prediction (the criterion `evals.py`/
+    `cli/run.py` actually use to call a sample "misclassified"). Measured
+    against the real `outputs/misclassified_qbaf.json` checkpoint (100
+    CIFAR-10 samples): 5% already had `target_class` strength `>= 0.5` while
+    still losing the `argmax`, and of the 95 that didn't, 87% still had the
+    real rival class beating `target_class` by ~1.5 in strength even after
+    hypothetically crossing `0.5 + margin` -- the fixed threshold was
+    effectively decoupled from the thing the algorithm is supposed to fix.
+  - Replaced it with an argmax-relative check: `target_class`'s strength
+    must beat the best *other* class's strength (`_target_and_rival`) by
+    `margin`. Every forward pass already computes every class's strength at
+    once, so tracking the rival costs no extra passes. If `target_class` is
+    the model's only default argument (no competing class -- the
+    single-topic-argument setting from the original Contestability paper,
+    e.g. `tests/contest_test.py`'s synthetic fixture), there is no real
+    rival: `_target_and_rival` falls back to a fixed virtual competitor at
+    `threshold`, recovering the original absolute criterion for that case.
+  - `EdgeTraceStep`/`ContestResult` gained `*_rival_class`/`*_rival_strength`
+    fields (renamed `old_strength`/`new_strength`/`final_strength` to
+    `*_target_strength` for clarity) so the trace shows whether a step's
+    rival changed identity, not just whether the target moved.
+  - `run_contest.py`: `--threshold` documented as the single-topic-argument
+    fallback only; logging now reports the rival class/strength and the
+    achieved vs. required margin per step.
+
+- **Changed to bracket-and-bisect search** (`fe0e607`)
+  - `contest.py`: plain backtracking (shrink `alpha` from `alpha_max` until
+    a trial crosses the margin, return the first one that does) optimizes
+    for "cheap," not "minimal" -- confirmed live on sample 80 of the
+    checkpoint above, where `alpha_max=1.0` crossed on the very first trial,
+    overshooting the required margin by ~2.2 and moving edge weights by
+    `>3` in one step. Renamed `backtracking_line_search` to
+    `bisection_line_search`: phase 1 (bracket) is unchanged geometric
+    backtracking, used only to find *a* crossing alpha; phase 2 (bisect)
+    then binary-searches inside `[last-failing-alpha, first-crossing-alpha]`
+    for up to `MAX_BISECTIONS` trials (or until the bracket narrows below
+    `BISECT_TOL`) to converge toward the minimal crossing step instead of
+    accepting the first one found. Re-run on sample 80: `max_weight_delta`
+    dropped from `3.292147` to `0.061085` and the margin overshoot from
+    `~2.2` to `0.0012`, for the same `success=True` outcome.
+  - Each bisection trial is one more `torch.no_grad()` forward pass (no
+    backward pass), so the added cost is linear in `MAX_BISECTIONS` and
+    skipped entirely for dead-gradient samples (phase 1 never finds a
+    crossing, so phase 2 never runs -- confirmed on sample 91, a live
+    example of the kind of sample `sweep_dead_gradients.py` flags: `alpha`
+    shrinks through all `MAX_BACKTRACKS` trials with an all-zero effective
+    direction, `max_weight_delta=0.0` for all 50 `max_iters`, since `contest`
+    has no early-exit for a dead direction and just repeats the same no-op
+    step until `max_iters` is exhausted).
+  - `tests/contest_test.py`: renamed the `backtracking_line_search` tests to
+    `bisection_line_search`, updated for the new 5-tuple return shape and
+    `final_target_strength`/`final_rival_*` fields, and added a test
+    confirming bisection refines below `alpha_max` when it overshoots on the
+    first trial.
+
+- **Changed bisection thresholds** (`fad4ef3`)
+  - `contest.py`: re-running sample 47 (initial rival gap only `0.0167`)
+    showed phase 1 crossing at `alpha_max=1.0` and then *every* one of the
+    10 phase-2 bisection trials also crossing -- `alpha_hi` halved all the
+    way down to `0.5^10` without a single failing trial to pull `alpha_lo`
+    up, so the loop exhausted its budget (not `BISECT_TOL`) with the margin
+    still overshot by 13.5x (`0.1351` against a required `0.01`). Bumped
+    `MAX_BISECTIONS` 10 -> 30 and tightened `BISECT_TOL` 1e-4 -> 1e-6; each
+    extra step is one cheap forward pass and halves the bracket, so the
+    added resolution is exponential (`~1e-9` relative to `alpha_max=1.0`)
+    for ~20 extra passes, paid only by samples that reach phase 2 (dead-
+    gradient samples like 91 above never do). Re-run on sample 47: margin
+    overshoot dropped from `0.1351` to `0.0001` and `max_weight_delta` from
+    `0.006209` to `0.001085`.
