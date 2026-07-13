@@ -161,9 +161,27 @@ def _perturb_adjacency(
     A: Tensor, edge_indices: Tensor, direction: Tensor, alpha: float
 ) -> Tensor:
     """Copy of ``A`` with the entries at ``edge_indices`` (flat indices)
-    shifted by ``alpha * direction``; all other entries are unchanged."""
+    shifted by ``alpha * direction`` and clamped to [-1, 1]; all other
+    entries are unchanged.
+
+    ``model.A``'s sign encodes attack (negative) vs. support (positive) --
+    see ``grae.py``'s module docstring -- but which regime a given entry is
+    *eligible* for is fixed by the casebase labels at fit() time (attack-
+    eligible vs. support-eligible pairs), not by its current value, and a
+    currently-zero edge of either kind looks identical from ``A`` alone. So
+    the clamp only caps magnitude at 1 (matching the [0, 1] edge-weight
+    convention every ``casebase_edge_weights``/``compute_partial_order``
+    implementation is built to produce) rather than also trying to lock
+    each entry to the sign it happened to start with -- that would silently
+    zero out valid moves like a 0-weight edge becoming a small support
+    (see ``bisection_line_search``'s top-k picks in ``contest_test.py``,
+    which routinely land on exactly such edges). Without this clamp,
+    ``bottleneck``'s geometrically-growing alpha in particular can walk an
+    edge arbitrarily far past +-1.
+    """
     new_A = A.detach().clone()
-    new_A.view(-1)[edge_indices] += alpha * direction
+    flat = new_A.view(-1)
+    flat[edge_indices] = torch.clamp(flat[edge_indices] + alpha * direction, min=-1.0, max=1.0)
     return new_A
 
 

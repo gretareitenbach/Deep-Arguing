@@ -15,9 +15,14 @@ see "intermediate" strengths; this module just reads that out.
 
 Update rule summary (mirrors ``contest.py``'s docstring):
   - Bottleneck node: first node with strength exactly 0, found by a greedy
-    walk from the sample towards ``target_class``'s default argument,
-    following the single strongest edge at each hop (same greedy spirit as
-    ``select_top_k``'s top-k edges, not an exhaustive search).
+    walk *backward* from ``target_class``'s default argument, following the
+    single strongest incoming edge (strongest attacker/supporter) at each
+    hop (same greedy spirit as ``select_top_k``'s top-k edges, not an
+    exhaustive search). Walking backward from the target -- rather than
+    forward from the sample's own initial contact point -- guarantees every
+    node visited is an actual ancestor of the target's strength
+    computation, not an arbitrary node the greedy walk happened to wander
+    into.
   - Edges moved: the bottleneck node's incoming edges, ranked by
     |source node's own strength| -- since the aggregation step is linear,
     this is exactly the local partial derivative of the bottleneck's own
@@ -64,48 +69,59 @@ def _node_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
 def find_bottleneck(
     model: GradualAACBR, sample: Tensor, target_class: int
 ) -> tuple[int, Tensor] | None:
-    """Greedily walk the influence graph from ``sample`` towards
-    ``target_class``'s default argument, following the single strongest
-    edge at each hop, looking for the first node whose own strength is
-    pinned at exactly 0 -- a saturated ReLU. Falls back to checking
-    ``target_class``'s default argument directly if the walk dead-ends
-    (exhausts its unvisited outgoing edges) before ever reaching it or
-    finding a saturated node en route: a uniformly dead ``grae_vector``
-    mathematically requires the target's own strength to be pinned at 0
-    (see ``contest.py``'s module docstring), so it's always a valid
-    fallback bottleneck even when the greedy path towards it stalls (a real
-    risk on a large casebase, where the single-strongest-edge walk has no
-    backtracking).
+    """Greedily walk the influence graph *backward* from ``target_class``'s
+    default argument, following the single strongest incoming edge (i.e.
+    the strongest attacker/supporter) at each hop, looking for the first
+    ancestor whose own strength is pinned at exactly 0 -- a saturated ReLU.
+
+    Walking backward from the target (rather than forward from wherever
+    the sample happens to make first contact with the casebase) guarantees
+    every node visited is an actual ancestor of ``target_class``'s
+    strength computation -- reachable via a real, existing chain of
+    attacks/supports that feeds into it -- rather than an arbitrary node
+    the greedy walk stumbles into that may have no bearing on the target's
+    strength at all.
+
+    ``target_class``'s default argument is *always* itself pinned at 0
+    whenever this is called (a uniformly dead ``grae_vector`` mathematically
+    requires it -- see ``contest.py``'s module docstring), so the walk
+    starts one hop further back, at its strongest attacker, rather than
+    trivially returning the target itself: a deeper upstream saturated node
+    is often the more useful lever, since escaping it cascades forward
+    through the rest of the chain (see this module's docstring) and is what
+    ``test_find_bottleneck_locates_the_saturated_node`` in
+    ``bottleneck_test.py`` checks for. Falls back to ``target_class``'s
+    default argument directly if the walk dead-ends (exhausts its unvisited
+    incoming edges) before ever finding a saturated ancestor.
 
     Returns ``(bottleneck_node, node_strengths)``, where ``node_strengths``
     is the (n, d) per-node strength tensor already computed to do this walk
     (reused by ``select_bottleneck_edges`` rather than recomputed). Returns
-    ``None`` only if neither the walk nor ``target_class``'s default
-    argument itself turns up a saturated node -- i.e. there is no ReLU
+    ``None`` only if neither an upstream ancestor nor ``target_class``'s
+    default argument itself turns up saturated -- i.e. there is no ReLU
     bottleneck here, and a dead gradient (if any) has some other cause.
     """
     assert model.A is not None
     A = model.post_process_func(model.A)
     node_strengths = _node_strengths(model, sample, model.A)
-    E = model.new_cases_attacks_adjacency[0]  # (n, d): sample's own edges into the casebase
     target_idx = int(model.default_indexes[target_class].item())
 
     def is_saturated(node: int) -> bool:
         return bool((node_strengths[node] == 0).all())
 
-    current = int(E.abs().sum(dim=-1).argmax().item())
+    current = target_idx
     visited = {current}
-    while not is_saturated(current) and current != target_idx:
-        outgoing = A[current].abs().sum(dim=-1).clone()
-        outgoing[list(visited)] = -1.0
-        nxt = int(outgoing.argmax().item())
-        if outgoing[nxt] <= 0:
+    while True:
+        incoming = A[:, current].abs().sum(dim=-1).clone()
+        incoming[list(visited)] = -1.0
+        nxt = int(incoming.argmax().item())
+        if incoming[nxt] <= 0:
             break  # dead end -- fall back to checking target_idx directly below
         visited.add(nxt)
         current = nxt
+        if is_saturated(current):
+            return current, node_strengths
 
-    if is_saturated(current):
-        return current, node_strengths
     if is_saturated(target_idx):
         return target_idx, node_strengths
     return None  # neither the walk nor target_idx itself is saturated
