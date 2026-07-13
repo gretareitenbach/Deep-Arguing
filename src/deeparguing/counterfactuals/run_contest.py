@@ -28,8 +28,7 @@ import torch
 
 from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
 from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
-                                                  MAX_ITERS, THRESHOLD,
-                                                  contest)
+                                                  MAX_ITERS, contest)
 from deeparguing.gradual_aacbr import GradualAACBR
 
 
@@ -98,8 +97,17 @@ def main() -> None:
         ),
     )
     parser.add_argument("--k", type=int, default=DEFAULT_K)
-    parser.add_argument("--threshold", type=float, default=THRESHOLD)
-    parser.add_argument("--margin", type=float, default=MARGIN)
+    parser.add_argument(
+        "--margin",
+        type=float,
+        default=MARGIN,
+        help=(
+            "How much target_class's strength must exceed the strongest "
+            "other class's strength before the search declares victory "
+            "(an argmax-relative win margin, not an absolute threshold -- "
+            "class strengths are not normalized/mutually exclusive)."
+        ),
+    )
     parser.add_argument("--max-iters", type=int, default=MAX_ITERS)
     parser.add_argument(
         "--device", default="cuda" if torch.cuda.is_available() else "cpu"
@@ -153,15 +161,15 @@ def main() -> None:
         sample,
         target_class=target_index,
         k=args.k,
-        threshold=args.threshold,
         margin=args.margin,
         max_iters=args.max_iters,
     )
 
-    boundary = args.threshold + args.margin
     logging.info(
         f"success={result.success} iterations={result.iterations} "
-        f"final_strength={result.final_strength:.4f} target_boundary={boundary:.4f} "
+        f"final_target_strength={result.final_target_strength:.4f} "
+        f"final_rival=class{result.final_rival_class}:{result.final_rival_strength:.4f} "
+        f"margin_needed={args.margin:.4f} "
         f"max_weight_delta={result.max_weight_delta:.6f}"
     )
     for i, step in enumerate(result.edge_trace, start=1):
@@ -169,14 +177,22 @@ def main() -> None:
             round(new - old, 6)
             for old, new in zip(step.old_weights, step.new_weights)
         ]
-        strength_gain = step.new_strength - step.old_strength
-        remaining = boundary - step.new_strength
+        strength_gain = step.new_target_strength - step.old_target_strength
+        old_margin = step.old_target_strength - step.old_rival_strength
+        new_margin = step.new_target_strength - step.new_rival_strength
+        rival_note = (
+            f"rival stayed class{step.old_rival_class}"
+            if step.old_rival_class == step.new_rival_class
+            else f"rival changed class{step.old_rival_class}->class{step.new_rival_class}"
+        )
         logging.info(
             f"  step {i}: edges={step.edge_ids} alpha={step.alpha:.4g} "
             f"weights {step.old_weights} -> {step.new_weights} "
             f"(delta={weight_deltas}) "
-            f"strength {step.old_strength:.4f} -> {step.new_strength:.4f} "
-            f"(closer by {strength_gain:+.4f}, {remaining:.4f} left to boundary)"
+            f"target_strength {step.old_target_strength:.4f} -> {step.new_target_strength:.4f} "
+            f"(gain {strength_gain:+.4f}); {rival_note} "
+            f"({step.old_rival_strength:.4f} -> {step.new_rival_strength:.4f}); "
+            f"margin {old_margin:+.4f} -> {new_margin:+.4f} (need >= {args.margin:.4f})"
         )
 
 
