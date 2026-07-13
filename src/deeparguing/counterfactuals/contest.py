@@ -32,8 +32,8 @@ the rival too; the stopping check below will simply reject such a step and
 try another top-k direction next iteration.
 
 Dead gradients: ``_casebase_grae`` can come back uniformly ~0 for a sample
-(see ``sweep_dead_gradients.py``) because ``target_class``'s own final
-strength is pinned at exactly 0 by its outer ReLU -- since the aggregation
+because ``target_class``'s own final strength is pinned at exactly 0 by its
+outer ReLU -- since the aggregation
 step is dense (every entry of ``model.A`` has a well-defined one-hop
 gradient contribution equal to its source node's strength, whether or not
 that entry happens to be nonzero right now), that outer saturation is what
@@ -68,10 +68,10 @@ THRESHOLD = 0.5           # virtual rival strength when target_class has no real
 MARGIN = 0.01             # target must beat the best rival class by this much
 LIVE_GRAD_THRESHOLD = 1e-9  # max|grae_vector| at or below this counts as "dead" -- routes
                             # to bottleneck.find_and_escape_bottleneck instead of the
-                            # ordinary line search. Matches sweep_dead_gradients.py's
-                            # LIVE_THRESHOLD; re-check that sweep's max|grad| distribution
-                            # is still cleanly bimodal (exact 0.0s vs. a comfortable spread
-                            # above) before relying on this on a new checkpoint/dataset.
+                            # ordinary line search. Not re-validated against a real max|grad|
+                            # distribution (bimodal: exact 0.0s vs. a comfortable spread
+                            # above) -- check that assumption before relying on this value
+                            # on a new checkpoint/dataset.
 ALPHA_MAX = 1.0           # initial line-search step size
 BACKTRACK_FACTOR = 0.5    # shrink factor per failed bracketing trial
 MAX_BACKTRACKS = 10       # bracketing-phase retry cap (per iteration)

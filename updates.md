@@ -258,10 +258,10 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `0.006209` to `0.001085`.
 
 - **Added dead-gradient bottleneck escape** (uncommitted)
-  - New `src/deeparguing/counterfactuals/bottleneck.py`: handles the dead-
-    gradient case flagged by `sweep_dead_gradients.py` (`_casebase_grae`
-    uniformly ~0 for a sample) instead of letting `contest()` spin uselessly
-    on a zero direction until `max_iters` (as sample 91 did before). Reused
+  - New `src/deeparguing/counterfactuals/bottleneck.py`: handles the case
+    where `_casebase_grae` comes back uniformly ~0 for a sample, instead of
+    letting `contest()` spin uselessly on a zero direction until `max_iters`
+    (as sample 91 did before). Reused
     `GradualAACBR.forward(..., return_all_strengths=True)`, which already
     exposes every casebase node's own converged strength per sample -- no
     changes to `gradual_aacbr.py` needed. `find_bottleneck` greedily walks
@@ -288,12 +288,11 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `grae_vector` for direction only if the local leverage is itself all
     zero (every incoming source also saturated); if that's also zero,
     returns `None` -- structurally hopeless.
-  - `contest.py`: added `LIVE_GRAD_THRESHOLD` (`1e-9`, matching
-    `sweep_dead_gradients.py`'s existing `LIVE_THRESHOLD` -- **not**
-    re-validated here against the real checkpoint's max|grad| distribution
-    per the day's compute constraints; re-run `sweep_dead_gradients.py` and
-    confirm the split is still cleanly bimodal before trusting this value on
-    a new checkpoint/dataset). Each outer iteration now checks
+  - `contest.py`: added `LIVE_GRAD_THRESHOLD` (`1e-9` -- **not** re-validated
+    here against the real checkpoint's max|grad| distribution per the day's
+    compute constraints; confirm the live/dead split is still cleanly
+    bimodal before trusting this value on a new checkpoint/dataset). Each
+    outer iteration now checks
     `grae_vector`'s magnitude and routes to `find_and_escape_bottleneck`
     instead of `select_top_k`/`bisection_line_search` when dead; both paths
     feed one shared trace-recording/commit block (unified into a common
@@ -304,8 +303,15 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `find_and_escape_bottleneck` lazily (inside the function body) since
     `bottleneck.py` imports several private helpers back from `contest.py`
     -- an eager top-level import would be circular.
-  - `sweep_dead_gradients.py`: unchanged, stays the standalone batch
-    diagnostic.
+  - Deleted `sweep_dead_gradients.py`: its original purpose was to pre-filter
+    "dead" samples out before running `contest()`, so the expensive search
+    wasn't wasted on ones it couldn't move -- but `contest()` now handles
+    that itself (escaping when possible, failing after 1 iteration instead
+    of `max_iters` when not), so a sample being "dead" no longer implies it
+    should be skipped, and the script's own docstring advice to that effect
+    was now actively wrong. No remaining callers depend on it (`run_contest.py`
+    never imported it; the dependency ran the other way, the script reusing
+    `run_contest.py`'s `load_model`/`load_sample`).
   - Added `tests/bottleneck_test.py` (6 tests) on a hand-built 4-node ReLU
     EW-QBAF (bypassing `fit()`, same approach as `grae_test.py`'s
     property-based fixtures): `find_bottleneck` locates the saturated node,

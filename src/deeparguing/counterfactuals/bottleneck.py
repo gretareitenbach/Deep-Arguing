@@ -6,8 +6,7 @@ Escape logic for the dead-gradient case ``contest()`` hits when
 the sample is genuinely stuck, but because a hard-ReLU node somewhere
 upstream of ``target_class``'s default argument has saturated (its own
 strength is pinned at exactly 0), blocking gradient flow through it (see
-``grae.py``'s module docstring and ``sweep_dead_gradients.py``, which flags
-these samples ahead of time).
+``grae.py``'s module docstring).
 
 ``GradualAACBR.forward(..., return_all_strengths=True)`` already exposes
 every casebase node's own converged strength for a given sample -- not just
