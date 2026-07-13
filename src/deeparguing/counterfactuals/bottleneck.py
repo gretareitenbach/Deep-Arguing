@@ -66,14 +66,22 @@ def find_bottleneck(
 ) -> tuple[int, Tensor] | None:
     """Greedily walk the influence graph from ``sample`` towards
     ``target_class``'s default argument, following the single strongest
-    edge at each hop, and return the first node whose own strength is
-    pinned at exactly 0 -- a saturated ReLU.
+    edge at each hop, looking for the first node whose own strength is
+    pinned at exactly 0 -- a saturated ReLU. Falls back to checking
+    ``target_class``'s default argument directly if the walk dead-ends
+    (exhausts its unvisited outgoing edges) before ever reaching it or
+    finding a saturated node en route: a uniformly dead ``grae_vector``
+    mathematically requires the target's own strength to be pinned at 0
+    (see ``contest.py``'s module docstring), so it's always a valid
+    fallback bottleneck even when the greedy path towards it stalls (a real
+    risk on a large casebase, where the single-strongest-edge walk has no
+    backtracking).
 
     Returns ``(bottleneck_node, node_strengths)``, where ``node_strengths``
     is the (n, d) per-node strength tensor already computed to do this walk
     (reused by ``select_bottleneck_edges`` rather than recomputed). Returns
-    ``None`` if the walk reaches ``target_class``'s default argument (or a
-    dead end) without ever finding a saturated node -- i.e. there is no ReLU
+    ``None`` only if neither the walk nor ``target_class``'s default
+    argument itself turns up a saturated node -- i.e. there is no ReLU
     bottleneck here, and a dead gradient (if any) has some other cause.
     """
     assert model.A is not None
@@ -87,19 +95,20 @@ def find_bottleneck(
 
     current = int(E.abs().sum(dim=-1).argmax().item())
     visited = {current}
-    while True:
-        if is_saturated(current):
-            return current, node_strengths
-        if current == target_idx:
-            return None  # reached the target with nothing saturated along the way
-
+    while not is_saturated(current) and current != target_idx:
         outgoing = A[current].abs().sum(dim=-1).clone()
         outgoing[list(visited)] = -1.0
         nxt = int(outgoing.argmax().item())
         if outgoing[nxt] <= 0:
-            return None  # dead end before reaching the target or a saturated node
+            break  # dead end -- fall back to checking target_idx directly below
         visited.add(nxt)
         current = nxt
+
+    if is_saturated(current):
+        return current, node_strengths
+    if is_saturated(target_idx):
+        return target_idx, node_strengths
+    return None  # neither the walk nor target_idx itself is saturated
 
 
 def _bottleneck_leverage_vector(
