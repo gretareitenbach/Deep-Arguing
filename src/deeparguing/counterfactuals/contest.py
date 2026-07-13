@@ -50,8 +50,12 @@ MARGIN = 0.01             # target must beat the best rival class by this much
 ALPHA_MAX = 1.0           # initial line-search step size
 BACKTRACK_FACTOR = 0.5    # shrink factor per failed bracketing trial
 MAX_BACKTRACKS = 10       # bracketing-phase retry cap (per iteration)
-MAX_BISECTIONS = 10       # refinement-phase retry cap, once a bracket is found
-BISECT_TOL = 1e-4         # stop bisecting once the bracket is this narrow
+MAX_BISECTIONS = 30       # refinement-phase retry cap, once a bracket is found
+                          # (each step is one cheap no_grad forward pass, and
+                          # halves the bracket -- 30 gets ~1e-9 relative
+                          # resolution on alpha_max=1.0 for ~20 extra passes
+                          # over the old cap of 10)
+BISECT_TOL = 1e-6         # stop bisecting once the bracket is this narrow
 MAX_ITERS = 50            # outer loop cap -> mark as failed-to-flip if hit
 
 
