@@ -256,3 +256,76 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     gradient samples like 91 above never do). Re-run on sample 47: margin
     overshoot dropped from `0.1351` to `0.0001` and `max_weight_delta` from
     `0.006209` to `0.001085`.
+
+- **Added dead-gradient bottleneck escape** (uncommitted)
+  - New `src/deeparguing/counterfactuals/bottleneck.py`: handles the dead-
+    gradient case flagged by `sweep_dead_gradients.py` (`_casebase_grae`
+    uniformly ~0 for a sample) instead of letting `contest()` spin uselessly
+    on a zero direction until `max_iters` (as sample 91 did before). Reused
+    `GradualAACBR.forward(..., return_all_strengths=True)`, which already
+    exposes every casebase node's own converged strength per sample -- no
+    changes to `gradual_aacbr.py` needed. `find_bottleneck` greedily walks
+    the influence graph from the sample towards `target_class`'s default
+    argument (following the single strongest edge per hop) and returns the
+    first node pinned at exactly 0. Confirmed by working through the
+    aggregation math (and a synthetic test that initially assumed
+    otherwise, then failed): because `aggregation_func` sums densely over
+    *every* source node each iteration (not just structurally-existing
+    edges), a *uniformly* zero `_casebase_grae` requires `target_class`'s
+    *own* final strength to be pinned at 0 too, not merely some upstream
+    node -- otherwise at least the direct one-hop edges into the target
+    would show nonzero gradient from whichever source nodes have nonzero
+    strength. `select_bottleneck_edges` ranks the bottleneck's incoming
+    edges by `|source node's own strength|` -- exactly the local partial
+    derivative of its aggregation, read directly off the forward pass
+    already computed (the aggregation step is linear, so no backward pass
+    needed). `expanding_step_search` is `bisection_line_search`'s mirror
+    image: grows `alpha` geometrically from a small `alpha_init` instead of
+    shrinking from `alpha_max`, stopping once the bottleneck node's own
+    strength is no longer pinned at 0 (a different, weaker condition than
+    crossing the classification margin, hence a separate function).
+    `find_and_escape_bottleneck` orchestrates the three and falls back to
+    `grae_vector` for direction only if the local leverage is itself all
+    zero (every incoming source also saturated); if that's also zero,
+    returns `None` -- structurally hopeless.
+  - `contest.py`: added `LIVE_GRAD_THRESHOLD` (`1e-9`, matching
+    `sweep_dead_gradients.py`'s existing `LIVE_THRESHOLD` -- **not**
+    re-validated here against the real checkpoint's max|grad| distribution
+    per the day's compute constraints; re-run `sweep_dead_gradients.py` and
+    confirm the split is still cleanly bimodal before trusting this value on
+    a new checkpoint/dataset). Each outer iteration now checks
+    `grae_vector`'s magnitude and routes to `find_and_escape_bottleneck`
+    instead of `select_top_k`/`bisection_line_search` when dead; both paths
+    feed one shared trace-recording/commit block (unified into a common
+    6-tuple: `edge_indices, alpha, new_A, new_target_strength,
+    new_rival_class, new_rival_strength`), so a dead-then-escaped sample
+    falls through to ordinary gradient steps on the next iteration once
+    `_casebase_grae` is recomputed and live again. `contest()` imports
+    `find_and_escape_bottleneck` lazily (inside the function body) since
+    `bottleneck.py` imports several private helpers back from `contest.py`
+    -- an eager top-level import would be circular.
+  - `sweep_dead_gradients.py`: unchanged, stays the standalone batch
+    diagnostic.
+  - Added `tests/bottleneck_test.py` (6 tests) on a hand-built 4-node ReLU
+    EW-QBAF (bypassing `fit()`, same approach as `grae_test.py`'s
+    property-based fixtures): `find_bottleneck` locates the saturated node,
+    `select_bottleneck_edges` prefers the higher-leverage source,
+    `find_and_escape_bottleneck` picks that edge and returns `None` when
+    every attacker is itself pinned at 0 (structurally hopeless), and two
+    `contest()` end-to-end cases -- starts dead, escapes, then finishes via
+    ordinary bisection steps; and the structurally-hopeless case reports
+    `success=False` after exactly 1 iteration rather than looping to
+    `max_iters`.
+  - `contest.py`: re-running sample 47 (initial rival gap only `0.0167`)
+    showed phase 1 crossing at `alpha_max=1.0` and then *every* one of the
+    10 phase-2 bisection trials also crossing -- `alpha_hi` halved all the
+    way down to `0.5^10` without a single failing trial to pull `alpha_lo`
+    up, so the loop exhausted its budget (not `BISECT_TOL`) with the margin
+    still overshot by 13.5x (`0.1351` against a required `0.01`). Bumped
+    `MAX_BISECTIONS` 10 -> 30 and tightened `BISECT_TOL` 1e-4 -> 1e-6; each
+    extra step is one cheap forward pass and halves the bracket, so the
+    added resolution is exponential (`~1e-9` relative to `alpha_max=1.0`)
+    for ~20 extra passes, paid only by samples that reach phase 2 (dead-
+    gradient samples like 91 above never do). Re-run on sample 47: margin
+    overshoot dropped from `0.1351` to `0.0001` and `max_weight_delta` from
+    `0.006209` to `0.001085`.

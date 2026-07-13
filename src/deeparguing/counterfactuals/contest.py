@@ -30,6 +30,25 @@ This does *not* make the top-k edge selection rival-aware: ``_casebase_grae``
 still differentiates only the target class's strength, so a step can raise
 the rival too; the stopping check below will simply reject such a step and
 try another top-k direction next iteration.
+
+Dead gradients: ``_casebase_grae`` can come back uniformly ~0 for a sample
+(see ``sweep_dead_gradients.py``) because ``target_class``'s own final
+strength is pinned at exactly 0 by its outer ReLU -- since the aggregation
+step is dense (every entry of ``model.A`` has a well-defined one-hop
+gradient contribution equal to its source node's strength, whether or not
+that entry happens to be nonzero right now), that outer saturation is what
+zeroes the derivative *uniformly*, not merely some upstream node being
+saturated. Fixing an upstream node that feeds the target (rather than the
+target's own incoming edges directly) is still often the more useful lever,
+since it can cascade forward and revive the target as a side effect. Each
+iteration checks ``grae_vector``'s magnitude and routes accordingly: "live"
+takes the ordinary top-k/bisection path below; "dead" instead calls
+``bottleneck.find_and_escape_bottleneck``, which walks toward the target to
+find a saturated node and grows a step that un-sticks it (see
+``bottleneck.py``'s module docstring). Both paths feed the same
+trace-recording/commit logic, so a dead-then-escaped sample continues
+through ordinary gradient steps on the next iteration once
+``_casebase_grae`` is recomputed and live again.
 """
 
 from dataclasses import dataclass, field
@@ -47,6 +66,12 @@ from .grae import compute_grae
 DEFAULT_K = 3             # edges perturbed per iteration; sweep 1,3,5
 THRESHOLD = 0.5           # virtual rival strength when target_class has no real rival
 MARGIN = 0.01             # target must beat the best rival class by this much
+LIVE_GRAD_THRESHOLD = 1e-9  # max|grae_vector| at or below this counts as "dead" -- routes
+                            # to bottleneck.find_and_escape_bottleneck instead of the
+                            # ordinary line search. Matches sweep_dead_gradients.py's
+                            # LIVE_THRESHOLD; re-check that sweep's max|grad| distribution
+                            # is still cleanly bimodal (exact 0.0s vs. a comfortable spread
+                            # above) before relying on this on a new checkpoint/dataset.
 ALPHA_MAX = 1.0           # initial line-search step size
 BACKTRACK_FACTOR = 0.5    # shrink factor per failed bracketing trial
 MAX_BACKTRACKS = 10       # bracketing-phase retry cap (per iteration)
@@ -236,6 +261,11 @@ def contest(
     max_iters: int = MAX_ITERS,
 ) -> ContestResult:
     """Main loop. See module docstring for update rule."""
+    # Deferred import: bottleneck.py imports several private helpers back
+    # from this module, so importing it at module load time (before those
+    # names exist yet) would be circular.
+    from .bottleneck import find_and_escape_bottleneck
+
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
     if sample.shape[0] != 1:
@@ -260,18 +290,27 @@ def contest(
             )
 
         grae_vector = _casebase_grae(model, sample, target_class)
-        edge_indices = select_top_k(grae_vector, k)
-        direction = grae_vector[edge_indices]
 
-        step = bisection_line_search(
-            model, sample, target_class, edge_indices, direction,
-            margin=margin, threshold=threshold,
-        )
+        if grae_vector.abs().max().item() <= LIVE_GRAD_THRESHOLD:
+            # Dead gradient: a saturated ReLU node is blocking flow to
+            # target_class's default argument. Escape it instead of
+            # searching along a direction that's uniformly ~0.
+            step = find_and_escape_bottleneck(
+                model, sample, target_class, grae_vector, k=k, threshold=threshold
+            )
+        else:
+            edge_indices = select_top_k(grae_vector, k)
+            direction = grae_vector[edge_indices]
+            bisection_step = bisection_line_search(
+                model, sample, target_class, edge_indices, direction,
+                margin=margin, threshold=threshold,
+            )
+            step = None if bisection_step is None else (edge_indices, *bisection_step)
 
         if step is None:
-            break  # plateaued: no direction improves the margin further
+            break  # structurally hopeless: plateaued, or no edge can escape the bottleneck
 
-        alpha, new_A, new_target_strength, new_rival_class, new_rival_strength = step
+        edge_indices, alpha, new_A, new_target_strength, new_rival_class, new_rival_strength = step
         old_values = model.A.view(-1)[edge_indices]
         new_values = new_A.view(-1)[edge_indices]
         delta = (new_values - old_values).abs().max().item()
