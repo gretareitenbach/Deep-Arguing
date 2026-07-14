@@ -109,6 +109,13 @@ def print_top_edges_by_class(grae_by_class: torch.Tensor, top_k: int) -> None:
             continue
 
         flat = torch.nan_to_num(class_grid, nan=0.0).reshape(-1)
+        if torch.all(flat == 0):
+            print(
+                f"\nClass {c}: all gradients are zero (dead) -- likely a "
+                "saturated node on the path to this class's default argument"
+            )
+            continue
+
         k = min(top_k, flat.numel())
         _, top_flat_idx = flat.abs().topk(k)
 
