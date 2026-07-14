@@ -190,6 +190,60 @@ def select_top_k(grae_vector: Tensor, k: int) -> Tensor:
     return grae_vector.abs().topk(k).indices
 
 
+def select_top_k_conflict_aware(
+    grae_vector: Tensor,
+    grae_by_class: Tensor,
+    target_class: int,
+    k: int,
+    conflict_lambda: float,
+) -> Tensor:
+    """Like ``select_top_k``, but discounts edges that other classes rely on
+    in the *opposite* direction, instead of ranking purely by this sample's
+    own |G-RAE|.
+
+    Sequentially contesting many samples/classes against a shared ``model.A``
+    tends to have one class's fix partially undone by the next class's fix
+    landing on the same edge with the opposite sign (e.g. one class needs an
+    edge weight lowered, another needs it raised) -- this is a cheap,
+    per-step mitigation for that, not a global optimum (see the "global
+    perturbation" discussion this was built for: contest.py's sequential
+    loop is still greedy/order-dependent, this only changes which edge each
+    step picks).
+
+    Parameters
+    ----------
+    grae_vector : Tensor
+        This sample's own flat G-RAE (same as ``select_top_k`` takes).
+    grae_by_class : Tensor
+        Per-true-class averaged G-RAE, shape (num_classes, n, n, d) --
+        typically ``scripts/misclassified_grae_by_class.py``'s output,
+        computed once up front from the *original* (unperturbed) model and
+        held fixed for the whole run. Since it isn't recomputed as edges
+        move, it's a static approximation of "who else wants this edge,"
+        not a live one.
+    target_class : int
+        This sample's true/target class -- excluded from the conflict sum
+        so a class never penalizes itself.
+    k : int
+        Number of edges to select.
+    conflict_lambda : float
+        Weight on the conflict penalty. 0 recovers plain ``select_top_k``.
+    """
+    conflict = grae_by_class.reshape(grae_by_class.shape[0], -1).clone()
+    conflict[target_class] = 0.0
+
+    # An edge only "conflicts" for a class whose gradient points the
+    # opposite way this sample wants to move it -- moving it would help us
+    # but hurt them. Classes that agree in sign aren't penalized: moving the
+    # edge helps both.
+    direction = grae_vector.sign()
+    opposed = torch.clamp(-direction * conflict.sign(), min=0.0)
+    harm = (opposed * conflict.abs()).sum(dim=0)
+
+    score = grae_vector.abs() - conflict_lambda * harm
+    return score.topk(k).indices
+
+
 def bisection_line_search(
     model: GradualAACBR,
     sample: Tensor,
@@ -277,8 +331,17 @@ def contest(
     threshold: float = THRESHOLD,
     margin: float = MARGIN,
     max_iters: int = MAX_ITERS,
+    grae_by_class: Tensor | None = None,
+    conflict_lambda: float = 0.0,
 ) -> ContestResult:
-    """Main loop. See module docstring for update rule."""
+    """Main loop. See module docstring for update rule.
+
+    ``grae_by_class``/``conflict_lambda`` are optional: when
+    ``grae_by_class`` is given and ``conflict_lambda > 0``, top-k edge
+    selection routes through ``select_top_k_conflict_aware`` instead of
+    plain ``select_top_k`` (see that function's docstring). Leaving
+    ``grae_by_class=None`` (the default) reproduces the original
+    conflict-unaware behavior exactly."""
     # Deferred import: bottleneck.py imports several private helpers back
     # from this module, so importing it at module load time (before those
     # names exist yet) would be circular.
@@ -317,7 +380,12 @@ def contest(
                 model, sample, target_class, grae_vector, k=k, threshold=threshold
             )
         else:
-            edge_indices = select_top_k(grae_vector, k)
+            if grae_by_class is not None and conflict_lambda > 0:
+                edge_indices = select_top_k_conflict_aware(
+                    grae_vector, grae_by_class, target_class, k, conflict_lambda
+                )
+            else:
+                edge_indices = select_top_k(grae_vector, k)
             direction = grae_vector[edge_indices]
             bisection_step = bisection_line_search(
                 model, sample, target_class, edge_indices, direction,
