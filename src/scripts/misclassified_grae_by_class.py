@@ -26,6 +26,9 @@ adjacency_matrix/X_train/y_train/etc. the visualizer already reads) plus a
 to ``visualizer/index.html`` and toggle "Avg G-RAE by True Class" to render
 edge thickness/color by the selected class's average gradient.
 
+Also prints, per class, the top ``--top-k`` edges (default 10) ranked by
+|average G-RAE| -- pass ``--top-k 0`` to skip this.
+
 This is a full sweep (one backward pass per misclassified sample) -- run it
 on whatever machine has the compute for that, not necessarily this one.
 """
@@ -96,6 +99,27 @@ def average_grae_by_true_class(
     return out
 
 
+def print_top_edges_by_class(grae_by_class: torch.Tensor, top_k: int) -> None:
+    """Print the top-k edges by |average G-RAE|, one ranked list per class."""
+    num_classes, n1, n2, d = grae_by_class.shape
+    for c in range(num_classes):
+        class_grid = grae_by_class[c]
+        if torch.isnan(class_grid).all():
+            print(f"\nClass {c}: no misclassified samples")
+            continue
+
+        flat = torch.nan_to_num(class_grid, nan=0.0).reshape(-1)
+        k = min(top_k, flat.numel())
+        _, top_flat_idx = flat.abs().topk(k)
+
+        print(f"\nClass {c}: top {k} edges by |avg G-RAE|")
+        for rank, idx in enumerate(top_flat_idx.tolist(), start=1):
+            # flat is (n1, n2, d) reshaped row-major, so unravel in that order.
+            dd = idx % d
+            i, j = divmod(idx // d, n2)
+            print(f"  {rank:>2}. edge {i} -> {j} (dim {dd}): {flat[idx].item():+.6g}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", default="outputs/model_checkpoint.pt")
@@ -125,6 +149,12 @@ def main() -> None:
         default=None,
         metavar=("SOURCE", "TARGET"),
         help="If given, print the per-class average gradient for this one edge.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        help="Number of top edges (by |avg G-RAE|) to print per class. 0 disables this.",
     )
     args = parser.parse_args()
 
@@ -168,6 +198,9 @@ def main() -> None:
             value = grae_by_class[c, src, tgt]
             value_str = "no samples" if torch.isnan(value).any() else f"{value.tolist()}"
             print(f"  true class {c}: {value_str}")
+
+    if args.top_k > 0:
+        print_top_edges_by_class(grae_by_class, args.top_k)
 
 
 if __name__ == "__main__":
