@@ -192,15 +192,15 @@ feature_weights_2:
 
 semantics:
   type: class
-  class_name: "ReluSemantics"
+  class_name: "QuadraticEnergySemantics"
   params:
     max_iters:
       type: ref
       value: max_iters
-    use_soft_relu:
-      type: value
-      value: False
     damping:
+      type: value
+      value: 1.0
+    conservativeness:
       type: value
       value: 1.0
 
