@@ -58,6 +58,13 @@ let graeMultiTarget = false;
 let selectedPerturbationEdge = null; // { type: 'casebase', i, j } | { type: 'new_case', j }
 let currentGraeDelta = 0;
 
+// Averaged-by-true-class G-RAE overlay (from misclassified_grae_by_class.py).
+// Shape (num_classes, n, n, d) -- one aggregate gradient per edge per class.
+let graeByClassData = [];
+let graeByClassMaxAbs = []; // per-class max |gradient|, for thickness normalization
+let graeByClassEnabled = false;
+let graeByClassSelectedClass = 0;
+
 // UI Elements
 const jsonUpload = document.getElementById('json-upload');
 const graphSlider = document.getElementById('graph-slider');
@@ -107,6 +114,11 @@ const graeSingleTarget = document.getElementById('grae-single-target');
 const graeMultiTargetEl = document.getElementById('grae-multi-target');
 const graeCompetitionTable = document.getElementById('grae-competition-table').querySelector('tbody');
 const graeFlipHint = document.getElementById('grae-flip-hint');
+
+// Averaged-by-true-class G-RAE overlay UI
+const graeByClassContainer = document.getElementById('grae-by-class-container');
+const graeByClassCheckbox = document.getElementById('grae-by-class-checkbox');
+const graeByClassSelect = document.getElementById('grae-by-class-select');
 
 const graphLabel = document.getElementById('graph-label');
 const thresholdLabel = document.getElementById('threshold-label');
@@ -703,6 +715,11 @@ jsonUpload.addEventListener('change', (event) => {
                     selectedPerturbationEdge = null;
                     currentGraeDelta = 0;
 
+                    graeByClassData = data.grae_by_class || [];
+                    graeByClassMaxAbs = computeGraeByClassMaxAbs(graeByClassData);
+                    graeByClassEnabled = false;
+                    graeByClassSelectedClass = 0;
+
                     // Initialize filter states
                     visibleClasses = new Set(yTrainData);
                     showDefaultCases = true;
@@ -785,6 +802,23 @@ jsonUpload.addEventListener('change', (event) => {
 
                         graeDeltaSlider.value = 0;
                         updateGraePanel();
+
+                        graeByClassCheckbox.checked = false;
+                        if (graeByClassData.length > 0) {
+                            graeByClassContainer.style.display = 'block';
+                            graeByClassCheckbox.disabled = false;
+                            graeByClassSelect.innerHTML = '';
+                            graeByClassData.forEach((_, idx) => {
+                                const opt = document.createElement('option');
+                                opt.value = idx;
+                                opt.textContent = `Class ${idx}`;
+                                graeByClassSelect.appendChild(opt);
+                            });
+                            graeByClassSelect.value = 0;
+                            graeByClassSelect.disabled = true;
+                        } else {
+                            graeByClassContainer.style.display = 'none';
+                        }
 
                         updateLabels();
                         showLoading("Rendering graph...");
@@ -1156,6 +1190,66 @@ graeClearBtn.addEventListener('click', () => {
     updateGraePanel();
 });
 
+/**
+ * Per-class max |gradient| over the (n, n, d) grid, used to normalize edge
+ * thickness/color to [-1, 1] when the by-class overlay is active.
+ */
+function computeGraeByClassMaxAbs(byClassData) {
+    return byClassData.map(classGrid => {
+        let max = 0;
+        for (let i = 0; i < classGrid.length; i++) {
+            for (let j = 0; j < classGrid[i].length; j++) {
+                for (let d = 0; d < classGrid[i][j].length; d++) {
+                    const v = Math.abs(classGrid[i][j][d]);
+                    if (v > max) max = v;
+                }
+            }
+        }
+        return max;
+    });
+}
+
+/**
+ * Overrides edge width/color with the selected class's averaged G-RAE
+ * (normalized by that class's max |gradient|) instead of the raw adjacency
+ * weight. Leaves the new-case attack edge (if any) untouched -- the by-class
+ * aggregate has no per-new-case-edge component.
+ */
+function applyGraeByClassStyle(edges) {
+    if (!graeByClassEnabled || graeByClassData.length === 0) return edges;
+    const classGrid = graeByClassData[graeByClassSelectedClass];
+    if (!classGrid) return edges;
+    const maxAbs = graeByClassMaxAbs[graeByClassSelectedClass] || 0;
+
+    return edges.map(edge => {
+        if (edge.data.source === 'new_case_node') return edge;
+        const i = parseInt(edge.data.source.substring(1));
+        const j = parseInt(edge.data.target.substring(1));
+        const row = classGrid[i] && classGrid[i][j];
+        const grad = row ? row[currentGraphIndex] : 0;
+        const normalized = maxAbs > 0 ? grad / maxAbs : 0;
+        return {
+            data: {
+                ...edge.data,
+                grae: grad,
+                width: Math.max(1, Math.abs(normalized) * 10),
+                lineColor: getColor(normalized)
+            }
+        };
+    });
+}
+
+graeByClassCheckbox.addEventListener('change', (e) => {
+    graeByClassEnabled = e.target.checked;
+    graeByClassSelect.disabled = !graeByClassEnabled;
+    if (precomputedEdges.length > 0) handleSliderChange();
+});
+
+graeByClassSelect.addEventListener('change', (e) => {
+    graeByClassSelectedClass = parseInt(e.target.value, 10);
+    if (precomputedEdges.length > 0) handleSliderChange();
+});
+
 function getFilteredEdges() {
     let edges = precomputedEdges[currentGraphIndex].filter(edge => {
         // Source/Target Base Score Visibility check
@@ -1233,8 +1327,8 @@ function getFilteredEdges() {
             }
         }
     }
-    
-    return edges;
+
+    return applyGraeByClassStyle(edges);
 }
 
 function getNewCaseScore(caseIndex, graphIndex) {
@@ -1560,6 +1654,9 @@ function initCytoscape() {
         const weight = edge.data('weight');
 
         let tooltipHtml = `<strong>Edge Weight:</strong> ${weight.toFixed(4)}`;
+        if (graeByClassEnabled && edge.data('grae') !== undefined) {
+            tooltipHtml += `<br/><strong>Avg G-RAE (Class ${graeByClassSelectedClass}):</strong> ${edge.data('grae').toFixed(6)}`;
+        }
         if (graeAvailableForCurrentCase()) {
             tooltipHtml += `<br/><em>Selected for G-RAE perturbation</em>`;
         }

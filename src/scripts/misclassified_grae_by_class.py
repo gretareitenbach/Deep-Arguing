@@ -17,7 +17,14 @@ Usage::
     python src/scripts/misclassified_grae_by_class.py \\
         --checkpoint outputs/model_checkpoint.pt \\
         --qbaf outputs/misclassified_qbaf.json \\
-        --output outputs/misclassified_grae_by_class.pt
+        --output outputs/misclassified_grae_by_class.pt \\
+        --viz-output outputs/misclassified_grae_by_class_viz.json
+
+The ``--viz-output`` file is the original QBAF export (same
+adjacency_matrix/X_train/y_train/etc. the visualizer already reads) plus a
+``grae_by_class`` field, shape (num_classes, n, n, d) -- upload it directly
+to ``visualizer/index.html`` and toggle "Avg G-RAE by True Class" to render
+edge thickness/color by the selected class's average gradient.
 
 This is a full sweep (one backward pass per misclassified sample) -- run it
 on whatever machine has the compute for that, not necessarily this one.
@@ -33,15 +40,12 @@ from deeparguing.counterfactuals.run_contest import load_model
 
 
 def load_all_samples(
-    qbaf_path: str, device: str, num_samples: int | None = None
+    qbaf: dict, device: str, num_samples: int | None = None
 ) -> tuple[torch.Tensor, list[int]]:
-    """Pull every misclassified sample + true label out of the QBAF export."""
-    with open(qbaf_path, "r", encoding="utf-8") as f:
-        qbaf = json.load(f)
-
+    """Pull every misclassified sample + true label out of a loaded QBAF export."""
     if "new_cases" not in qbaf:
         raise ValueError(
-            f"{qbaf_path} has no 'new_cases' entry -- re-run the CLI with "
+            "qbaf has no 'new_cases' entry -- re-run the CLI with "
             "--misclassified_log to produce one."
         )
 
@@ -104,6 +108,14 @@ def main() -> None:
     )
     parser.add_argument("--output", default="outputs/misclassified_grae_by_class.pt")
     parser.add_argument(
+        "--viz-output",
+        default="outputs/misclassified_grae_by_class_viz.json",
+        help=(
+            "Where to write a visualizer-ready copy of the QBAF export with "
+            "an added 'grae_by_class' field. Pass '' to skip this output."
+        ),
+    )
+    parser.add_argument(
         "--device", default="cuda" if torch.cuda.is_available() else "cpu"
     )
     parser.add_argument(
@@ -119,7 +131,10 @@ def main() -> None:
     model = load_model(args.checkpoint, args.device)
     num_classes = len(model.default_indexes)
 
-    samples, true_classes = load_all_samples(args.qbaf, args.device, args.num_samples)
+    with open(args.qbaf, "r", encoding="utf-8") as f:
+        qbaf = json.load(f)
+
+    samples, true_classes = load_all_samples(qbaf, args.device, args.num_samples)
     print(f"Loaded {samples.shape[0]} misclassified samples from {args.qbaf}")
 
     # target_indices = true_classes: differentiate each sample's *own* true
@@ -137,6 +152,14 @@ def main() -> None:
         args.output,
     )
     print(f"Saved (num_classes, n, n, d) averaged G-RAEs to {args.output}")
+
+    if args.viz_output:
+        # NaN (classes with zero misclassified samples) isn't valid JSON --
+        # the visualizer just wants "no signal" for those, so zero them out.
+        qbaf["grae_by_class"] = torch.nan_to_num(grae_by_class, nan=0.0).tolist()
+        with open(args.viz_output, "w", encoding="utf-8") as f:
+            json.dump(qbaf, f)
+        print(f"Saved visualizer-ready QBAF + grae_by_class to {args.viz_output}")
 
     if args.edge is not None:
         src, tgt = args.edge
