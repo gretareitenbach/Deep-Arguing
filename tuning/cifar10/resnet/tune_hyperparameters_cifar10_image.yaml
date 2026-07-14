@@ -112,6 +112,15 @@ max_iters:
     step: { type: "value", value: 1 }
     log: { type: "value", value: False }
 
+conservativeness:
+  type: tune
+  tune_type: float
+  params:
+    name: { type: "value", value: "conservativeness" }
+    low: { type: "value", value: 0.01 }
+    high: { type: "value", value: 10.0 }
+    log: { type: "value", value: True }
+
 batch_size:
   type: tune
   tune_type: categorical

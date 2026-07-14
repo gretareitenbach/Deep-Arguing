@@ -335,3 +335,99 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     gradient samples like 91 above never do). Re-run on sample 47: margin
     overshoot dropped from `0.1351` to `0.0001` and `max_weight_delta` from
     `0.006209` to `0.001085`.
+
+## 2026-07-14
+
+- **Created script to average G-RAEs by true class** (`cfba437`)
+  - New `src/scripts/misclassified_grae_by_class.py`: for every misclassified
+    sample exported by `--misclassified_log`, computes each sample's
+    per-edge casebase G-RAE via `compute_grae(..., target_indices=true_classes,
+    per_sample=True)` (differentiating each sample's own true-class strength,
+    not the model's wrong prediction), then averages those per-sample
+    `(n, n, d)` gradients within each true class (`average_grae_by_true_class`)
+    into one `(num_classes, n, n, d)` tensor -- answering e.g. "what's the
+    average gradient of edge 56 -> 72 for samples whose true class is 7."
+    Classes with zero misclassified samples are left as `NaN` rather than
+    silently `0`. Saved to `outputs/misclassified_grae_by_class.pt`.
+
+- **Added visualizer support for the averaged edges** (`e4f0e69`)
+  - `misclassified_grae_by_class.py`: also writes a `--viz-output` JSON --
+    the original QBAF export (same `adjacency_matrix`/`X_train`/etc. the
+    visualizer already reads) plus a new `grae_by_class` field, with
+    `NaN`-filled classes zeroed out first since JSON has no `NaN` literal.
+  - `visualizer/app.js` / `index.html`: new "Avg G-RAE by True Class"
+    sidebar panel, shown automatically when the uploaded JSON has
+    `grae_by_class`. Toggling it on and picking a class overrides edge
+    width/color -- normally driven by the raw adjacency weight -- with that
+    class's averaged gradient, normalized by the class's own max
+    `|gradient|` so thickness spans the full visible range per class (not
+    globally comparable across classes). The edge-click tooltip also
+    surfaces the raw averaged value for the selected class.
+
+- **Added top-10-edges-per-class printout** (`f3a1e24`)
+  - `misclassified_grae_by_class.py`: new `print_top_edges_by_class`, gated
+    behind `--top-k` (default 10, `0` disables). Ranks each class's
+    `(n, n, d)` grid by `|avg G-RAE|` and prints the winning
+    `(source, target, dim)` triples.
+
+- **Handled the all-zero ("dead") class case** (`dd98af3`)
+  - `misclassified_grae_by_class.py`: a class whose averaged gradient grid
+    is exactly zero (e.g. class 0 and 6 on the real CIFAR-10 checkpoint --
+    every misclassified sample of that class has a uniformly-zero G-RAE,
+    the same saturated-node condition `contest.py`'s `LIVE_GRAD_THRESHOLD`
+    routing was built for) previously printed a misleading top-10 list of
+    arbitrarily-tied zeros (`topk`'s tie-break order over identical values
+    isn't meaningful). Now prints `"Class N: all gradients are zero
+    (dead)..."` instead.
+
+- **Added conflict-aware multi-sample contestation** (`b49e24b`)
+  - Motivation: running `contest()` sequentially over many misclassified
+    samples against the same shared `model.A` means edits accumulate -- one
+    class's fix can be partially undone by the next class's fix landing on
+    the same edge with the opposite sign. The real `grae_by_class` data
+    showed this concretely: edge `55 -> 20` has opposite-sign average
+    gradient for class 8 (`+0.32`) vs. classes 1/7 (`-0.61`/`-0.51`), so
+    naive sequential contestation oscillates on it.
+  - `contest.py`: added `select_top_k_conflict_aware`, an alternative to
+    `select_top_k` that discounts (via a `conflict_lambda`-weighted penalty)
+    edges that other classes' averaged G-RAE wants moved in the opposite
+    direction, instead of ranking purely by the current sample's own
+    `|G-RAE|`. `contest()` gained optional `grae_by_class`/`conflict_lambda`
+    params that route through it; both default to the original
+    conflict-unaware behavior (`grae_by_class=None`), so no existing
+    caller/test needed updating.
+  - New `src/scripts/contest_all.py`: runs `contest()` over every
+    misclassified sample in sequence against one shared, mutating `model.A`
+    (mirroring how it'd be run by hand), with `--conflict-lambda`
+    controlling the new selection strategy. `--compare-baseline` runs a
+    plain (`conflict_lambda=0`) pass on a separately-loaded model first for
+    a side-by-side comparison. Tracks, across the whole run, which edges
+    got touched by how many distinct samples and how many times a later
+    sample reversed an earlier sample's sign on the same edge ("edge
+    reversals") -- a direct measure of the conflict this was built to
+    reduce.
+
+- **Switched CIFAR-10 model to `QuadraticEnergySemantics`** (`ffb9be5`)
+  - Diagnosis: running `contest_all.py`'s baseline pass on the real
+    checkpoint showed target-class strengths exploding across samples (22
+    -> 66 -> 432 -> ... -> 386796), even without conflict-aware selection.
+    Root cause: the checkpoint's `ReluSemantics.influence_func`
+    (`relu(relu(base_scores) + aggregations)`) has no upper bound, and
+    `forward_till_convergence` iterates it `max_iters` times per forward
+    pass -- structurally a power iteration against a nonnegative gain
+    matrix (`model.A`'s support entries) that amplifies geometrically once
+    support edges accumulate. Since every `contest()` call commits new
+    support edges into the same shared `model.A`, each sample's fix primes
+    the graph to amplify further for the next one.
+  - `tuning/cifar10/resnet/model_cifar10_image.yaml`: `semantics.class_name`
+    changed from `ReluSemantics` to `QuadraticEnergySemantics`
+    (`damping=1.0`, `conservativeness=1.0`, untuned defaults). QE's
+    `influence_func` squashes every update into `base_scores +
+    h*(1-base_scores)` with `h = x^2/(1+x^2)` bounded in `[0, 1)`, so
+    strengths stay within `[0, 1]` regardless of `model.A`'s magnitude.
+    Valid without further changes since `base_score`'s `LearnedBaseScore`
+    activation is already `sigmoid` (bounded `(0, 1)`), matching QE's
+    assumption. Requires retraining from scratch -- the base-score/
+    edge-weight networks were optimized under `ReluSemantics` specifically
+    -- which invalidates the existing `outputs/model_checkpoint.pt`/
+    `misclassified_qbaf.json` and everything computed from them so far.

@@ -201,8 +201,8 @@ semantics:
       type: value
       value: 1.0
     conservativeness:
-      type: value
-      value: 1.0
+      type: ref
+      value: conservativeness
 
 partial_order:
   type: class
