@@ -36,6 +36,7 @@ import torch
 from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
+from deeparguing.semantics.gradual_semantics import GradualSemantics
 
 
 @dataclass
@@ -90,6 +91,7 @@ def _replay_default_strengths(
     E: Tensor,
     casebase_base_scores: Tensor,
     new_cases_base_scores: Tensor,
+    semantics: GradualSemantics | None = None,
 ) -> Tensor:
     """Replay ``__new_case_influence`` + ``gradual_semantics`` with ``A``/``E`` swapped in.
 
@@ -97,14 +99,21 @@ def _replay_default_strengths(
     except ``model.A`` and ``model.new_cases_attacks_adjacency`` are
     replaced by ``A`` and ``E`` (the detached leaves in ``compute_grae``,
     or perturbed copies in ``finite_difference_grae``).
+
+    ``semantics``, if given, replaces ``model.gradual_semantics`` for this
+    replay only -- used by ``joint_contest`` to get a gradient through a
+    differentiable surrogate (e.g. leaky-ReLU standing in for a hard ReLU
+    that's saturated exactly at 0) without changing what the model actually
+    computes anywhere else.
     """
-    aggregations = model.gradual_semantics.aggregation_func(
+    semantics = semantics or model.gradual_semantics
+    aggregations = semantics.aggregation_func(
         E.unsqueeze(1), new_cases_base_scores  # B x 1 x n x d
     )
-    influenced_base_scores = model.gradual_semantics.influence_func(
+    influenced_base_scores = semantics.influence_func(
         casebase_base_scores, aggregations
     )
-    strengths = model.gradual_semantics(model.post_process_func(A), influenced_base_scores)
+    strengths = semantics(model.post_process_func(A), influenced_base_scores)
 
     if model.dimensions > 1:
         final_strengths = torch.matmul(strengths, model.W)  # (B, n, d) -> (B, n)
@@ -119,6 +128,8 @@ def compute_grae(
     new_cases: Tensor,
     target_indices: Sequence[int],
     per_sample: bool = False,
+    rival_indices: Sequence[int | None] | None = None,
+    semantics_override: GradualSemantics | None = None,
 ) -> GRAEResult:
     """Compute G-RAEs for a batch of new cases against a chosen target argument each.
 
@@ -142,6 +153,19 @@ def compute_grae(
         ``GRAEResult.casebase_edges``), at the cost of B extra backward
         passes. If False, ``casebase_edges`` is the aggregate gradient
         across the whole batch.
+    rival_indices : Sequence[int | None] | None, default None
+        If given, length-B, one entry per sample: differentiate
+        ``target_strength - rival_strength`` instead of just
+        ``target_strength`` for that sample (``None`` for a sample means
+        "no rival, differentiate target only" -- e.g. the
+        single-topic-argument case where the rival is a fixed constant,
+        not a function of ``A``). Used by ``joint_contest`` so the shared
+        gradient reflects the full margin ``m_i(A) = target_i(A) -
+        rival_i(A)``, not just the target side of it.
+    semantics_override : GradualSemantics | None, default None
+        If given, replaces ``model.gradual_semantics`` for this replay
+        only (see ``_replay_default_strengths``) -- e.g. a leaky-ReLU
+        surrogate so saturated (exactly-0) nodes still carry a gradient.
 
     Returns
     -------
@@ -193,12 +217,29 @@ def compute_grae(
     new_cases_base_scores = model.new_cases_base_scores.detach()
 
     default_strengths = _replay_default_strengths(
-        model, A_leaf, E_leaf, casebase_base_scores, new_cases_base_scores
+        model, A_leaf, E_leaf, casebase_base_scores, new_cases_base_scores,
+        semantics=semantics_override,
     )
 
     target_indices_t = torch.as_tensor(target_indices, dtype=torch.long)
     target_strengths = default_strengths[torch.arange(batch_size), target_indices_t]
-    target_strengths.sum().backward(retain_graph=per_sample)
+
+    if rival_indices is None:
+        objective = target_strengths
+    else:
+        if len(rival_indices) != batch_size:
+            raise ValueError(
+                "rival_indices must have exactly one entry per new case: "
+                f"got {len(rival_indices)} for a batch of {batch_size}."
+            )
+        terms = [
+            target_strengths[i] if rival is None
+            else target_strengths[i] - default_strengths[i, rival]
+            for i, rival in enumerate(rival_indices)
+        ]
+        objective = torch.stack(terms)
+
+    objective.sum().backward(retain_graph=per_sample)
     assert A_leaf.grad is not None and E_leaf.grad is not None
 
     casebase_edges = A_leaf.grad.detach().clone()
@@ -210,7 +251,7 @@ def compute_grae(
         )
         for i in range(batch_size):
             A_leaf.grad = None
-            target_strengths[i].backward(retain_graph=True)
+            objective[i].backward(retain_graph=True)
             assert A_leaf.grad is not None
             casebase_edges[i] = A_leaf.grad.detach().clone()
 
