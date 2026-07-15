@@ -192,9 +192,9 @@ def joint_contest(
 
     for iters_run in range(1, max_iters + 1):
         if batch_size is None:
-            chunks = [torch.arange(batch_total)]
+            chunks = [torch.arange(batch_total, device=samples.device)]
         else:
-            perm = torch.randperm(batch_total)
+            perm = torch.randperm(batch_total, device=samples.device)
             chunks = [perm[i : i + batch_size] for i in range(0, batch_total, batch_size)]
 
         pass_max_hinge = 0.0
