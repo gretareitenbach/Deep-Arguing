@@ -108,7 +108,7 @@ max_iters:
   params:
     name: { type: "value", value: "max_iters" }
     low: { type: "value", value: 60 }
-    high: { type: "value", value: 80 }
+    high: { type: "value", value: 150 }
     step: { type: "value", value: 1 }
     log: { type: "value", value: False }
 
@@ -117,7 +117,7 @@ conservativeness:
   tune_type: float
   params:
     name: { type: "value", value: "conservativeness" }
-    low: { type: "value", value: 0.01 }
+    low: { type: "value", value: 0.0001 }
     high: { type: "value", value: 10.0 }
     log: { type: "value", value: True }
 
