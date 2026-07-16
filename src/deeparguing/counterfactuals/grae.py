@@ -101,7 +101,7 @@ def _replay_default_strengths(
     or perturbed copies in ``finite_difference_grae``).
 
     ``semantics``, if given, replaces ``model.gradual_semantics`` for this
-    replay only -- used by ``joint_contest`` to get a gradient through a
+    replay only -- used by ``batch_contest`` to get a gradient through a
     differentiable surrogate (e.g. leaky-ReLU standing in for a hard ReLU
     that's saturated exactly at 0) without changing what the model actually
     computes anywhere else.
@@ -159,7 +159,7 @@ def compute_grae(
         ``target_strength`` for that sample (``None`` for a sample means
         "no rival, differentiate target only" -- e.g. the
         single-topic-argument case where the rival is a fixed constant,
-        not a function of ``A``). Used by ``joint_contest`` so the shared
+        not a function of ``A``). Used by ``batch_contest`` so the shared
         gradient reflects the full margin ``m_i(A) = target_i(A) -
         rival_i(A)``, not just the target side of it.
     semantics_override : GradualSemantics | None, default None

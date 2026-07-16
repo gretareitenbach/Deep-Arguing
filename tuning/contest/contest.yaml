@@ -1,0 +1,32 @@
+# Config for src/scripts/contest_all.py.
+#
+# Values below are the winning config found by src/scripts/sweep_contest.py's
+# grid search: k=3 (the algorithm's default), margin=0.001 -- cleared 19/100
+# misclassified samples with zero risky (near/exact-tie) clears, and holds
+# flat across margin 0.0001-0.001, i.e. this is the actual ceiling along the
+# margin axis for this checkpoint, not a lucky pick from a coarse grid.
+#
+# Any CLI flag passed to contest_all.py overrides the corresponding value
+# here (e.g. `--k 10` for a one-off run without editing this file).
+
+# Dataset / checkpoint paths.
+checkpoint: outputs/model_checkpoint.pt
+qbaf: outputs/misclassified_qbaf.json
+num_samples: null  # null = use every misclassified sample in qbaf
+
+# batch_contest hyperparameters.
+k: 3
+threshold: 0.5
+margin: 0.001
+max_iters: 50
+tol: 0.0001
+max_edits: null  # null = unbounded edit budget
+batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
+divergence_bound: 100.0
+alpha_init: 1.0  # larger values consistently hurt in sweeps -- see sweep_contest.py's docstring
+max_backtracks: 10
+
+# Run/output settings.
+device: null  # null = auto-detect cuda if available, else cpu
+log_dir: outputs/contestation
+save_checkpoint: null  # null = default to '<log_dir>/contested_checkpoint.pt'; "" to skip saving

@@ -1,5 +1,5 @@
 """
-src/deeparguing/counterfactuals/joint_contest.py
+src/deeparguing/counterfactuals/batch_contest.py
 
 Joint contestability algorithm: instead of ``contest()``'s per-sample
 sequential loop (each misclassified sample solved independently against a
@@ -82,11 +82,12 @@ MAX_BACKTRACKS = 10         # line-search retry cap per outer iteration
 
 
 @dataclass
-class JointContestResult:
+class BatchContestResult:
     cleared: Tensor  # bool (B,) -- whether target beat rival by >= margin at the end
     num_cleared: int
     num_total: int
     num_edges_changed: int
+    touched_edge_indices: list[int]  # flat indices into model.A that were edited, for correlating specific edges with any later global-accuracy shift
     iterations: int
     final_target_strengths: Tensor
     final_rival_classes: list[int | None]
@@ -95,7 +96,7 @@ class JointContestResult:
 
 def _leaky_relu_surrogate(semantics: GradualSemantics, negative_slope: float) -> GradualSemantics:
     """A differentiable relaxation of ``semantics``, used only to compute
-    ``grad_A L`` in ``joint_contest``. A copy of ``semantics`` with its ReLU
+    ``grad_A L`` in ``batch_contest``. A copy of ``semantics`` with its ReLU
     swapped for leaky-ReLU: identical for positive input, but a small
     nonzero slope where the real ReLU would be exactly flat, so a node
     saturated at 0 still carries a usable gradient direction. The real
@@ -146,7 +147,7 @@ def _joint_backtracking_step(
     return None
 
 
-def joint_contest(
+def batch_contest(
     model: GradualAACBR,
     samples: Tensor,
     target_classes: Sequence[int],
@@ -162,7 +163,7 @@ def joint_contest(
     alpha_init: float = ALPHA_INIT,
     backtrack_factor: float = BACKTRACK_FACTOR,
     max_backtracks: int = MAX_BACKTRACKS,
-) -> JointContestResult:
+) -> BatchContestResult:
     """Main loop. See module docstring for the algorithm.
 
     ``batch_size``, if given, splits each outer iteration into shuffled
@@ -263,11 +264,12 @@ def joint_contest(
     )
     cleared = (final_target - final_rival) >= margin
 
-    return JointContestResult(
+    return BatchContestResult(
         cleared=cleared,
         num_cleared=int(cleared.sum().item()),
         num_total=batch_total,
         num_edges_changed=len(touched_edges),
+        touched_edge_indices=sorted(touched_edges),
         iterations=iters_run,
         final_target_strengths=final_target,
         final_rival_classes=final_rival_classes,

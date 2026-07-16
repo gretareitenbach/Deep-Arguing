@@ -323,7 +323,7 @@ def contest(
 
     This is the single-sample, sequential contestation loop -- for
     contesting many samples against one shared ``model.A`` at once, see
-    ``joint_contest`` instead, which replaces this loop's per-sample
+    ``batch_contest`` instead, which replaces this loop's per-sample
     top-k/bisection search with one shared hinge-loss gradient step per
     outer iteration."""
     # Deferred import: bottleneck.py imports several private helpers back

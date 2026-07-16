@@ -3,8 +3,8 @@ import torch
 
 from deeparguing import GradualAACBR
 from deeparguing.counterfactuals.grae import compute_grae
-from deeparguing.counterfactuals.joint_contest import (_leaky_relu_surrogate,
-                                                         joint_contest)
+from deeparguing.counterfactuals.batch_contest import (_leaky_relu_surrogate,
+                                                         batch_contest)
 from deeparguing.semantics.relu_semantics import ReluSemantics
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 
@@ -12,7 +12,7 @@ from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 # Same small synthetic EW-QBAF as ``tests/contest_test.py``, but fit with
 # ``ReluSemantics`` instead of ``SigmoidSemantics`` -- the leaky-relu
 # gradient surrogate only makes sense for a hard-ReLU model, and
-# ``joint_contest`` is meant to be used with ``ReluSemantics``.
+# ``batch_contest`` is meant to be used with ``ReluSemantics``.
 # ---------------------------------------------------------------------------
 
 _EDGE_WEIGHTS = torch.tensor(
@@ -164,18 +164,18 @@ def test_rival_indices_none_entry_falls_back_to_target_only():
 
 
 # ---------------------------------------------------------------------------
-# joint_contest
+# batch_contest
 # ---------------------------------------------------------------------------
 
 
-def test_joint_contest_clears_and_persists_to_model_A():
+def test_batch_contest_clears_and_persists_to_model_A():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
     before = model(new_case)[0, TARGET_INDEX].item()
     assert before < 0.5 + 0.01  # sanity: starts below the boundary
 
-    result = joint_contest(model, new_case, [TARGET_INDEX], k=2, max_iters=15)
+    result = batch_contest(model, new_case, [TARGET_INDEX], k=2, max_iters=15)
 
     assert result.num_total == 1
     assert bool(result.cleared[0])
@@ -188,7 +188,7 @@ def test_joint_contest_clears_and_persists_to_model_A():
     assert after == pytest.approx(result.final_target_strengths[0].item())
 
 
-def test_joint_contest_divergence_guard_caps_final_strength():
+def test_batch_contest_divergence_guard_caps_final_strength():
     """A tight ``divergence_bound`` should force the line search to back off
     to smaller steps, keeping the final target strength under the bound --
     ReluSemantics has no upper saturation, so without the guard the same
@@ -196,7 +196,7 @@ def test_joint_contest_divergence_guard_caps_final_strength():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
-    result = joint_contest(
+    result = batch_contest(
         model, new_case, [TARGET_INDEX], k=2, max_iters=15, divergence_bound=1.0
     )
 
@@ -206,22 +206,22 @@ def test_joint_contest_divergence_guard_caps_final_strength():
     # climbs past 1.0 -- confirms the guard above is actually doing
     # something, not just trivially satisfied.
     unguarded_model = _make_fitted_model(max_iters=5)
-    unguarded_result = joint_contest(
+    unguarded_result = batch_contest(
         unguarded_model, new_case, [TARGET_INDEX], k=2, max_iters=15
     )
     assert unguarded_result.final_target_strengths.max().item() > 1.0
 
 
-def test_joint_contest_respects_max_iters():
+def test_batch_contest_respects_max_iters():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
-    result = joint_contest(model, new_case, [TARGET_INDEX], k=2, max_iters=1)
+    result = batch_contest(model, new_case, [TARGET_INDEX], k=2, max_iters=1)
 
     assert result.iterations <= 1
 
 
-def test_joint_contest_raises_if_model_not_fitted():
+def test_batch_contest_raises_if_model_not_fitted():
     model = GradualAACBR(
         ReluSemantics(max_iters=1, epsilon=0),
         _base_score_fn,
@@ -229,11 +229,11 @@ def test_joint_contest_raises_if_model_not_fitted():
         _edge_weights_fn,
     )
     with pytest.raises(Exception, match="fit"):
-        joint_contest(model, torch.tensor([[6.0]]), [TARGET_INDEX])
+        batch_contest(model, torch.tensor([[6.0]]), [TARGET_INDEX])
 
 
-def test_joint_contest_raises_on_target_classes_length_mismatch():
+def test_batch_contest_raises_on_target_classes_length_mismatch():
     model = _make_fitted_model(max_iters=3)
     new_cases = torch.tensor([[6.0], [7.0]])
     with pytest.raises(ValueError, match="target_classes"):
-        joint_contest(model, new_cases, [TARGET_INDEX])
+        batch_contest(model, new_cases, [TARGET_INDEX])
