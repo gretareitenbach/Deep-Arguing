@@ -431,3 +431,62 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     edge-weight networks were optimized under `ReluSemantics` specifically
     -- which invalidates the existing `outputs/model_checkpoint.pt`/
     `misclassified_qbaf.json` and everything computed from them so far.
+
+## 2026-07-16
+
+- **Organized outputs/** (`fa052f4`)
+  - Restructured the flat `outputs/` directory into subfolders grouped by
+    artifact type rather than by producing script (several scripts read/write
+    the same artifact type as `--checkpoint`/`--qbaf` inputs, so this keeps
+    those cross-script dependencies obvious): `checkpoints/` (`model_checkpoint.pt`,
+    `contested_checkpoint.pt`, and the pretrain scripts' `.pt` files, moved in
+    from the repo root), `qbaf/` (`pre_training_*.json`/`post_training_*.json`/
+    `misclassified_qbaf.json`/the viz-ready G-RAE-by-class export), `grae/`
+    (`misclassified_grae.pt`/`misclassified_grae_by_class.pt`), `contestation/`
+    (unchanged -- `contest_all.py`/`sweep_contest.py` already wrote here), and
+    `logs/` (`summary.md`). Updated every default path/docstring/help text this
+    touched: `cli/run.py`, `cli/parse_command_line.py`,
+    `counterfactuals/run_contest.py`, `scripts/misclassified_grae_by_class.py`,
+    `scripts/sweep_contest.py`, `tuning/contest/contest.yaml`, and the
+    `weights_path` entries in the CIFAR-10/MNIST/FashionMNIST tuning configs
+    that pointed at the now-relocated pretrain checkpoints.
+    `misclassified_grae_by_class.py` also gained `mkdir` calls for its own
+    output paths, which it had previously never created itself (relying on
+    `outputs/` already existing from an earlier `run.py` invocation). Four
+    files with no producing script left in the repo (`global_eval_results.csv`,
+    `top10_overlap.json`, `manifest.json`, `contest_samples_0-99.log` --
+    traced via stale `.pyc` caches to scripts since deleted:
+    `contest_all_and_evaluate.py`, `global_evaluation.py`,
+    `sweep_dead_gradients.py`) were moved to `outputs/_archive/` rather than
+    force-fit into the new structure.
+  - New `src/deeparguing/md_log.py`: a `write_markdown_log` helper that mirrors
+    a batch of lines to a markdown file (`"--- X ---"` -> `## X` heading, a
+    line already containing a newline is passed through as-is for pre-rendered
+    code blocks, everything else -> a bullet), so results/metrics/diagnostics
+    printed to the terminal survive after the scrollback is gone. Wired into
+    every substantive (non-progress-marker) print found across the CLI and
+    standalone scripts: `cli/run.py`'s per-seed VALIDATION/TEST/TRAIN results
+    (via a new optional `log_path` param on `evals.print_results`, which now
+    also renders the confusion matrix as a fenced code block) plus running
+    avg-F1 and per-seed G-RAE-magnitude lines, all appended to
+    `outputs/logs/summary.md` (reset once per trial, not per run of
+    `objective()`, so `--tuning`'s per-trial detail no longer needs to survive
+    only in console scrollback); `simple_trainer.py`'s NaN-loss warning and
+    `curriculum_trainer.py`'s class-advance events (same file);
+    `sweep_contest.py`'s per-config result line, full ranked comparison table,
+    and best-config/reproduce-command block ->
+    `outputs/logs/sweep_contest.md`; `misclassified_grae_by_class.py`'s
+    top-edges-per-class printout and `--edge` report ->
+    `outputs/logs/misclassified_grae_by_class.md`; `verify_resnet.py`'s run
+    metadata and both tests' metrics/pass-fail ->
+    `outputs/logs/verify_resnet.md`; `tune_pretrain_cnn.py`'s new-best-model
+    and per-run-accuracy lines -> `outputs/logs/tune_pretrain_cnn.md`;
+    `generate_defeasible_data.py`'s class-distribution printout ->
+    `outputs/logs/generate_defeasible_data.md`; and `weights.py`'s entire
+    output (its whole purpose being terminal output meant for copy-pasting
+    into a YAML config) -> `outputs/logs/weights.md`. Left alone: pure
+    progress markers (trial/seed start banners, tqdm bars, "Finished
+    Training"/"Training complete.", curriculum start/complete lines, "Saved
+    ... to ..." confirmations) and `pretrain_cnn.py`/`pretrain_resnet.py`,
+    whose final metrics only ever went to `wandb.log` and were never printed
+    in the first place.

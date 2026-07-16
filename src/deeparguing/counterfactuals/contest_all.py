@@ -11,15 +11,16 @@ algorithm (shared gradient, shared top-k edge selection, shared step).
 
 All hyperparameters and dataset/checkpoint paths live in a YAML config file
 (default ``tuning/contest/contest.yaml``, which holds the winning config
-found by ``sweep_contest.py``'s grid search) rather than being hardcoded
-here. Any CLI flag, if given, overrides the corresponding value from that
-file for a one-off run without editing it.
+found by an earlier grid search -- see git history, the sweep script itself
+has since been removed) rather than being hardcoded here. Any CLI flag, if
+given, overrides the corresponding value from that file for a one-off run
+without editing it.
 
 Usage::
 
-    python src/scripts/contest_all.py
-    python src/scripts/contest_all.py --config tuning/contest/contest.yaml
-    python src/scripts/contest_all.py --k 10 --margin 0.005   # one-off override
+    python -m deeparguing.counterfactuals.contest_all
+    python -m deeparguing.counterfactuals.contest_all --config tuning/contest/contest.yaml
+    python -m deeparguing.counterfactuals.contest_all --k 10 --margin 0.005   # one-off override
 
 By default this writes two things to ``log_dir`` (``outputs/contestation``):
 a timestamped JSON log (run config, summary counts, and a per-sample
@@ -47,8 +48,7 @@ from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS, TOL,
                                                          batch_contest)
-from deeparguing.counterfactuals.run_contest import load_model
-from misclassified_grae_by_class import load_all_samples
+from deeparguing.counterfactuals.run_contest import load_all_samples, load_model
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"
 

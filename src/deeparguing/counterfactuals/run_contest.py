@@ -82,6 +82,27 @@ def load_sample(
     return sample, true_class
 
 
+def load_all_samples(
+    qbaf: dict, device: str, num_samples: int | None = None
+) -> tuple[torch.Tensor, list[int]]:
+    """Pull every misclassified sample + true label out of a loaded QBAF export."""
+    if "new_cases" not in qbaf:
+        raise ValueError(
+            "qbaf has no 'new_cases' entry -- re-run the CLI with "
+            "--misclassified_log to produce one."
+        )
+
+    n = len(qbaf["new_cases"])
+    if num_samples is not None:
+        n = min(n, num_samples)
+
+    samples = torch.tensor(
+        qbaf["new_cases"][:n], dtype=torch.float32, device=device
+    )
+    true_classes = [int(c) for c in qbaf["new_cases_labels"][:n]]
+    return samples, true_classes
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", default="outputs/checkpoints/model_checkpoint.pt")

@@ -1,10 +1,11 @@
-# Config for src/scripts/contest_all.py.
+# Config for deeparguing.counterfactuals.contest_all.
 #
-# Values below are the winning config found by src/scripts/sweep_contest.py's
-# grid search: k=3 (the algorithm's default), margin=0.001 -- cleared 19/100
-# misclassified samples with zero risky (near/exact-tie) clears, and holds
-# flat across margin 0.0001-0.001, i.e. this is the actual ceiling along the
-# margin axis for this checkpoint, not a lucky pick from a coarse grid.
+# Values below are the winning config found by an earlier grid search (see
+# git history -- the sweep script itself has since been removed): k=3 (the
+# algorithm's default), margin=0.001 -- cleared 19/100 misclassified samples
+# with zero risky (near/exact-tie) clears, and holds flat across margin
+# 0.0001-0.001, i.e. this is the actual ceiling along the margin axis for
+# this checkpoint, not a lucky pick from a coarse grid.
 #
 # Any CLI flag passed to contest_all.py overrides the corresponding value
 # here (e.g. `--k 10` for a one-off run without editing this file).
@@ -23,7 +24,7 @@ tol: 0.0001
 max_edits: null  # null = unbounded edit budget
 batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
 divergence_bound: 100.0
-alpha_init: 1.0  # larger values consistently hurt in sweeps -- see sweep_contest.py's docstring
+alpha_init: 1.0  # larger values consistently hurt in sweeps -- see git history
 max_backtracks: 10
 
 # Run/output settings.
