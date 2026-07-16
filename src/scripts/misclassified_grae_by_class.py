@@ -15,10 +15,10 @@ label is ``c``. E.g. to check edge 56 -> 72 for true class 7::
 Usage::
 
     python src/scripts/misclassified_grae_by_class.py \\
-        --checkpoint outputs/model_checkpoint.pt \\
-        --qbaf outputs/misclassified_qbaf.json \\
-        --output outputs/misclassified_grae_by_class.pt \\
-        --viz-output outputs/misclassified_grae_by_class_viz.json
+        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
+        --qbaf outputs/qbaf/misclassified_qbaf.json \\
+        --output outputs/grae/misclassified_grae_by_class.pt \\
+        --viz-output outputs/qbaf/misclassified_grae_by_class_viz.json
 
 The ``--viz-output`` file is the original QBAF export (same
 adjacency_matrix/X_train/y_train/etc. the visualizer already reads) plus a
@@ -35,11 +35,15 @@ on whatever machine has the compute for that, not necessarily this one.
 
 import argparse
 import json
+from pathlib import Path
 
 import torch
 
 from deeparguing.counterfactuals.grae import compute_grae
 from deeparguing.counterfactuals.run_contest import load_model
+from deeparguing.md_log import write_markdown_log
+
+GRAE_LOG_PATH = "outputs/logs/misclassified_grae_by_class.md"
 
 
 def load_all_samples(
@@ -102,10 +106,12 @@ def average_grae_by_true_class(
 def print_top_edges_by_class(grae_by_class: torch.Tensor, top_k: int) -> None:
     """Print the top-k edges by |average G-RAE|, one ranked list per class."""
     num_classes, n1, n2, d = grae_by_class.shape
+    md_lines = ["--- TOP EDGES BY CLASS ---"]
     for c in range(num_classes):
         class_grid = grae_by_class[c]
         if torch.isnan(class_grid).all():
             print(f"\nClass {c}: no misclassified samples")
+            md_lines.append(f"Class {c}: no misclassified samples")
             continue
 
         flat = torch.nan_to_num(class_grid, nan=0.0).reshape(-1)
@@ -114,33 +120,43 @@ def print_top_edges_by_class(grae_by_class: torch.Tensor, top_k: int) -> None:
                 f"\nClass {c}: all gradients are zero (dead) -- likely a "
                 "saturated node on the path to this class's default argument"
             )
+            md_lines.append(
+                f"Class {c}: all gradients are zero (dead) -- likely a "
+                "saturated node on the path to this class's default argument"
+            )
             continue
 
         k = min(top_k, flat.numel())
         _, top_flat_idx = flat.abs().topk(k)
 
         print(f"\nClass {c}: top {k} edges by |avg G-RAE|")
+        class_block_lines = [f"Class {c}: top {k} edges by |avg G-RAE|"]
         for rank, idx in enumerate(top_flat_idx.tolist(), start=1):
             # flat is (n1, n2, d) reshaped row-major, so unravel in that order.
             dd = idx % d
             i, j = divmod(idx // d, n2)
-            print(f"  {rank:>2}. edge {i} -> {j} (dim {dd}): {flat[idx].item():+.6g}")
+            line = f"  {rank:>2}. edge {i} -> {j} (dim {dd}): {flat[idx].item():+.6g}"
+            print(line)
+            class_block_lines.append(line)
+        md_lines.append("```\n" + "\n".join(class_block_lines) + "\n```")
+
+    write_markdown_log(md_lines, GRAE_LOG_PATH)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", default="outputs/model_checkpoint.pt")
-    parser.add_argument("--qbaf", default="outputs/misclassified_qbaf.json")
+    parser.add_argument("--checkpoint", default="outputs/checkpoints/model_checkpoint.pt")
+    parser.add_argument("--qbaf", default="outputs/qbaf/misclassified_qbaf.json")
     parser.add_argument(
         "--num-samples",
         type=int,
         default=None,
         help="Limit the sweep to the first N misclassified samples (default: all).",
     )
-    parser.add_argument("--output", default="outputs/misclassified_grae_by_class.pt")
+    parser.add_argument("--output", default="outputs/grae/misclassified_grae_by_class.pt")
     parser.add_argument(
         "--viz-output",
-        default="outputs/misclassified_grae_by_class_viz.json",
+        default="outputs/qbaf/misclassified_grae_by_class_viz.json",
         help=(
             "Where to write a visualizer-ready copy of the QBAF export with "
             "an added 'grae_by_class' field. Pass '' to skip this output."
@@ -165,6 +181,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    write_markdown_log(["--- RUN ---", f"checkpoint: {args.checkpoint}", f"qbaf: {args.qbaf}"], GRAE_LOG_PATH, mode="w")
+
     model = load_model(args.checkpoint, args.device)
     num_classes = len(model.default_indexes)
 
@@ -184,6 +202,7 @@ def main() -> None:
         result.casebase_edges, true_classes, num_classes
     )
 
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {"grae_by_class": grae_by_class, "num_classes": num_classes},
         args.output,
@@ -194,6 +213,7 @@ def main() -> None:
         # NaN (classes with zero misclassified samples) isn't valid JSON --
         # the visualizer just wants "no signal" for those, so zero them out.
         qbaf["grae_by_class"] = torch.nan_to_num(grae_by_class, nan=0.0).tolist()
+        Path(args.viz_output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.viz_output, "w", encoding="utf-8") as f:
             json.dump(qbaf, f)
         print(f"Saved visualizer-ready QBAF + grae_by_class to {args.viz_output}")
@@ -201,10 +221,13 @@ def main() -> None:
     if args.edge is not None:
         src, tgt = args.edge
         print(f"\nEdge {src} -> {tgt}, average G-RAE by true class:")
+        edge_lines = [f"--- EDGE {src} -> {tgt} ---"]
         for c in range(num_classes):
             value = grae_by_class[c, src, tgt]
             value_str = "no samples" if torch.isnan(value).any() else f"{value.tolist()}"
             print(f"  true class {c}: {value_str}")
+            edge_lines.append(f"true class {c}: {value_str}")
+        write_markdown_log(edge_lines, GRAE_LOG_PATH)
 
     if args.top_k > 0:
         print_top_edges_by_class(grae_by_class, args.top_k)

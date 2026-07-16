@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -144,7 +146,8 @@ wandb.log({"confusion_matrix": wandb.plot.confusion_matrix(
 )})
 
 
-save_path = "simple_cnn_64.pt"
+save_path = "outputs/checkpoints/simple_cnn_64.pt"
+Path(save_path).parent.mkdir(parents=True, exist_ok=True)
 torch.save(model.state_dict(), save_path)
 
 wandb.finish()

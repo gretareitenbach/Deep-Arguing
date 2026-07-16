@@ -33,6 +33,7 @@ from deeparguing.evals import (evaluate_model, print_results,
 from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
+from deeparguing.md_log import write_markdown_log
 from deeparguing.criterion.losses import *
 from deeparguing.criterion import *
 from deeparguing.models import *
@@ -51,27 +52,15 @@ torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
 
 
-def write_markdown_summary(lines: list[str], mode: str = "w") -> None:
-    """Render CLI summary log lines as markdown in outputs/summary.md.
+SUMMARY_LOG_PATH = "outputs/logs/summary.md"
 
-    Lines of the form "--- X ---" become level-2 headings; everything else
-    becomes a bullet point. ``mode="a"`` appends -- used for the tuning
-    best-trial block, which is logged after the per-trial summary this
-    function is also called for.
-    """
-    Path("outputs").mkdir(parents=True, exist_ok=True)
-    rendered = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("---") and stripped.endswith("---"):
-            rendered.append(f"## {stripped.strip('- ').strip()}")
-        else:
-            rendered.append(f"- {stripped}")
 
-    with open("outputs/summary.md", mode, encoding="utf-8") as f:
-        if mode == "w":
-            f.write("# Run Summary\n\n")
-        f.write("\n".join(rendered) + "\n\n")
+def write_markdown_summary(lines: list[str], mode: str = "a") -> None:
+    """Append (or, with ``mode="w"``, start fresh) CLI log lines as markdown in
+    outputs/logs/summary.md -- mirrors the same substantive (non-progress)
+    output the run already prints/logs to the console, so it survives after
+    the terminal scrollback is gone. See ``deeparguing.md_log`` for formatting."""
+    write_markdown_log(lines, SUMMARY_LOG_PATH, mode=mode)
 
 
 def run(project: str = "gradual-aa-cbr"):
@@ -91,6 +80,11 @@ def run(project: str = "gradual-aa-cbr"):
         train_f1s = []
         train_accs = []
         grae_magnitudes_per_seed = []
+
+        write_markdown_summary(
+            ["--- RUN LOG ---", f"Trial: {trial.number if trial is not None else 'N/A'}"],
+            mode="w",
+        )
 
         trial_id = uuid.uuid4()
 
@@ -182,13 +176,13 @@ def run(project: str = "gradual-aa-cbr"):
                 theta_pre = parameters_to_vector(model.parameters()).clone().detach()
 
             if args.json_out:
-                OUT_DIR = "outputs"
-                Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+                QBAF_DIR = "outputs/qbaf"
+                Path(QBAF_DIR).mkdir(parents=True, exist_ok=True)
                 model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
                 image_mean = data_dict.get("image_mean", None)
                 image_std = data_dict.get("image_std", None)
                 model.export_to_json(
-                    f"{OUT_DIR}/pre_training_{args.json_out}.json",
+                    f"{QBAF_DIR}/pre_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
                     new_cases=X_new_cases[: args.num_new_vis],
@@ -220,9 +214,9 @@ def run(project: str = "gradual-aa-cbr"):
             # model.A/X_train/default_indexes, since fit() sets those as
             # plain attributes, not buffers. Saved unconditionally (not just
             # under --misclassified_log) so a checkpoint is always available.
-            OUT_DIR = "outputs"
-            Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-            checkpoint_path = f"{OUT_DIR}/model_checkpoint.pt"
+            CHECKPOINT_DIR = "outputs/checkpoints"
+            Path(CHECKPOINT_DIR).mkdir(parents=True, exist_ok=True)
+            checkpoint_path = f"{CHECKPOINT_DIR}/model_checkpoint.pt"
             torch.save(
                 {
                     "config_paths": args.config,
@@ -248,7 +242,7 @@ def run(project: str = "gradual-aa-cbr"):
                 y_val,
                 batch_size=batch_size,
             )
-            print_results(acc, prec, rec, f1, cm, "VALIDATION", labels)
+            print_results(acc, prec, rec, f1, cm, "VALIDATION", labels, log_path=SUMMARY_LOG_PATH)
             ExperimentLogger.current().log_metrics(
                 {
                     "seed": seed,
@@ -274,7 +268,8 @@ def run(project: str = "gradual-aa-cbr"):
                     batch_size=batch_size,
                 )
                 print_results(
-                    acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels
+                    acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels,
+                    log_path=SUMMARY_LOG_PATH,
                 )
                 test_f1s.append(f1_test)
                 test_accs.append(acc_test)
@@ -307,8 +302,10 @@ def run(project: str = "gradual-aa-cbr"):
                     X_misc = X_test[selected_indices]
                     y_misc = y_test[selected_indices]
 
-                    OUT_DIR = "outputs"
-                    Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+                    GRAE_DIR = "outputs/grae"
+                    QBAF_DIR = "outputs/qbaf"
+                    Path(GRAE_DIR).mkdir(parents=True, exist_ok=True)
+                    Path(QBAF_DIR).mkdir(parents=True, exist_ok=True)
 
                     grae_result = None
                     if args.grae_log:
@@ -333,7 +330,7 @@ def run(project: str = "gradual-aa-cbr"):
                             model, X_misc, target_indices, per_sample=True
                         )
 
-                        grae_export_path = f"{OUT_DIR}/misclassified_grae.pt"
+                        grae_export_path = f"{GRAE_DIR}/misclassified_grae.pt"
                         torch.save(
                             {
                                 "casebase_edges": grae_result.casebase_edges,
@@ -374,19 +371,21 @@ def run(project: str = "gradual-aa-cbr"):
                                 grae_result.new_case_edges, new_case_signs > 0
                             ),
                         }
-                        logging.info(
+                        grae_magnitude_line = (
                             "Average G-RAE magnitude per edge type -- "
                             f"self.A attacks: {grae_magnitudes['evals/grae_casebase_attack_magnitude']:.6g}, "
                             f"self.A supports: {grae_magnitudes['evals/grae_casebase_support_magnitude']:.6g}, "
                             f"new-case attacks: {grae_magnitudes['evals/grae_new_case_attack_magnitude']:.6g}, "
                             f"new-case supports: {grae_magnitudes['evals/grae_new_case_support_magnitude']:.6g}"
                         )
+                        logging.info(grae_magnitude_line)
+                        write_markdown_summary([f"seed {seed}: {grae_magnitude_line}"])
                         ExperimentLogger.current().log_metrics(grae_magnitudes)
                         grae_magnitudes_per_seed.append(grae_magnitudes)
                         # ==================================================
 
                     # Export to JSON
-                    export_path = f"{OUT_DIR}/misclassified_qbaf.json"
+                    export_path = f"{QBAF_DIR}/misclassified_qbaf.json"
 
                     image_mean = data_dict.get("image_mean", None)
                     image_std = data_dict.get("image_std", None)
@@ -434,6 +433,7 @@ def run(project: str = "gradual-aa-cbr"):
                     cm_train,
                     "TRAIN",
                     labels,
+                    log_path=SUMMARY_LOG_PATH,
                 )
                 train_f1s.append(f1_train)
                 train_accs.append(acc_train)
@@ -460,6 +460,9 @@ def run(project: str = "gradual-aa-cbr"):
             max_val_accs.append(max_val_acc)
             max_val_f1s.append(max_val_f1)
             logging.info(f"Average validation f1 score: {np.mean(val_f1s)}")
+            write_markdown_summary(
+                [f"Average validation f1 score (running, through seed {seed}): {np.mean(val_f1s)}"]
+            )
 
             if args.visualise_loss_landscape and isinstance(trainer, NeuralTrainer):
                 visualize_overlayed_loss_landscapes(
@@ -482,7 +485,7 @@ def run(project: str = "gradual-aa-cbr"):
                 image_mean = data_dict.get("image_mean", None)
                 image_std = data_dict.get("image_std", None)
                 model.export_to_json(
-                    f"{OUT_DIR}/post_training_{args.json_out}.json",
+                    f"{QBAF_DIR}/post_training_{args.json_out}.json",
                     image_mean=image_mean,
                     image_std=image_std,
                     new_cases=X_new_cases[: args.num_new_vis],

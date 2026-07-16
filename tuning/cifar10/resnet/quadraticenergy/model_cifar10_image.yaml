@@ -141,7 +141,7 @@ feature_weights:
   params:
     weights_path:
       type: value
-      value: "resnet_30.pt"
+      value: "outputs/checkpoints/resnet_30.pt"
     freeze_weights:
       type: value
       value: True

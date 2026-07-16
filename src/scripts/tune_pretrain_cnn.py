@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,9 +10,11 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 from deeparguing.feature_extractor.simple_cnn import SimpleCNN
 from deeparguing.helper import load_torch_images, split_data
+from deeparguing.md_log import write_markdown_log
 
 
-BEST_MODEL_PATH = "best_simple_cnn.pt"
+BEST_MODEL_PATH = "outputs/checkpoints/best_simple_cnn.pt"
+TUNE_LOG_PATH = "outputs/logs/tune_pretrain_cnn.md"
 best_accuracy_global = 0.0   # updated across sweep runs
 
 
@@ -121,17 +125,23 @@ def train_sweep(config=None):
             best_accuracy_global = acc
             print(f"\n✨ New best model found! Accuracy = {acc:.4f}")
             print(f"Saving best model to {BEST_MODEL_PATH}")
+            write_markdown_log([f"New best model found! Accuracy = {acc:.4f} (run {run_id})"], TUNE_LOG_PATH)
 
+            Path(BEST_MODEL_PATH).parent.mkdir(parents=True, exist_ok=True)
             torch.save(model.state_dict(), BEST_MODEL_PATH)
             wandb.save(BEST_MODEL_PATH)
 
-        print(f"Run {run_id} accuracy = {acc:.4f} — Best so far = {best_accuracy_global:.4f}")
+        run_summary_line = f"Run {run_id} accuracy = {acc:.4f} — Best so far = {best_accuracy_global:.4f}"
+        print(run_summary_line)
+        write_markdown_log([run_summary_line], TUNE_LOG_PATH)
 
 
 # -----------------------------------------------------------------------------
 # LAUNCH SWEEP PROGRAMMATICALLY
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
+
+    write_markdown_log(["--- SWEEP ---"], TUNE_LOG_PATH, mode="w")
 
     sweep_config = {
         "method": "bayes",

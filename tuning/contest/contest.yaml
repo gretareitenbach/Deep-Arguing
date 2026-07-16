@@ -10,8 +10,8 @@
 # here (e.g. `--k 10` for a one-off run without editing this file).
 
 # Dataset / checkpoint paths.
-checkpoint: outputs/model_checkpoint.pt
-qbaf: outputs/misclassified_qbaf.json
+checkpoint: outputs/checkpoints/model_checkpoint.pt
+qbaf: outputs/qbaf/misclassified_qbaf.json
 num_samples: null  # null = use every misclassified sample in qbaf
 
 # batch_contest hyperparameters.

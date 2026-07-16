@@ -113,7 +113,7 @@ shared_weights:
   params:
     # weights_path: 
     #   type: value
-    #   value: "simple_cnn_64.pt"
+    #   value: "outputs/checkpoints/simple_cnn_64.pt"
     # freeze_weights:
     #   type: value
     #   value: true

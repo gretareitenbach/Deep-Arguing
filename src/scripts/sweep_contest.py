@@ -10,8 +10,8 @@ edits the previous config already made.
 Usage::
 
     python src/scripts/sweep_contest.py \\
-        --checkpoint outputs/model_checkpoint.pt \\
-        --qbaf outputs/misclassified_qbaf.json
+        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
+        --qbaf outputs/qbaf/misclassified_qbaf.json
 
 The sweep runs in three parts:
 
@@ -66,7 +66,10 @@ from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
                                                          batch_contest)
 from deeparguing.counterfactuals.run_contest import load_model
 from deeparguing.gradual_aacbr import GradualAACBR
+from deeparguing.md_log import write_markdown_log
 from misclassified_grae_by_class import load_all_samples
+
+SWEEP_LOG_PATH = "outputs/logs/sweep_contest.md"
 
 # A "cleared" sample whose margin achieved (target - rival) is under this is
 # a near/exact tie, not a robust win -- real inference (evals.py) breaks
@@ -155,12 +158,14 @@ def _run_one(
     )
     margin_achieved = result.final_target_strengths - result.final_rival_strengths
     risky_ties = int(((margin_achieved < TIE_EPS) & result.cleared).sum().item())
-    print(
+    result_line = (
         f"cleared {result.num_cleared}/{result.num_total} "
         f"({risky_ties} of those are near/exact ties < {TIE_EPS}), "
         f"{result.num_edges_changed} edges changed, "
         f"{result.iterations} iterations used"
     )
+    print(result_line)
+    write_markdown_log([f"--- {cfg.label} ---", result_line], SWEEP_LOG_PATH)
 
     log_path = log_dir / f"sweep_{run_stamp}_{_safe_filename(cfg.label)}.json"
     log = {
@@ -213,22 +218,27 @@ def _print_table(
         f"{'config':<40} {'cleared':>10} {'rate':>7} {'ties':>6} "
         f"{'edges':>7} {'iters':>7}"
     )
-    print("\n" + header)
-    print("-" * len(header))
+    table_lines = [header, "-" * len(header)]
     for cfg, result, risky_ties in rows:
         rate = result.num_cleared / max(1, result.num_total)
         marker = "  <-- BEST" if cfg.label == best_label else ""
-        print(
+        table_lines.append(
             f"{cfg.label:<40} {result.num_cleared:>4}/{result.num_total:<5} "
             f"{rate:>6.1%} {risky_ties:>6} "
             f"{result.num_edges_changed:>7} {result.iterations:>7}{marker}"
         )
 
+    print("\n" + "\n".join(table_lines))
+    write_markdown_log(
+        ["--- FULL RANKED TABLE ---", "```\n" + "\n".join(table_lines) + "\n```"],
+        SWEEP_LOG_PATH,
+    )
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", default="outputs/model_checkpoint.pt")
-    parser.add_argument("--qbaf", default="outputs/misclassified_qbaf.json")
+    parser.add_argument("--checkpoint", default="outputs/checkpoints/model_checkpoint.pt")
+    parser.add_argument("--qbaf", default="outputs/qbaf/misclassified_qbaf.json")
     parser.add_argument(
         "--num-samples",
         type=int,
@@ -257,6 +267,8 @@ def main() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     run_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
+    write_markdown_log(["--- SWEEP RUN ---", f"run_stamp: {run_stamp}"], SWEEP_LOG_PATH, mode="w")
+
     grid = _grid_configs()
     print(
         f"Sweeping {len(grid)} grid configs ({len(K_GRID)} k values x "
@@ -272,6 +284,7 @@ def main() -> None:
     rows.sort(key=lambda row: _robust_score(row[1], row[2]))
     best_cfg = rows[0][0]
     print(f"\nBest of the grid so far: {best_cfg.label}")
+    write_markdown_log([f"Best of the grid so far: {best_cfg.label}"], SWEEP_LOG_PATH)
 
     # Re-test the two previously-inconclusive knobs specifically at the
     # best (k, margin) found, instead of at arbitrary combos.
@@ -334,14 +347,16 @@ def main() -> None:
     if best_cfg.batch_size is not None:
         reproduce_cmd += f" --batch-size {best_cfg.batch_size} --max-iters {best_cfg.max_iters}"
 
-    print(
-        f"\nBest config: {best_cfg.label}\n"
+    best_config_block = (
+        f"Best config: {best_cfg.label}\n"
         f"  cleared {best_result.num_cleared}/{best_result.num_total} "
         f"({best_ties} risky ties), {best_result.num_edges_changed} edges changed, "
         f"{best_result.iterations} iterations"
         f"{rival_note}\n"
         f"\nReproduce with:\n  {reproduce_cmd}"
     )
+    print("\n" + best_config_block)
+    write_markdown_log(["--- BEST CONFIG ---", best_config_block], SWEEP_LOG_PATH)
 
 
 if __name__ == "__main__":

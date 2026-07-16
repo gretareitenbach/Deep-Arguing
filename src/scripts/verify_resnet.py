@@ -11,6 +11,9 @@ from tqdm import tqdm
 import wandb
 from deeparguing.feature_extractor.resnet import Resnet32
 from deeparguing.helper import load_torch_images, split_data
+from deeparguing.md_log import write_markdown_log
+
+VERIFY_LOG_PATH = "outputs/logs/verify_resnet.md"
 
 
 def evaluate(
@@ -137,6 +140,14 @@ def print_test_results(
     print(f"Recall:    {rec:.4f}")
     print(f"F1:        {f1:.4f}")
     print(f"Status:    {status} (threshold: {threshold * 100:.0f}%)")
+    write_markdown_log(
+        [
+            f"--- {test_name} ---",
+            f"Accuracy: {acc:.4f}; Precision: {prec:.4f}; Recall: {rec:.4f}; F1: {f1:.4f}",
+            f"Status: {status} (threshold: {threshold * 100:.0f}%)",
+        ],
+        VERIFY_LOG_PATH,
+    )
     return status == "PASS"
 
 
@@ -216,6 +227,16 @@ if __name__ == "__main__":
     print(f"Weights: {args.weights_path}")
     print(f"Dataset: {args.dataset}")
     print(f"Device:  {device}")
+    write_markdown_log(
+        [
+            "--- RUN ---",
+            f"Weights: {args.weights_path}",
+            f"Dataset: {args.dataset}",
+            f"Device: {device}",
+        ],
+        VERIFY_LOG_PATH,
+        mode="w",
+    )
 
     # Test 1: Direct classification with built-in head
     acc1, prec1, rec1, f11, cm1 = evaluate(model, X_val, y_val, args.batch_size, device)
@@ -283,6 +304,7 @@ if __name__ == "__main__":
     overall = "PASS" if (test1_pass and test2_pass) else "FAIL"
     print(f"Overall: {overall}")
     print("=" * 60)
+    write_markdown_log([f"Overall: {overall}"], VERIFY_LOG_PATH)
 
     wandb.log({"overall_pass": test1_pass and test2_pass})
     wandb.finish()

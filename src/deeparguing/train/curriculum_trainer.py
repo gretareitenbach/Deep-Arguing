@@ -13,7 +13,10 @@ from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
+from deeparguing.md_log import write_markdown_log
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
+
+SUMMARY_LOG_PATH = "outputs/logs/summary.md"
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import (
     CurriculumValidationLog,
@@ -295,10 +298,12 @@ class CurriculumTrainer(NeuralTrainer):
                     active_classes = self.curriculum_strategy.get_active_classes()
                     new_classes = newly_added
                     phase_epoch = 0
-                    logging.info(
+                    curriculum_advance_line = (
                         f"Curriculum: epoch {epoch}, added classes {newly_added}, "
                         f"active: {active_classes}"
                     )
+                    logging.info(curriculum_advance_line)
+                    write_markdown_log([curriculum_advance_line], SUMMARY_LOG_PATH)
                     if self.reset_optimizer_on_advance:
                         self._reset_optimizer_state(optimizer)
 

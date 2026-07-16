@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from deeparguing.md_log import write_markdown_log
+
 np.random.seed(123)
 
 # Number of samples
@@ -146,4 +148,10 @@ data_noisy.loc[flip_mask, "class"] = np.random.choice(
 file_path = "data/defeasible/defeasible_noisy.csv"
 data_noisy.to_csv(file_path, index=False)
 
-print(data_noisy["class"].value_counts())
+class_counts = data_noisy["class"].value_counts()
+print(class_counts)
+write_markdown_log(
+    ["--- CLASS DISTRIBUTION ---", f"Saved to {file_path}\n```\n{class_counts.to_string()}\n```"],
+    "outputs/logs/generate_defeasible_data.md",
+    mode="w",
+)

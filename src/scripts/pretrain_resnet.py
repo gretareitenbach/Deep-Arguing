@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 import torch
 import torch.nn as nn
@@ -131,7 +132,8 @@ if __name__ == "__main__":
     )})
     
     
-    save_path = "resnet_30.pt"
+    save_path = "outputs/checkpoints/resnet_30.pt"
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), save_path)
     
     wandb.finish()

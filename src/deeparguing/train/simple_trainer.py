@@ -10,8 +10,11 @@ from deeparguing import GradualAACBR
 from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
+from deeparguing.md_log import write_markdown_log
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import StandardValidationLog, ValidationLogStrategy
+
+SUMMARY_LOG_PATH = "outputs/logs/summary.md"
 
 
 class SimpleTrainer(NeuralTrainer):
@@ -120,6 +123,10 @@ class SimpleTrainer(NeuralTrainer):
 
                 if loss is torch.nan or torch.isnan(loss):
                     print("WARNING: LOSS IS NAN")
+                    write_markdown_log(
+                        [f"WARNING: loss is NaN at epoch {epoch} -- training aborted"],
+                        SUMMARY_LOG_PATH,
+                    )
                     return 0.0
 
                 if self.scheduler is not None and self.scheduler_step_per == "batch":

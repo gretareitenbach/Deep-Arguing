@@ -2,21 +2,21 @@
 
 ``cli/run.py`` trains/evaluates/exports; it is not the place to interactively
 contest one prediction. This script only *consumes* what a
-``--misclassified_log`` run already produced -- ``outputs/model_checkpoint.pt``
-(weights + fitted casebase, see ``run.py``) and ``outputs/misclassified_qbaf.json``
+``--misclassified_log`` run already produced -- ``outputs/checkpoints/model_checkpoint.pt``
+(weights + fitted casebase, see ``run.py``) and ``outputs/qbaf/misclassified_qbaf.json``
 (the real misclassified samples, already in model-input form) -- rebuilds the
 live model, and runs ``contest()`` against one real sample end to end.
 
 Usage::
 
     python -m deeparguing.counterfactuals.run_contest \\
-        --checkpoint outputs/model_checkpoint.pt \\
-        --qbaf outputs/misclassified_qbaf.json \\
+        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
+        --qbaf outputs/qbaf/misclassified_qbaf.json \\
         --sample-index 0
 
 Requires a checkpoint produced by ``cli/run.py --run_test --misclassified_log``
-(re-run the CLI with that flag if ``outputs/model_checkpoint.pt`` doesn't
-exist yet).
+(re-run the CLI with that flag if ``outputs/checkpoints/model_checkpoint.pt``
+doesn't exist yet).
 """
 
 import argparse
@@ -84,8 +84,8 @@ def load_sample(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", default="outputs/model_checkpoint.pt")
-    parser.add_argument("--qbaf", default="outputs/misclassified_qbaf.json")
+    parser.add_argument("--checkpoint", default="outputs/checkpoints/model_checkpoint.pt")
+    parser.add_argument("--qbaf", default="outputs/qbaf/misclassified_qbaf.json")
     parser.add_argument("--sample-index", type=int, default=0)
     parser.add_argument(
         "--target-class",
@@ -129,7 +129,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--log-dir",
-        default="outputs",
+        default="outputs/contestation",
         help=(
             "Directory to additionally write a per-run contest log file to "
             "(one line per iteration: edges perturbed, step size, weight "

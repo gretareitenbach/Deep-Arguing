@@ -14,6 +14,7 @@ from deeparguing.casebase_edge_weights import *
 from deeparguing.clustering import *
 from deeparguing.evals.compute_graph import make_dot
 from deeparguing.feature_extractor import *
+from deeparguing.md_log import write_markdown_log
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
 from deeparguing.criterion.regularisers import *
@@ -127,6 +128,7 @@ def print_results(
     cm: NDArray[Any],
     title: str,
     labels: list[str],
+    log_path: str | None = None,
 ):
     results_title = "-" * 30 + f" RESULTS ON THE {title} SET " + "-" * 30
     logging.info(results_title)
@@ -141,3 +143,14 @@ def print_results(
     )
 
     logging.info(f"Confusion Matrix: \n{df}")
+
+    if log_path is not None:
+        write_markdown_log(
+            [
+                f"--- {title} RESULTS ---",
+                f"Accuracy: {round(accuracy, 4)}; Precision: {round(precision, 4)}; "
+                f"Recall: {round(recall, 4)}; F1: {round(f1, 4)}",
+                f"Confusion matrix:\n```\n{df.to_string()}\n```",
+            ],
+            log_path,
+        )
