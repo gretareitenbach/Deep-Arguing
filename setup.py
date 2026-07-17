@@ -26,11 +26,16 @@ setup(
         "networkx",
         "numpy",
         "torch",
+        "torchvision",
         "tqdm",
         "scikit-learn",
-        "torchviz",
         "pandas",
         "optuna",
+        "itables",
+        "graphviz",
+        "PyYAML",
+        "ucimlrepo",
+        "wandb",
     ],
     dependency_links=[
         'https://download.pytorch.org/whl/cu118'
