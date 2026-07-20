@@ -24,14 +24,15 @@ from deeparguing.train import *
 
 def evaluate_model(
     model: GradualAACBR,
-    X_casebase: Tensor,
-    y_casebase: Tensor,
-    X_default: Tensor,
-    y_default: Tensor,
+    X_casebase: Tensor | None,
+    y_casebase: Tensor | None,
+    X_default: Tensor | None,
+    y_default: Tensor | None,
     X_new_cases: Tensor,
     y_new_cases: Tensor,
     batch_size: int | None = None,
     print_compute_graph: bool = False,
+    refit: bool = True,
 ) -> Tuple[float, float, float, float, NDArray[...]]:
     """
     Fits and executes the model, then evaluates it on accuracy, precision,
@@ -41,20 +42,23 @@ def evaluate_model(
     ----------
     model : GradualAACBR
         GradualAACBR model to train
-    X_casebase : torch.Tensor
+    X_casebase : torch.Tensor | None
         Input casebase argument characterisations as a tensor.
         Shape (N, x1, ..., xn) where N is the number of casebase
         arguments and (x1, ..., xn) is the shape of each argument.
-    y_casebase : torch.Tensor
+        Unused (may be None) when ``refit`` is False.
+    y_casebase : torch.Tensor | None
         Input casebase label as a tensor. Shape (N, Y) where N is the
-        number of casebase arguments and Y is the number of labels
-    X_default : torch.Tensor
+        number of casebase arguments and Y is the number of labels.
+        Unused (may be None) when ``refit`` is False.
+    X_default : torch.Tensor | None
         Default arguments characterisations as a tensor.
         Shape (Y, x1, ..., xn) where Y is the number of labels
         and (x1, ..., xn) is the shape of each argument.
-    y_default : torch.Tensor
+        Unused (may be None) when ``refit`` is False.
+    y_default : torch.Tensor | None
         Input casebase label as a tensor. Shape (Y, Y) where Y is the
-        number of labels
+        number of labels. Unused (may be None) when ``refit`` is False.
     X_new_cases : torch.Tensor
         Input new_cases arguments characterisations as a tensor.
         Shape (M, x1, ..., xn) where M is the number of new cases
@@ -65,6 +69,14 @@ def evaluate_model(
 
     print_compute_graph : bool, default false
         When true, a pdf with the compute graph is outputted
+    refit : bool, default true
+        When true (the default), (re)fits the model from
+        ``X_casebase``/``y_casebase``/``X_default``/``y_default`` before
+        evaluating, exactly as before. When false, skips ``fit()`` entirely
+        and evaluates ``model`` exactly as currently configured (e.g. an
+        already-fitted model whose ``model.A`` was swapped for a
+        contested/edited adjacency) -- the casebase/default arguments are
+        ignored in that case.
 
 
     Returns
@@ -75,7 +87,14 @@ def evaluate_model(
 
     """
     model.eval()
-    model.fit(X_casebase, y_casebase, X_default, y_default)
+    if refit:
+        if X_casebase is None or y_casebase is None or X_default is None or y_default is None:
+            raise ValueError(
+                "X_casebase, y_casebase, X_default and y_default are required when refit=True."
+            )
+        model.fit(X_casebase, y_casebase, X_default, y_default)
+    elif model.A is None:
+        raise Exception("Ensure the model has been fit first.")
 
     n_samples = X_new_cases.shape[0]
     batch_size = batch_size if batch_size is not None else n_samples
