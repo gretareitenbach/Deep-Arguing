@@ -11,6 +11,11 @@ swaps in the contested checkpoint's ``A`` and evaluates again, and reports
 the delta -- see ``deeparguing.evals.global_contest_eval`` for the two calls
 this wraps.
 
+By default the results are also appended as a markdown table to
+``outputs/logs/global_contest_eval.md`` (one section per run, mirroring
+``deeparguing.md_log``'s convention used elsewhere -- e.g.
+``outputs/logs/summary.md``); pass ``--log-path ""`` to skip writing it.
+
 Usage::
 
     python -m deeparguing.counterfactuals.run_global_contest_eval
@@ -21,13 +26,21 @@ Usage::
 """
 
 import argparse
+import datetime
 import logging
 
+import pandas as pd
 import torch
+from numpy.typing import NDArray
 
 from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
-from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
+from deeparguing.evals.global_contest_eval import (GlobalContestEvalResult,
+                                                     GlobalEvalMetrics,
+                                                     compute_baseline_metrics,
                                                      evaluate_contested_model)
+from deeparguing.md_log import write_markdown_log
+
+DEFAULT_LOG_PATH = "outputs/logs/global_contest_eval.md"
 
 
 def load_model_and_split(checkpoint_path: str, device: str, split: str):
@@ -57,6 +70,40 @@ def load_model_and_split(checkpoint_path: str, device: str, split: str):
     return model, X, y
 
 
+def _metrics_table(baseline: GlobalEvalMetrics, result: GlobalContestEvalResult) -> str:
+    """Markdown table of accuracy/precision/recall/f1 for baseline vs.
+    contested, plus the signed delta -- the same four numbers logged to the
+    console, rendered as a table instead of one line each."""
+    deltas = {
+        "Accuracy": result.delta_accuracy,
+        "Precision": result.delta_precision,
+        "Recall": result.delta_recall,
+        "F1": result.delta_f1,
+    }
+    contested = result.metrics
+    rows = [
+        ("Accuracy", baseline.accuracy, contested.accuracy),
+        ("Precision", baseline.precision, contested.precision),
+        ("Recall", baseline.recall, contested.recall),
+        ("F1", baseline.f1, contested.f1),
+    ]
+    lines = ["| Metric | Baseline | Contested | Delta |", "|---|---|---|---|"]
+    for name, base_value, contested_value in rows:
+        lines.append(
+            f"| {name} | {base_value:.4f} | {contested_value:.4f} | {deltas[name]:+.4f} |"
+        )
+    return "\n".join(lines)
+
+
+def _confusion_matrix_block(title: str, cm: NDArray) -> str:
+    df = pd.DataFrame(
+        cm,
+        index=[f"Actual {i}" for i in range(cm.shape[0])],
+        columns=[f"Pred {i}" for i in range(cm.shape[1])],
+    )
+    return f"{title} confusion matrix:\n```\n{df.to_string()}\n```"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -82,6 +129,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--log", default="info", choices=["debug", "info", "warning", "error"]
+    )
+    parser.add_argument(
+        "--log-path",
+        default=DEFAULT_LOG_PATH,
+        help="Markdown file to append a results table to (created if missing). "
+        f"Default: {DEFAULT_LOG_PATH}. Pass an empty string to skip logging.",
     )
     args = parser.parse_args()
 
@@ -120,6 +173,22 @@ def main() -> None:
         f"Delta:     accuracy={_signed(result.delta_accuracy)} precision={_signed(result.delta_precision)} "
         f"recall={_signed(result.delta_recall)} f1={_signed(result.delta_f1)}"
     )
+
+    if args.log_path:
+        write_markdown_log(
+            [
+                "--- GLOBAL CONTEST EVAL ---",
+                f"Run: {datetime.datetime.now().isoformat(timespec='seconds')}",
+                f"Baseline checkpoint: {args.checkpoint}",
+                f"Contested checkpoint: {args.contested_checkpoint}",
+                f"Split: {args.split} ({X.shape[0]} samples)",
+                _metrics_table(baseline, result),
+                _confusion_matrix_block("Baseline", baseline.confusion_matrix),
+                _confusion_matrix_block("Contested", result.metrics.confusion_matrix),
+            ],
+            args.log_path,
+        )
+        logging.info(f"Appended results table to {args.log_path}")
 
 
 if __name__ == "__main__":
