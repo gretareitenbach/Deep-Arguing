@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -81,8 +82,18 @@ def run(project: str = "gradual-aa-cbr"):
         train_accs = []
         grae_magnitudes_per_seed = []
 
+        semantics_config = model_config.get("semantics")
+        semantics_name = (
+            semantics_config.get("class_name", "unknown") if semantics_config else "N/A"
+        )
+
         write_markdown_summary(
-            ["--- RUN LOG ---", f"Trial: {trial.number if trial is not None else 'N/A'}"],
+            [
+                "--- RUN LOG ---",
+                f"Trial: {trial.number if trial is not None else 'N/A'}",
+                f"Run started: {datetime.datetime.now().isoformat(timespec='seconds')}",
+                f"Semantics: {semantics_name}",
+            ],
             mode="w",
         )
 
