@@ -29,6 +29,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch import Tensor
@@ -50,6 +51,55 @@ from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
 DEFAULT_NS = [0, 1, 5, 10, 25, 50, 100]
 DEFAULT_OUTPUT = "outputs/contestation/global_eval_sweep.csv"
 DEFAULT_SEED = 0
+CSV_DECIMALS = 3
+
+# Single-series line chart -- see dataviz skill's reference palette.
+_PLOT_LINE_COLOR = "#2a78d6"
+_PLOT_SURFACE = "#fcfcfb"
+_PLOT_GRIDLINE = "#e1e0d9"
+_PLOT_AXIS = "#c3c2b7"
+_PLOT_TICK_INK = "#898781"
+_PLOT_PRIMARY_INK = "#0b0b0b"
+_PLOT_SECONDARY_INK = "#52514e"
+
+
+def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
+    """Line chart of accuracy drop vs. N, each point labeled with how many
+    of that N's contested samples flipped to correctly classified."""
+    df = df.sort_values("N")
+
+    fig, ax = plt.subplots(figsize=(7, 4.5), facecolor=_PLOT_SURFACE)
+    ax.set_facecolor(_PLOT_SURFACE)
+
+    ax.plot(
+        df["N"], df["acc_drop"],
+        color=_PLOT_LINE_COLOR, linewidth=2, zorder=3,
+        marker="o", markersize=8, markerfacecolor=_PLOT_LINE_COLOR,
+        markeredgecolor=_PLOT_SURFACE, markeredgewidth=1.5,
+    )
+    for n, drop, flipped in zip(df["N"], df["acc_drop"], df["samples_flipped"]):
+        ax.annotate(
+            str(int(flipped)), (n, drop),
+            textcoords="offset points", xytext=(0, 10),
+            ha="center", fontsize=9, color=_PLOT_SECONDARY_INK,
+        )
+
+    ax.set_xlabel("N (samples contested)", color=_PLOT_PRIMARY_INK)
+    ax.set_ylabel("Accuracy drop (baseline - contested)", color=_PLOT_PRIMARY_INK)
+    ax.set_title(
+        "Global accuracy drop vs. samples contested\n(label = samples flipped)",
+        color=_PLOT_PRIMARY_INK, fontsize=11,
+    )
+    ax.grid(True, color=_PLOT_GRIDLINE, linewidth=0.8, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(_PLOT_AXIS)
+    ax.spines["bottom"].set_color(_PLOT_AXIS)
+    ax.tick_params(colors=_PLOT_TICK_INK)
+
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=150)
+    plt.close(fig)
 
 
 def _touched_edge_old_new(
@@ -206,10 +256,16 @@ def main() -> None:
 
     model.A = original_A  # leave the shared model exactly as it was loaded
 
+    df = pd.DataFrame(rows)
+
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(output_path, index=False)
+    df.round(CSV_DECIMALS).to_csv(output_path, index=False)
     logging.info(f"Wrote {len(rows)} rows to {output_path}")
+
+    png_path = output_path.with_suffix(".png")
+    _plot_acc_drop_vs_n(df, png_path)
+    logging.info(f"Wrote accuracy-drop plot to {png_path}")
 
 
 if __name__ == "__main__":
