@@ -33,7 +33,7 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
+from deeparguing.counterfactuals.run_contest import load_fitted_model_and_data
 from deeparguing.evals.global_contest_eval import (GlobalContestEvalResult,
                                                      GlobalEvalMetrics,
                                                      compute_baseline_metrics,
@@ -44,27 +44,10 @@ DEFAULT_LOG_PATH = "outputs/logs/global_contest_eval.md"
 
 
 def load_model_and_split(checkpoint_path: str, device: str, split: str):
-    """Rebuild the model architecture + held-out data split from a
-    checkpoint's config, and reload the model's fitted state (weights +
-    ``A``/``X_train``/``y_train``/``default_indexes``) -- same approach as
-    ``run_contest.load_model``, but also keeps the ``data_dict`` around
-    since we need ``X_<split>``/``y_<split>`` here, not just the model.
-    """
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    model_config = read_config_files(checkpoint["config_paths"])
-    data_dict, instances = parse_model_config(model_config, trial=None, device=device)
-    model = instances["model"]
-    if hasattr(model, "to"):
-        model = model.to(device)
-
-    model.load_state_dict(checkpoint["state_dict"])
-    model.A = checkpoint["A"].to(device)
-    model.X_train = checkpoint["X_train"].to(device)
-    model.y_train = checkpoint["y_train"].to(device)
-    model.default_indexes = checkpoint["default_indexes"].to(device)
-    model.eval()
-
+    """Rebuild the model + reload its fitted state from a checkpoint (see
+    ``run_contest.load_fitted_model_and_data``), plus pull out the held-out
+    ``X_<split>``/``y_<split>`` pair from its config's data split."""
+    model, data_dict = load_fitted_model_and_data(checkpoint_path, device)
     X = data_dict[f"X_{split}"]
     y = data_dict[f"y_{split}"]
     return model, X, y

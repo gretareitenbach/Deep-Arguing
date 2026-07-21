@@ -3,6 +3,7 @@ import torch
 
 from deeparguing import GradualAACBR, SlowGradualAACBR
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
+from qbaf_fixtures import make_fitted_model as _make_qbaf_model
 
 # Semantics is tested separately, we just have to have one to
 # initalise/test gradual aa-cbr
@@ -353,77 +354,11 @@ def test_semantics():
     computed is as expected. We check the final semantics according to values we expect
     from the semantics tests.
 
+    Uses the shared small EW-QBAF from ``tests/qbaf_fixtures.py`` -- this is
+    the same graph its module docstring diagrams, and the exact one reused by
+    ``grae_test.py``/``contest_test.py``/``batch_contest_test.py``.
     """
-    X_train = torch.tensor(
-        [
-            [0],
-            [1],
-            [2],
-            [3],
-            [4],
-        ]
-    )
-    y_train = torch.tensor(
-        [
-            [0],  # 0
-            [1],  # 1
-            [0],  # 2
-            [1],  # 3
-            [0],  # 4
-        ]
-    )
-    edge_weights = torch.tensor(
-        [
-            # 0, 1, 2, 3, 4, 5, 6, 7
-            [0, 1, 0, 0, 0, 0, 0, 0],  # 0
-            [1, 0, 0, 0, 0, 0, 0, 0],  # 1
-            [1, 0, 0, 1, 0, 0, 0, 0],  # 2
-            [0, 1, 0, 0, 0, 0, 0, 0],  # 3
-            [1, 0, 0, 1, 0, 0, 0, 0],  # 4
-            [0, 0, 0, 0, 0, 0, 0, 0],  # 5
-            [0, 0, 0, 0, 0, 0, 0, 0],  # 6
-            [0, 0, 0, 0, 1, 0, 0, 0],  # 7
-        ],
-        dtype=torch.float32,
-    )
-
-    X_default = torch.tensor([[5]], dtype=torch.float32)
-    y_default = torch.tensor([[5]], dtype=torch.float32)
-
-    bs = torch.tensor([0.5, 0.5, 0.7, 0.8, 0.9, 0.5, 0.5, 0.5])
-
-    def base_score_test(case):
-        # case is (n, 1) tensor, want to return (n, d) = (n, 1)
-        case = case.to(dtype=torch.int).squeeze(-1)  # (n, 1) -> (n,)
-        return bs[case].unsqueeze(-1)  # (n,) -> (n, 1)
-
-    def edge_weights_test(attacker, target):
-        # attacker and target are (n, 1) tensors
-        # We need to return (n, n) pairwise edge weights
-        attacker = attacker.to(dtype=torch.int).squeeze(-1)  # (n,)
-        target = target.to(dtype=torch.int).squeeze(-1)  # (n,)
-        # Compute pairwise: edge_weights[attacker[i], target[j]] for all i,j
-        return edge_weights[attacker.unsqueeze(1), target.unsqueeze(0)]  # (n, n)
-
-    def irrelevance_test(new_cases, casebase):
-        new_cases = new_cases.unsqueeze(1).to(dtype=torch.int)  # (B, 1, no_features)
-        casebase = casebase.unsqueeze(0).to(dtype=torch.int)  # (1, n, no_features)
-        r = edge_weights[new_cases, casebase].squeeze(-1)  # Squeeze features, not d
-        return r.unsqueeze(-1)  # Add dimension for d=1
-
-    semantics = SigmoidSemantics(max_iters=5, epsilon=0)
-    model = GradualAACBR(
-        semantics,
-        base_score_test,
-        irrelevance_test,
-        edge_weights_test,
-    )
-
-    model.use_symmetric_attacks=True
-    model.use_supports=True
-    # We are just testing the forward function so blockers can be off
-    model.use_blockers=False  
-    model.fit(X_train, y_train, X_default, y_default)
+    model = _make_qbaf_model(SigmoidSemantics(max_iters=5, epsilon=0))
 
     result = model(torch.tensor([[6], [7]]), return_all_strengths=True)
     expected_result = torch.tensor(

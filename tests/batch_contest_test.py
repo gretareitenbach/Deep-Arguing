@@ -7,73 +7,25 @@ from deeparguing.counterfactuals.batch_contest import (_leaky_relu_surrogate,
                                                          batch_contest)
 from deeparguing.semantics.relu_semantics import ReluSemantics
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
-
-# ---------------------------------------------------------------------------
-# Same small synthetic EW-QBAF as ``tests/contest_test.py``, but fit with
-# ``ReluSemantics`` instead of ``SigmoidSemantics`` -- the leaky-relu
-# gradient surrogate only makes sense for a hard-ReLU model, and
-# ``batch_contest`` is meant to be used with ``ReluSemantics``.
-# ---------------------------------------------------------------------------
-
-_EDGE_WEIGHTS = torch.tensor(
-    [
-        # 0, 1, 2, 3, 4, 5, 6, 7
-        [0, 1, 0, 0, 0, 0, 0, 0],  # 0
-        [1, 0, 0, 0, 0, 0, 0, 0],  # 1
-        [1, 0, 0, 1, 0, 0, 0, 0],  # 2
-        [0, 1, 0, 0, 0, 0, 0, 0],  # 3
-        [1, 0, 0, 1, 0, 0, 0, 0],  # 4
-        [0, 0, 0, 0, 0, 0, 0, 0],  # 5
-        [0, 0, 0, 0, 0, 0, 0, 0],  # 6
-        [0, 0, 0, 0, 1, 0, 0, 0],  # 7
-    ],
-    dtype=torch.float32,
+from qbaf_fixtures import (
+    TARGET_INDEX,
+    base_score_fn as _base_score_fn,
+    edge_weights_fn as _edge_weights_fn,
+    irrelevance_fn as _irrelevance_fn,
+    make_fitted_model as _make_qbaf_model,
 )
 
-_BASE_SCORES = torch.tensor([0.5, 0.5, 0.7, 0.8, 0.9, 0.5, 0.5, 0.5])
-
-
-def _base_score_fn(case: torch.Tensor) -> torch.Tensor:
-    case = case.to(dtype=torch.int).squeeze(-1)
-    return _BASE_SCORES[case].unsqueeze(-1)
-
-
-def _edge_weights_fn(attacker: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    attacker = attacker.to(dtype=torch.int).squeeze(-1)
-    target = target.to(dtype=torch.int).squeeze(-1)
-    return _EDGE_WEIGHTS[attacker.unsqueeze(1), target.unsqueeze(0)]
-
-
-def _irrelevance_fn(new_cases: torch.Tensor, casebase: torch.Tensor) -> torch.Tensor:
-    new_cases = new_cases.unsqueeze(1).to(dtype=torch.int)
-    casebase = casebase.unsqueeze(0).to(dtype=torch.int)
-    r = _EDGE_WEIGHTS[new_cases, casebase].squeeze(-1)
-    return r.unsqueeze(-1)
+# ---------------------------------------------------------------------------
+# Same small synthetic EW-QBAF as ``tests/contest_test.py`` (see
+# ``tests/qbaf_fixtures.py``), but fit with ``ReluSemantics`` instead of
+# ``SigmoidSemantics`` -- the leaky-relu gradient surrogate only makes sense
+# for a hard-ReLU model, and ``batch_contest`` is meant to be used with
+# ``ReluSemantics``.
+# ---------------------------------------------------------------------------
 
 
 def _make_fitted_model(max_iters: int) -> GradualAACBR:
-    semantics = ReluSemantics(max_iters=max_iters, epsilon=0)
-    model = GradualAACBR(
-        semantics,
-        _base_score_fn,
-        _irrelevance_fn,
-        _edge_weights_fn,
-    )
-    model.use_symmetric_attacks = True
-    model.use_supports = True
-    model.use_blockers = False
-
-    X_train = torch.tensor([[0], [1], [2], [3], [4]])
-    y_train = torch.tensor([[0], [1], [0], [1], [0]])
-    X_default = torch.tensor([[5]], dtype=torch.float32)
-    y_default = torch.tensor([[5]], dtype=torch.float32)
-    model.fit(X_train, y_train, X_default, y_default)
-    return model
-
-
-# Only one default argument exists in this casebase, so it is always the
-# (only) topic/target argument -- no real rival, THRESHOLD stands in.
-TARGET_INDEX = 0
+    return _make_qbaf_model(ReluSemantics(max_iters=max_iters, epsilon=0))
 
 
 # ---------------------------------------------------------------------------

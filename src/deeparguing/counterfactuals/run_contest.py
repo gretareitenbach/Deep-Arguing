@@ -33,8 +33,13 @@ from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
 from deeparguing.gradual_aacbr import GradualAACBR
 
 
-def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
-    """Rebuild the model architecture from the checkpoint's config and reload it.
+def load_fitted_model_and_data(
+    checkpoint_path: str, device: str
+) -> tuple[GradualAACBR, dict]:
+    """Rebuild the model architecture from the checkpoint's config and reload it,
+    returning the config's ``data_dict`` alongside it (e.g. for callers that
+    also need a held-out ``X_<split>``/``y_<split>`` pair -- see
+    ``run_global_contest_eval.load_model_and_split``).
 
     ``state_dict()`` only covers registered parameters/buffers, so the
     fit()-produced attributes (``A``/``X_train``/``default_indexes``) are
@@ -43,7 +48,7 @@ def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     model_config = read_config_files(checkpoint["config_paths"])
-    _, instances = parse_model_config(model_config, trial=None, device=device)
+    data_dict, instances = parse_model_config(model_config, trial=None, device=device)
     model = instances["model"]
     if hasattr(model, "to"):
         model = model.to(device)
@@ -54,6 +59,13 @@ def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
     model.y_train = checkpoint["y_train"].to(device)
     model.default_indexes = checkpoint["default_indexes"].to(device)
     model.eval()
+    return model, data_dict
+
+
+def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
+    """Rebuild and reload the model from a checkpoint, discarding its config's
+    data split (see ``load_fitted_model_and_data`` for callers that need it)."""
+    model, _ = load_fitted_model_and_data(checkpoint_path, device)
     return model
 
 
