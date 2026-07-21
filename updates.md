@@ -614,3 +614,34 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `data_dict` (needed by `load_model_and_split` for its `X_<split>`/
     `y_<split>` pair, but not by plain `load_model`). Both functions are now
     thin wrappers over it.
+
+- **Created sweep for global eval** (`c0e9a12`)
+  - New `src/deeparguing/counterfactuals/sweep_global_contest_eval.py`: pure
+    orchestration script, no new algorithm -- sweeps `contest_all.py`'s
+    first-N-misclassified-samples truncation over `N in {0, 1, 5, 10, 25, 50,
+    100}` (`--ns` to override) and writes one CSV row per N to
+    `outputs/contestation/global_eval_sweep.csv`. Per N: resets `model.A` to a
+    fresh clone of the baseline (so each N is contested independently, not
+    cumulatively), calls `batch_contest` on the first N samples from
+    `load_all_samples`, then scores the resulting adjacency via
+    `compute_baseline_metrics`/`evaluate_contested_model`
+    (`global_contest_eval.py`) against a baseline computed once up front.
+    Columns: `samples_flipped` (`result.num_cleared`), `global_acc`/`acc_drop`
+    (vs. the once-computed baseline), `mean_weight_delta`/`max_weight_delta`
+    (`|new - old|` over the edges `batch_contest` touched, baseline-vs-final --
+    same lookup `contest_all.py` already does for its own JSON log, reused
+    here), `max_strength` (peak final target strength across that N's
+    contested samples, a divergence-bound sanity check), and `edge_reversals`
+    (touched edges where `old * new < 0`, i.e. attack<->support sign flips).
+    Fixed seed (`--seed`, default 0) via `torch.manual_seed`, though nothing
+    in the default full-batch path is actually stochastic. Hyperparameters
+    (`k`/`margin`/etc.) read from `tuning/contest/contest.yaml`, same as
+    `contest_all.py`.
+
+- **Added plotting to eval sweep** (`0dbb993`)
+  - `sweep_global_contest_eval.py`: CSV values rounded to 3 decimal places
+    (`CSV_DECIMALS`) before writing. Also renders a line chart of `acc_drop`
+    vs. `N` (`_plot_acc_drop_vs_n`), each point labeled with that N's
+    `samples_flipped` count, saved alongside the CSV as a same-named `.png`.
+    Styled per the dataviz skill's reference palette (single blue series,
+    thin 2px line, recessive gridlines, no legend needed for one series).
