@@ -434,6 +434,33 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
 
 ## 2026-07-16
 
+- **Finished CLI for batch contesting** (`f3445c5`)
+  - Renamed `counterfactuals/joint_contest.py` -> `batch_contest.py` (and
+    `JointContestResult`/`joint_contest` -> `BatchContestResult`/`batch_contest`)
+    across `__init__.py`/`contest.py`/`grae.py`'s docstrings and
+    `tests/joint_contest_test.py` -> `tests/batch_contest_test.py`, for naming
+    consistency with the rest of the module -- no behavior change.
+  - `src/scripts/contest_all.py`: switched from all-CLI-flag configuration to
+    a YAML config file (default `tuning/contest/contest.yaml`), with any CLI
+    flag overriding the corresponding config value for a one-off run
+    (`_load_config`/`_resolved`/`_required` helpers). Added
+    `alpha_init`/`max_backtracks` passthroughs to `batch_contest`, and now
+    records which edges were touched (`touched_edges`, unraveled into
+    `(source, target, dim)` plus before/after weight) in the run's JSON log,
+    so a later global-accuracy investigation can correlate a specific edge
+    with whichever samples depend on it.
+  - New `src/scripts/sweep_contest.py` (since removed, see the next entry):
+    grid-searched `batch_contest`'s `k`/`margin` (the two hyperparameters an
+    earlier hand-picked sweep showed actually move the result), plus a
+    margin=0 "ceiling" diagnostic and two refinement checks (`alpha_init=10`,
+    `batch_size=20`) anchored at the grid's winner. Ranked configs by
+    "robust clears" (cleared minus near/exact-tie clears -- real inference's
+    plain-argmax tie-break doesn't reliably favor the target class) rather
+    than raw clear count.
+  - New `tuning/contest/contest.yaml`: holds the sweep's winning config --
+    `k=3` (the algorithm's default), `margin=0.001` -- clearing 19/100
+    misclassified samples with zero risky ties.
+
 - **Organized outputs/** (`fa052f4`)
   - Restructured the flat `outputs/` directory into subfolders grouped by
     artifact type rather than by producing script (several scripts read/write
@@ -490,3 +517,100 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     ... to ..." confirmations) and `pretrain_cnn.py`/`pretrain_resnet.py`,
     whose final metrics only ever went to `wandb.log` and were never printed
     in the first place.
+
+- **Refactored** (`ab3009a`)
+  - Moved `src/scripts/contest_all.py` -> `src/deeparguing/counterfactuals/contest_all.py`
+    (now run as `python -m deeparguing.counterfactuals.contest_all`), and moved
+    its `load_all_samples` dependency (previously imported from
+    `misclassified_grae_by_class.py`) into `run_contest.py`, so `contest_all.py`
+    no longer reaches outside the `counterfactuals` package for it.
+  - Deleted `src/scripts/misclassified_grae_by_class.py` and
+    `src/scripts/sweep_contest.py` (both leftover now that `batch_contest` and
+    the YAML config exist) and the empty `src/scripts/mean_std.py` stub.
+    `sweep_contest.py`'s already-found winning config lives on in
+    `tuning/contest/contest.yaml`; nothing else in the repo depended on either
+    deleted script.
+
+## 2026-07-17
+
+- **Minor cleanup** (`e26104e`)
+  - Cherry-picked from `TheAdamG/Deep-Arguing@b17822f`. Removed stale/dead
+    files predating the counterfactuals work: `data/defeasible/defeasible.csv`,
+    the `examples/` notebook and toy-example scripts, `optimisations.txt`,
+    `tmp/pytorch_cnn.py`, `src/scripts/generate_defeasible_data.py`, and
+    `test_seed_reproducibility.py` -- none had a producing script or active
+    caller left in the repo.
+
+- **Sync setup.py install_requires with requirements.txt** (`7692b99`)
+  - `setup.py`: added `itables`, `graphviz`, `PyYAML`, `ucimlrepo`, `wandb`
+    and replaced `torchviz` with `torchvision` in `install_requires`, matching
+    `requirements.txt` -- which had picked up `torchvision` during the
+    `multi_contest` merge and dropped `torchviz` back on 2026-07-06 when its
+    `make_dot` was vendored in, while `setup.py` had drifted out of sync with
+    both changes.
+
+## 2026-07-20
+
+- **Updated logging** (`45f7cc2`)
+  - `cli/run.py`: `write_markdown_summary`'s `--- RUN LOG ---` header now also
+    records the run's start timestamp and the configured semantics class name
+    (read off `model_config["semantics"]["class_name"]`, `"N/A"` if no
+    semantics config is present), so a `summary.md` from a past run can be
+    identified without cross-referencing which config file produced it.
+
+- **Added global contestation tests** (`7886d75`)
+  - New `src/deeparguing/evals/global_contest_eval.py`:
+    `compute_baseline_metrics`/`evaluate_contested_model` wrap `evaluate_model`
+    to report global (full-split) accuracy/precision/recall/F1 for a
+    *contested* `model.A` relative to a fixed baseline, without ever calling
+    `model.fit()` (which would rebuild `model.A` from the casebase edge-weight
+    functions and silently discard whatever edits produced the contested
+    adjacency) -- deliberately agnostic to whether that adjacency came from
+    `contest()`, `batch_contest`, or a hand-crafted edit, since it only ever
+    swaps a same-shaped tensor onto an already-fitted model.
+  - `evals.py`: `evaluate_model` gained a `refit: bool = True` param -- when
+    `False`, skips `fit()` entirely (raising if `model.A` is still `None`) and
+    evaluates the model exactly as currently configured, with
+    `X_casebase`/`y_casebase`/`X_default`/`y_default` now optional and ignored
+    in that case. Needed so `global_contest_eval.py` can evaluate an
+    already-fitted model with its `A` swapped, without `evaluate_model`
+    re-fitting over that swap.
+  - New `src/deeparguing/counterfactuals/run_global_contest_eval.py`:
+    standalone driver that rebuilds the baseline model + held-out split from
+    `outputs/checkpoints/model_checkpoint.pt`'s own config
+    (`load_model_and_split`, same rebuild approach as `run_contest.load_model`),
+    evaluates it, swaps in `outputs/contestation/contested_checkpoint.pt`'s
+    `A`, evaluates again, and logs the delta.
+  - Added `tests/global_contest_eval_test.py`, extending the shared small-QBAF
+    fixture with two default arguments (one per class) and two more "new case"
+    nodes acting as a 2-sample test set, so `compute_baseline_metrics`/
+    `evaluate_contested_model` have a non-trivial argmax to score. Also
+    updated `evals/__init__.py`'s exports for the new module.
+
+- **Updated eval logging** (`f0695d2`)
+  - `run_global_contest_eval.py`: results are now also appended as a markdown
+    table to `outputs/logs/global_contest_eval.md` by default (mirroring
+    `md_log`'s convention used elsewhere, e.g. `summary.md`) -- baseline vs.
+    contested vs. delta for all four metrics (`_metrics_table`) plus both
+    runs' confusion matrices as fenced code blocks (`_confusion_matrix_block`).
+    New `--log-path` flag, empty string to skip.
+
+## 2026-07-21
+
+- **Refactored for simplicity** (`7277355`)
+  - Consolidated the small synthetic EW-QBAF fixture that `grae_test.py`,
+    `contest_test.py`, `batch_contest_test.py`, and
+    `gradual-aacbr_test.py::test_semantics` had each hand-copied (edge
+    weights, base scores, the three casebase-edge-weight/base-score/
+    irrelevance closures, and `_make_fitted_model`) into a new shared
+    `tests/qbaf_fixtures.py`, imported by all four instead of redefined --
+    removes ~150 duplicated lines with no behavior change (all 140 tests
+    still pass).
+  - `run_contest.py`: extracted the checkpoint-rebuild logic (`torch.load` ->
+    `parse_model_config` -> restore `state_dict`/`A`/`X_train`/`y_train`/
+    `default_indexes` -> `.eval()`) that `load_model` and
+    `run_global_contest_eval.load_model_and_split` had each duplicated into a
+    new shared `load_fitted_model_and_data`, which also returns the config's
+    `data_dict` (needed by `load_model_and_split` for its `X_<split>`/
+    `y_<split>` pair, but not by plain `load_model`). Both functions are now
+    thin wrappers over it.
