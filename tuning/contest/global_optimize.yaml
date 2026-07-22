@@ -57,3 +57,4 @@ eval_batch_size: null
 device: null  # null = auto-detect cuda if available, else cpu
 log_dir: outputs/contestation
 save_checkpoint: null  # null = default to '<log_dir>/global_optimize_checkpoint.pt'; "" to skip saving
+md_log_path: null  # null = default to 'outputs/logs/global_optimize.md'; "" to skip

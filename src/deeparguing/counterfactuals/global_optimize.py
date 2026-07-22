@@ -68,6 +68,7 @@ from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
                                                      compute_baseline_metrics,
                                                      evaluate_contested_model)
 from deeparguing.gradual_aacbr import GradualAACBR
+from deeparguing.md_log import write_markdown_log
 
 DEFAULT_CONFIG_PATH = "tuning/contest/global_optimize.yaml"
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
@@ -75,6 +76,7 @@ DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_MAX_ACC_DROP = 0.01
 DEFAULT_EVAL_EVERY = 10
 DEFAULT_EVAL_SPLIT = "val"
+DEFAULT_MD_LOG_PATH = "outputs/logs/global_optimize.md"
 
 
 @dataclasses.dataclass
@@ -114,6 +116,24 @@ def _build_protect_set(
     perm = torch.randperm(correct_indices.numel(), device=correct_indices.device)[:n]
     chosen = correct_indices[perm]
     return X_eval[chosen], true[chosen].tolist()
+
+
+def _rounds_table(rounds: list[dict[str, Any]]) -> str:
+    """Markdown table of each round's outcome -- the same numbers logged to
+    the console per round, one row each, so a run's whole trajectory (not
+    just the final state) survives in the markdown summary."""
+    if not rounds:
+        return "No rounds ran."
+    lines = [
+        "| Round | Iterations | Cleared | Global Acc | Acc Drop | Rolled Back |",
+        "|---|---|---|---|---|---|",
+    ]
+    for i, r in enumerate(rounds, start=1):
+        lines.append(
+            f"| {i} | {r['iterations']} | {r['num_cleared']} | {r['global_acc']:.4f} | "
+            f"{r['acc_drop']:+.4f} | {'yes' if r['rolled_back'] else 'no'} |"
+        )
+    return "\n".join(lines)
 
 
 def global_optimize(
@@ -336,6 +356,13 @@ def main() -> None:
         "run. Defaults to '<log-dir>/global_optimize_checkpoint.pt'; pass an "
         "empty string to skip saving a checkpoint entirely.",
     )
+    parser.add_argument(
+        "--md-log-path",
+        default=None,
+        help="Markdown file to append a human-readable run summary to "
+        f"(created if missing). Defaults to '{DEFAULT_MD_LOG_PATH}'; pass an "
+        "empty string to skip.",
+    )
     args = parser.parse_args()
 
     config = _load_config(args.config)
@@ -370,6 +397,9 @@ def main() -> None:
     # explicit) mirrors contest_all.py -- must not fall through _resolved's
     # "treat null/absent as unset" rule.
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
+    md_log_path = args.md_log_path if args.md_log_path is not None else config.get("md_log_path")
+    if md_log_path is None:
+        md_log_path = DEFAULT_MD_LOG_PATH
 
     with open(qbaf, "r", encoding="utf-8") as f:
         qbaf_data = json.load(f)
@@ -483,6 +513,32 @@ def main() -> None:
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
     print(f"Saved run log to {log_path}")
+
+    if md_log_path:
+        write_markdown_log(
+            [
+                "--- GLOBAL OPTIMIZE ---",
+                f"Run: {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+                f"Checkpoint: {checkpoint}",
+                f"QBAF: {qbaf} (num_samples={num_samples if num_samples is not None else 'all'})",
+                f"Eval split: {eval_split}",
+                f"Config: k={k} margin={margin} protect_margin={protect_margin} "
+                f"protect_lambda={protect_lambda} protect_sample_size={protect_sample_size} "
+                f"max_acc_drop={max_acc_drop} eval_every={eval_every} max_iters={max_iters}",
+                f"Cleared {result.batch_result.num_cleared}/{result.batch_result.num_total} samples "
+                f"({result.batch_result.num_cleared / max(1, result.batch_result.num_total):.1%}), "
+                f"{result.batch_result.num_edges_changed} edges changed",
+                f"Baseline {eval_split} accuracy: {result.baseline.accuracy:.4f}; "
+                f"Final accuracy: {result.final_metrics.accuracy:.4f}; "
+                f"Drop: {result.acc_drop:+.4f} (budget: {max_acc_drop})",
+                f"Rolled back: {result.rolled_back}; Stopped reason: {result.stopped_reason}; "
+                f"Protect sample size: {result.protect_sample_size}",
+                _rounds_table(result.rounds),
+                f"Run log: {log_path}",
+            ],
+            md_log_path,
+        )
+        print(f"Appended run summary to {md_log_path}")
 
     if save_checkpoint is None:
         save_checkpoint = str(log_dir / "global_optimize_checkpoint.pt")
