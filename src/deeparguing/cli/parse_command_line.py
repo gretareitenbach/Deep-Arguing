@@ -188,6 +188,19 @@ def parse_command_line():
         ),
     )
 
+    parser.add_argument(
+        "--max_misclassified",
+        "-mm",
+        type=int,
+        default=None,
+        help=(
+            "Cap the number of misclassified test samples exported to "
+            "outputs/qbaf/misclassified_qbaf.json (requires "
+            "--misclassified_log). Default: None = export every "
+            "misclassified sample found."
+        ),
+    )
+
     return parser.parse_args()
 
 

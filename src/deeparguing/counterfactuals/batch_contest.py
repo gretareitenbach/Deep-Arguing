@@ -51,6 +51,20 @@ enough step. The line search rejects any trial whose active-sample target
 strength exceeds ``divergence_bound`` before even checking whether it
 decreased the loss, so a step that blows up strengths can never be
 accepted just because the (also blown-up) hinge sum happened to look small.
+
+Protecting global accuracy: nothing above knows or cares about samples
+outside the flip batch, so a step that clears every targeted sample can
+still erode the margin of samples elsewhere that were already correct.
+``protect_samples``/``protect_target_classes``/``protect_margin``/
+``protect_lambda`` (all optional, default off) add a second hinge term for
+a caller-supplied "protect" batch -- e.g. a sample of currently
+correctly-classified validation examples -- to the same shared loss and
+gradient, so a step is only accepted if it decreases the flip batch's
+hinge sum *plus* ``protect_lambda`` times the protect batch's. This is a
+soft, per-step penalty computed on a fixed sample; it does not by itself
+guarantee held-out accuracy doesn't drop -- see
+``counterfactuals/global_optimize.py`` for a hard, periodic full-split
+accuracy check with rollback layered on top of this.
 """
 
 import copy
@@ -79,6 +93,7 @@ DIVERGENCE_BOUND = 100.0    # reject a trial step if it pushes any active target
 ALPHA_INIT = 1.0            # initial line-search step size
 BACKTRACK_FACTOR = 0.5      # shrink factor per failed line-search trial
 MAX_BACKTRACKS = 10         # line-search retry cap per outer iteration
+PROTECT_MARGIN = MARGIN     # default margin a "protect" sample must keep above its rival
 
 
 @dataclass
@@ -92,6 +107,9 @@ class BatchContestResult:
     final_target_strengths: Tensor
     final_rival_classes: list[int | None]
     final_rival_strengths: Tensor
+    # Populated only when batch_contest was called with protect_samples; None otherwise.
+    final_protect_target_strengths: Tensor | None = None
+    final_protect_cleared: Tensor | None = None
 
 
 def _leaky_relu_surrogate(semantics: GradualSemantics, negative_slope: float) -> GradualSemantics:
@@ -125,13 +143,25 @@ def _joint_backtracking_step(
     factor: float,
     max_backtracks: int,
     divergence_bound: float,
+    protect_active_samples: Tensor | None = None,
+    protect_active_targets: list[int] | None = None,
+    protect_margin: float = PROTECT_MARGIN,
+    protect_lambda: float = 0.0,
 ) -> Tensor | None:
     """Shrink alpha from ``alpha_init`` until a trial both stays under the
-    divergence guard and decreases the active-sample hinge sum below
-    ``old_loss``. Returns the accepted ``new_A``, or ``None`` if nothing
-    within budget qualifies -- the caller treats that as no usable step this
-    iteration for this (mini-)batch."""
+    divergence guard -- on the flip batch, and on the protect batch too if
+    one is given -- and decreases the combined loss (flip hinge sum, plus
+    ``protect_lambda`` times the protect-batch hinge sum when
+    ``protect_active_samples`` is given) below ``old_loss``. Returns the
+    accepted ``new_A``, or ``None`` if nothing within budget qualifies -- the
+    caller treats that as no usable step this iteration for this
+    (mini-)batch."""
     assert model.A is not None
+    has_protect = (
+        protect_lambda > 0.0
+        and protect_active_samples is not None
+        and protect_active_samples.shape[0] > 0
+    )
     alpha = alpha_init
     for _ in range(max_backtracks):
         trial_A = _perturb_adjacency(model.A, edge_indices, direction, alpha)
@@ -141,6 +171,19 @@ def _joint_backtracking_step(
         )
         if trial_target.max().item() <= divergence_bound:
             trial_loss = torch.clamp(margin - (trial_target - trial_rival), min=0.0).sum().item()
+
+            if has_protect:
+                protect_strengths = _forward_strengths_batch(model, protect_active_samples, trial_A)
+                protect_target, _, protect_rival = _target_and_rival_batch(
+                    protect_strengths, protect_active_targets, threshold
+                )
+                if protect_target.max().item() > divergence_bound:
+                    alpha *= factor
+                    continue
+                trial_loss += protect_lambda * torch.clamp(
+                    protect_margin - (protect_target - protect_rival), min=0.0
+                ).sum().item()
+
             if trial_loss < old_loss:
                 return trial_A
         alpha *= factor
@@ -163,6 +206,10 @@ def batch_contest(
     alpha_init: float = ALPHA_INIT,
     backtrack_factor: float = BACKTRACK_FACTOR,
     max_backtracks: int = MAX_BACKTRACKS,
+    protect_samples: Tensor | None = None,
+    protect_target_classes: Sequence[int] | None = None,
+    protect_margin: float = PROTECT_MARGIN,
+    protect_lambda: float = 0.0,
 ) -> BatchContestResult:
     """Main loop. See module docstring for the algorithm.
 
@@ -175,6 +222,23 @@ def batch_contest(
     (flattened indices into ``model.A``) have been touched -- the edit
     budget. Left as ``None`` (unbounded) by default, since no such cap
     exists elsewhere in this codebase to inherit.
+
+    ``protect_samples``/``protect_target_classes`` (optional): a second
+    batch -- e.g. currently correctly-classified validation examples -- to
+    protect from margin erosion while the flip batch above is optimized.
+    Each protect sample contributes ``clamp(protect_margin -
+    (own_target - own_rival), min=0)`` to the shared loss, weighted by
+    ``protect_lambda``, and its gradient is combined into the same shared
+    top-k edge selection and line search used for the flip batch -- it's
+    just a second term in the same objective, not a separate mechanism.
+    Recomputed fresh every chunk (never mini-batched itself) since
+    ``model.A`` may have moved since the last chunk's step. A chunk with no
+    active flip sample takes no step at all (unchanged from before this
+    param existed), so protect violations are only ever corrected as a
+    side effect of a flip-driven step, never on their own initiative. Left
+    at ``protect_lambda=0.0``/``protect_samples=None`` by default, in which
+    case every new code path here is skipped entirely and behavior is
+    unchanged from before this parameter existed.
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -186,6 +250,17 @@ def batch_contest(
             "target_classes must have exactly one entry per sample: "
             f"got {len(target_classes)} for a batch of {batch_total}."
         )
+
+    if protect_lambda > 0.0 and protect_samples is None:
+        raise ValueError("protect_lambda > 0 requires protect_samples to be given.")
+    if protect_samples is not None:
+        protect_target_classes = list(protect_target_classes) if protect_target_classes is not None else []
+        if len(protect_target_classes) != protect_samples.shape[0]:
+            raise ValueError(
+                "protect_target_classes must have exactly one entry per protect sample: "
+                f"got {len(protect_target_classes)} for {protect_samples.shape[0]} protect samples."
+            )
+    has_protect = protect_samples is not None and protect_samples.shape[0] > 0
 
     surrogate = _leaky_relu_surrogate(model.gradual_semantics, leaky_negative_slope)
     touched_edges: set[int] = set()
@@ -232,17 +307,56 @@ def batch_contest(
             )
             g = grae_result.casebase_edges.reshape(-1)
 
+            # Protect-set hinge against the current model.A -- see
+            # batch_contest's docstring for why this is recomputed fresh
+            # every chunk and only contributes alongside an active flip step.
+            protect_active_samples: Tensor | None = None
+            protect_active_targets: list[int] | None = None
+            protect_old_loss = 0.0
+            if has_protect and protect_lambda > 0.0:
+                protect_strengths = _forward_strengths_batch(model, protect_samples, model.A)
+                protect_target, protect_rival_classes, protect_rival = _target_and_rival_batch(
+                    protect_strengths, protect_target_classes, threshold
+                )
+                protect_hinge = torch.clamp(protect_margin - (protect_target - protect_rival), min=0.0)
+                protect_active_local = (protect_hinge > 0).nonzero(as_tuple=True)[0]
+                if protect_active_local.numel() > 0:
+                    protect_active_samples = protect_samples[protect_active_local]
+                    protect_active_targets = [
+                        protect_target_classes[i] for i in protect_active_local.tolist()
+                    ]
+                    protect_active_rivals = [
+                        protect_rival_classes[i] for i in protect_active_local.tolist()
+                    ]
+                    protect_old_loss = protect_hinge[protect_active_local].sum().item()
+
+                    if protect_lambda > 0.0:
+                        protect_grae_result = compute_grae(
+                            model,
+                            protect_active_samples,
+                            target_indices=protect_active_targets,
+                            rival_indices=protect_active_rivals,
+                            semantics_override=surrogate,
+                        )
+                        g = g + protect_lambda * protect_grae_result.casebase_edges.reshape(-1)
+
             if g.abs().max().item() == 0.0:
                 continue  # even the leaky surrogate found no directional signal
 
             edge_indices = select_top_k(g, k)
             direction = g[edge_indices]
 
+            combined_old_loss = old_loss + protect_lambda * protect_old_loss
+
             new_A = _joint_backtracking_step(
                 model, active_samples, active_targets, edge_indices, direction,
-                threshold, margin, old_loss,
+                threshold, margin, combined_old_loss,
                 alpha_init=alpha_init, factor=backtrack_factor,
                 max_backtracks=max_backtracks, divergence_bound=divergence_bound,
+                protect_active_samples=protect_active_samples,
+                protect_active_targets=protect_active_targets,
+                protect_margin=protect_margin,
+                protect_lambda=protect_lambda,
             )
             if new_A is None:
                 continue
@@ -264,6 +378,16 @@ def batch_contest(
     )
     cleared = (final_target - final_rival) >= margin
 
+    final_protect_target_strengths: Tensor | None = None
+    final_protect_cleared: Tensor | None = None
+    if protect_samples is not None:
+        protect_final_strengths = _forward_strengths_batch(model, protect_samples, model.A)
+        protect_final_target, _, protect_final_rival = _target_and_rival_batch(
+            protect_final_strengths, protect_target_classes, threshold
+        )
+        final_protect_target_strengths = protect_final_target
+        final_protect_cleared = (protect_final_target - protect_final_rival) >= protect_margin
+
     return BatchContestResult(
         cleared=cleared,
         num_cleared=int(cleared.sum().item()),
@@ -274,4 +398,6 @@ def batch_contest(
         final_target_strengths=final_target,
         final_rival_classes=final_rival_classes,
         final_rival_strengths=final_rival,
+        final_protect_target_strengths=final_protect_target_strengths,
+        final_protect_cleared=final_protect_cleared,
     )

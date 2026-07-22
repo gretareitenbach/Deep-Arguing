@@ -1,3 +1,7 @@
+import json
+import tempfile
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -370,3 +374,60 @@ def test_semantics():
     assert torch.allclose(
         expected_result, result, atol=1e-4
     ), "Semantics: Semantics computation is incorrect"
+
+
+# ---------------------------------------------------------------------------
+# export_to_json(..., batch_size=...)
+# ---------------------------------------------------------------------------
+
+
+def test_export_to_json_chunked_new_cases_matches_unbatched():
+    """Chunking the ``new_cases`` forward pass (``batch_size``) must export
+    the exact same ``new_cases_base_scores``/``new_cases_adjacency``/
+    ``final_strengths`` as the default single unbatched pass. Regression
+    test for ``new_cases_base_scores``/``new_cases_attacks_adjacency`` --
+    set as a side effect of ``forward()``, so they must be accumulated
+    across chunks, not silently left holding only the last chunk's values.
+    """
+    new_cases = torch.tensor([[0.0], [1.0], [6.0], [7.0]])
+    new_cases_labels = torch.tensor([[0.0], [1.0], [0.0], [1.0]])
+
+    model_unbatched = _make_qbaf_model(SigmoidSemantics(max_iters=5, epsilon=0))
+    model_chunked = _make_qbaf_model(SigmoidSemantics(max_iters=5, epsilon=0))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path_unbatched = Path(tmp) / "unbatched.json"
+        path_chunked = Path(tmp) / "chunked.json"
+
+        model_unbatched.export_to_json(
+            str(path_unbatched), new_cases=new_cases, new_cases_labels=new_cases_labels
+        )
+        # batch_size=1 forces 4 separate forward-pass chunks (one per case)
+        # -- the extreme case for the accumulation bug described above.
+        model_chunked.export_to_json(
+            str(path_chunked),
+            new_cases=new_cases,
+            new_cases_labels=new_cases_labels,
+            batch_size=1,
+            disable_tqdm=True,
+        )
+
+        with open(path_unbatched, encoding="utf-8") as f:
+            data_unbatched = json.load(f)
+        with open(path_chunked, encoding="utf-8") as f:
+            data_chunked = json.load(f)
+
+    assert torch.allclose(
+        torch.tensor(data_chunked["new_cases_base_scores"]),
+        torch.tensor(data_unbatched["new_cases_base_scores"]),
+    )
+    assert torch.allclose(
+        torch.tensor(data_chunked["new_cases_adjacency"]),
+        torch.tensor(data_unbatched["new_cases_adjacency"]),
+    )
+    assert torch.allclose(
+        torch.tensor(data_chunked["final_strengths"]),
+        torch.tensor(data_unbatched["final_strengths"]),
+    )
+    # Sanity: every case actually made it through (not just the last chunk).
+    assert len(data_chunked["final_strengths"]) == 4

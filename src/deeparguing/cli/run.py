@@ -306,8 +306,12 @@ def run(project: str = "gradual-aa-cbr"):
                     # Find indices where the model prediction does not match the ground truth
                     misclassified_indices = np.where(y_predicted_classes != y_true_classes)[0]
 
-                    # Isolate up to 100 samples
-                    num_to_extract = min(100, len(misclassified_indices))
+                    # Isolate up to --max_misclassified samples (default: all)
+                    num_to_extract = (
+                        len(misclassified_indices)
+                        if args.max_misclassified is None
+                        else min(args.max_misclassified, len(misclassified_indices))
+                    )
                     selected_indices = misclassified_indices[:num_to_extract]
 
                     X_misc = X_test[selected_indices]
@@ -415,6 +419,8 @@ def run(project: str = "gradual-aa-cbr"):
                         grae_new_case_edges=(
                             grae_result.new_case_edges if grae_result else None
                         ),
+                        batch_size=current_batch_size,
+                        disable_tqdm=args.disable_tqdm,
                         grae_target_indices=(
                             grae_result.target_indices if grae_result else None
                         ),

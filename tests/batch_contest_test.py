@@ -189,3 +189,125 @@ def test_batch_contest_raises_on_target_classes_length_mismatch():
     new_cases = torch.tensor([[6.0], [7.0]])
     with pytest.raises(ValueError, match="target_classes"):
         batch_contest(model, new_cases, [TARGET_INDEX])
+
+
+# ---------------------------------------------------------------------------
+# batch_contest(..., protect_samples=..., protect_lambda=...)
+#
+# Uses a dedicated two-default-argument model (same casebase/edge-weight/
+# irrelevance functions as ``test_rival_indices_differentiates_target_minus_rival``
+# above) so there's a real rival class to build a "protect" margin against,
+# rather than the single-topic-argument threshold fallback the shared
+# ``qbaf_fixtures`` model uses. Numbers below (which lambda actually moves
+# the outcome, by how much) were confirmed against a live run of this exact
+# fixture before being locked into assertions -- see git history.
+# ---------------------------------------------------------------------------
+
+
+def _make_two_class_model(max_iters: int = 5) -> GradualAACBR:
+    semantics = ReluSemantics(max_iters=max_iters, epsilon=0)
+    model = GradualAACBR(semantics, _base_score_fn, _irrelevance_fn, _edge_weights_fn)
+    model.use_symmetric_attacks = True
+    model.use_supports = True
+    model.use_blockers = False
+
+    X_train = torch.tensor([[0], [1], [2], [3], [4]])
+    y_train = torch.tensor([[0], [1], [0], [1], [0]])
+    X_default = torch.tensor([[5], [6]], dtype=torch.float32)
+    y_default = torch.tensor([[0], [1]], dtype=torch.float32)
+    model.fit(X_train, y_train, X_default, y_default)
+    return model
+
+
+_FLIP_CASE = torch.tensor([[6]], dtype=torch.float32)
+_WATCH_CASE = torch.tensor([[7]], dtype=torch.float32)
+
+
+def test_batch_contest_protect_lambda_requires_protect_samples():
+    model = _make_two_class_model()
+    with pytest.raises(ValueError, match="protect_lambda"):
+        batch_contest(model, _FLIP_CASE, [0], protect_lambda=1.0)
+
+
+def test_batch_contest_protect_target_classes_length_mismatch_raises():
+    model = _make_two_class_model()
+    protect_samples = torch.tensor([[7.0], [2.0]])
+    with pytest.raises(ValueError, match="protect_target_classes"):
+        batch_contest(
+            model, _FLIP_CASE, [0],
+            protect_samples=protect_samples, protect_target_classes=[1],
+        )
+
+
+def test_batch_contest_protect_lambda_zero_matches_baseline_behavior():
+    """protect_lambda=0.0 with a nonempty protect_samples must be a
+    complete no-op -- identical accepted edges/model.A/final strengths to a
+    plain call with neither protect_* arg -- not just numerically
+    equivalent."""
+    torch.manual_seed(0)
+    with_inert_protect = _make_two_class_model()
+    result_with = batch_contest(
+        with_inert_protect, _FLIP_CASE, [0], k=3, max_iters=20, margin=0.01,
+        protect_samples=_WATCH_CASE, protect_target_classes=[1],
+        protect_margin=0.05, protect_lambda=0.0,
+    )
+
+    torch.manual_seed(0)
+    without_protect = _make_two_class_model()
+    result_without = batch_contest(
+        without_protect, _FLIP_CASE, [0], k=3, max_iters=20, margin=0.01
+    )
+
+    assert result_with.touched_edge_indices == result_without.touched_edge_indices
+    assert result_with.iterations == result_without.iterations
+    assert torch.allclose(with_inert_protect.A, without_protect.A)
+    assert torch.allclose(
+        result_with.final_target_strengths, result_without.final_target_strengths
+    )
+    # protect_samples was given, so the informational field is still
+    # populated -- protect_lambda=0 only makes it inert, not absent.
+    assert result_with.final_protect_target_strengths is not None
+    assert result_without.final_protect_target_strengths is None
+
+
+def test_batch_contest_result_protect_fields_populated_only_when_protect_samples_given():
+    model = _make_two_class_model()
+    result = batch_contest(
+        model, _FLIP_CASE, [0], k=3, max_iters=20, margin=0.01,
+        protect_samples=_WATCH_CASE, protect_target_classes=[1],
+        protect_margin=0.05, protect_lambda=1.0,
+    )
+    assert result.final_protect_target_strengths is not None
+    assert result.final_protect_cleared is not None
+    assert result.final_protect_target_strengths.shape == (1,)
+
+
+def test_batch_contest_protect_penalty_preserves_protect_margin():
+    """Flipping ``_FLIP_CASE`` towards class 0 shares edges with
+    ``_WATCH_CASE``'s own class-1 strength (confirmed live: an unprotected
+    run swings ``_WATCH_CASE``'s class1-minus-class0 margin from 0 to
+    roughly -2.46). Turning on ``protect_lambda`` for a "protect" batch
+    containing ``_WATCH_CASE`` should still let the flip succeed, but leave
+    ``_WATCH_CASE``'s margin far less eroded."""
+
+    def run(protect_lambda: float) -> tuple[bool, float]:
+        torch.manual_seed(0)
+        model = _make_two_class_model()
+        result = batch_contest(
+            model, _FLIP_CASE, [0], k=3, max_iters=20, margin=0.01, divergence_bound=100.0,
+            protect_samples=_WATCH_CASE, protect_target_classes=[1],
+            protect_margin=0.05, protect_lambda=protect_lambda,
+        )
+        watch_strengths = model(_WATCH_CASE)[0]
+        watch_margin = (watch_strengths[1] - watch_strengths[0]).item()
+        return bool(result.cleared[0]), watch_margin
+
+    unprotected_cleared, unprotected_margin = run(protect_lambda=0.0)
+    protected_cleared, protected_margin = run(protect_lambda=1.0)
+
+    assert unprotected_cleared
+    assert unprotected_margin == pytest.approx(-2.46, abs=1e-2)
+
+    assert protected_cleared
+    assert protected_margin > unprotected_margin + 1.0  # far less eroded
+    assert protected_margin == pytest.approx(-0.0071, abs=1e-2)

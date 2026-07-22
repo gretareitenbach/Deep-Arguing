@@ -1,0 +1,42 @@
+# Config for deeparguing.counterfactuals.global_optimize.
+#
+# Builds on tuning/contest/contest.yaml's batch_contest hyperparameters
+# (k/threshold/margin/etc. below match it) and adds the global-optimization
+# settings: a soft protect-set penalty on every step, plus a hard periodic
+# accuracy guardrail with rollback. See global_optimize.py's module
+# docstring for the full design.
+#
+# Any CLI flag passed to global_optimize.py overrides the corresponding
+# value here (e.g. `--protect-lambda 2.0` for a one-off run without editing
+# this file).
+
+# Dataset / checkpoint paths.
+checkpoint: outputs/checkpoints/model_checkpoint.pt
+qbaf: outputs/qbaf/misclassified_qbaf.json
+num_samples: null  # null = use every misclassified sample in qbaf
+
+# batch_contest hyperparameters (inherited from tuning/contest/contest.yaml).
+k: 3
+threshold: 0.5
+margin: 0.001
+max_iters: 200  # larger than contest.yaml's 50: rounds now checkpoint/guard periodically
+tol: 0.0001
+max_edits: null  # null = unbounded edit budget, cumulative across rounds
+batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
+divergence_bound: 100.0
+alpha_init: 1.0
+max_backtracks: 10
+
+# Global-optimization-specific.
+protect_margin: 0.01
+protect_lambda: 1.0
+protect_sample_size: 200
+max_acc_drop: 0.01      # stop and roll back once eval-split accuracy has dropped this much
+eval_every: 10           # outer iterations per round before the hard guardrail re-checks
+eval_split: val          # val | test -- keep test unpeeked; confirm on test afterward via run_global_contest_eval.py
+eval_batch_size: null
+
+# Run/output settings.
+device: null  # null = auto-detect cuda if available, else cpu
+log_dir: outputs/contestation
+save_checkpoint: null  # null = default to '<log_dir>/global_optimize_checkpoint.pt'; "" to skip saving
