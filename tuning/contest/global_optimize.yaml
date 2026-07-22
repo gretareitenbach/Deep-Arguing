@@ -28,11 +28,28 @@ alpha_init: 1.0
 max_backtracks: 10
 
 # Global-optimization-specific.
+#
+# eval_every=10/protect_lambda=1.0 (the original defaults) were re-run
+# against the real CIFAR-10 ReluSemantics checkpoint on 2026-07-22 and
+# produced zero net flips both times: round 1's first 10 iterations already
+# cost -4.62 accuracy (144/1637 samples) to -9.47 accuracy (2/50 samples)
+# before the guardrail ever got to look, blowing straight past
+# max_acc_drop=0.01 and rolling the whole round back. The soft penalty
+# wasn't strong enough to hold the line within 10 iterations, and the
+# guardrail was too coarse-grained to accept the (likely cheaper) earlier
+# iterations before the later, costlier ones dragged the round over budget.
+# Dropped eval_every to 1 so the guardrail can accept/reject each iteration
+# individually instead of an all-or-nothing 10-iteration block, and raised
+# protect_lambda 1.0 -> 5.0 to lean harder on the soft penalty so fewer
+# iterations need the hard check to bail them out at all. Not yet
+# re-validated against a real run -- see the PR/session that introduced
+# this comment for the sweep to try next (protect_lambda in {5, 20, 50} at
+# eval_every=1) before trusting these as a new "winning config."
 protect_margin: 0.01
-protect_lambda: 1.0
+protect_lambda: 5.0
 protect_sample_size: 200
 max_acc_drop: 0.01      # stop and roll back once eval-split accuracy has dropped this much
-eval_every: 10           # outer iterations per round before the hard guardrail re-checks
+eval_every: 1            # outer iterations per round before the hard guardrail re-checks
 eval_split: val          # val | test -- keep test unpeeked; confirm on test afterward via run_global_contest_eval.py
 eval_batch_size: null
 
