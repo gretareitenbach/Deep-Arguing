@@ -12,8 +12,9 @@ import wandb
 from deeparguing.feature_extractor.resnet import Resnet32
 from deeparguing.helper import load_torch_images, split_data
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 
-VERIFY_LOG_PATH = "outputs/logs/verify_resnet.md"
+VERIFY_LOG_PATH = output_path("verify_resnet.md")
 
 
 def evaluate(

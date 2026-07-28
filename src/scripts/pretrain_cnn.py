@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +8,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 
 from deeparguing.feature_extractor.simple_cnn import SimpleCNN
 from deeparguing.helper import load_torch_images, split_data
+from deeparguing.output_paths import output_path
 
 # ------------------------------
 # HYPERPARAMETERS
@@ -146,8 +145,7 @@ wandb.log({"confusion_matrix": wandb.plot.confusion_matrix(
 )})
 
 
-save_path = "outputs/checkpoints/simple_cnn_64.pt"
-Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+save_path = output_path("simple_cnn_64.pt")
 torch.save(model.state_dict(), save_path)
 
 wandb.finish()

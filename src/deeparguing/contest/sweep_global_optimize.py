@@ -17,7 +17,7 @@ Usage::
     python -m deeparguing.contest.sweep_global_optimize
     python -m deeparguing.contest.sweep_global_optimize \\
         --protect-lambdas 1,5,20,50 --eval-everys 1,5,10 \\
-        --max-combos 40 --output outputs/contestation/global_optimize_sweep.md
+        --max-combos 40 --output global_optimize_sweep.md
 
 Grid size is the product of every ``--*-s`` list's length -- five 3-value
 lists is already 243 full ``global_optimize`` runs. Pass ``--max-combos`` to
@@ -47,8 +47,9 @@ from deeparguing.contest.global_optimize import (DEFAULT_CONFIG_PATH,
 from deeparguing.contest.run_contest import (load_all_samples,
                                                        load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import compute_baseline_metrics
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
-DEFAULT_OUTPUT = "outputs/contestation/global_optimize_sweep.md"
+DEFAULT_OUTPUT = "global_optimize_sweep.md"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 6
 # Above this many combos in the full grid, nudge the user toward --max-combos
@@ -305,8 +306,8 @@ def main() -> None:
 
     config = _load_config(args.config)
 
-    checkpoint = _required(args.checkpoint, config, "checkpoint", args.config)
-    qbaf = _required(args.qbaf, config, "qbaf", args.config)
+    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
     num_samples = _resolved(args.num_samples, config, "num_samples", None)
     k = _resolved(args.k, config, "k", DEFAULT_K)
     threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
@@ -400,17 +401,16 @@ def main() -> None:
         ["num_cleared", "acc_drop"], ascending=[False, True]
     ).reset_index(drop=True)
 
-    output_path = Path(args.output)
-    csv_path = output_path.with_suffix(".csv")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path = Path(resolve_write_path(args.output))
+    csv_path = report_path.with_suffix(".csv")
     df_sorted.round(CSV_DECIMALS).to_csv(csv_path, index=False)
     print(f"Wrote raw sweep data to {csv_path}")
 
     _write_report(
-        output_path, df_sorted, baseline.accuracy, eval_split, checkpoint, qbaf,
+        report_path, df_sorted, baseline.accuracy, eval_split, checkpoint, qbaf,
         num_samples, args.seed, fixed_kwargs, total_grid, len(combos), total_elapsed,
     )
-    print(f"Wrote sweep report to {output_path}")
+    print(f"Wrote sweep report to {report_path}")
 
 
 if __name__ == "__main__":

@@ -10,9 +10,11 @@
 # Any CLI flag passed to contest_all.py overrides the corresponding value
 # here (e.g. `--k 10` for a one-off run without editing this file).
 
-# Dataset / checkpoint paths.
-checkpoint: outputs/checkpoints/model_checkpoint.pt
-qbaf: outputs/qbaf/misclassified_qbaf.json
+# Dataset / checkpoint paths. Bare filenames (no directory component) are
+# resolved via deeparguing.output_paths: today's outputs/<date>/ folder if
+# the file is there, else the most recent earlier date folder that has it.
+checkpoint: model_checkpoint.pt
+qbaf: misclassified_qbaf.json
 num_samples: null  # null = use every misclassified sample in qbaf
 
 # batch_contest hyperparameters.
@@ -29,5 +31,5 @@ max_backtracks: 10
 
 # Run/output settings.
 device: null  # null = auto-detect cuda if available, else cpu
-log_dir: outputs/contestation
-save_checkpoint: null  # null = default to '<log_dir>/contested_checkpoint.pt'; "" to skip saving
+log_dir: null  # null = today's outputs/<date>/ folder
+save_checkpoint: null  # null = default to '<log_dir>/<checkpoint_filename>'; "" to skip saving

@@ -14,9 +14,8 @@ from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 from deeparguing.train.curriculum import CurriculumStrategy, DataSelector
-
-SUMMARY_LOG_PATH = "outputs/logs/summary.md"
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import (
     CurriculumValidationLog,
@@ -303,7 +302,7 @@ class CurriculumTrainer(NeuralTrainer):
                         f"active: {active_classes}"
                     )
                     logging.info(curriculum_advance_line)
-                    write_markdown_log([curriculum_advance_line], SUMMARY_LOG_PATH)
+                    write_markdown_log([curriculum_advance_line], output_path("summary.md"))
                     if self.reset_optimizer_on_advance:
                         self._reset_optimizer_state(optimizer)
 

@@ -69,6 +69,8 @@ from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
                                                      evaluate_contested_model)
 from deeparguing.gradual_aacbr import GradualAACBR
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import (output_path, resolve_read_path,
+                                       today_output_dir)
 
 DEFAULT_CONFIG_PATH = "tuning/contest/global_optimize.yaml"
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
@@ -76,7 +78,7 @@ DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_MAX_ACC_DROP = 0.01
 DEFAULT_EVAL_EVERY = 10
 DEFAULT_EVAL_SPLIT = "val"
-DEFAULT_MD_LOG_PATH = "outputs/logs/global_optimize.md"
+DEFAULT_MD_LOG_FILENAME = "global_optimize.md"
 
 
 @dataclasses.dataclass
@@ -360,15 +362,15 @@ def main() -> None:
         "--md-log-path",
         default=None,
         help="Markdown file to append a human-readable run summary to "
-        f"(created if missing). Defaults to '{DEFAULT_MD_LOG_PATH}'; pass an "
-        "empty string to skip.",
+        f"(created if missing). Defaults to today's outputs/<date>/"
+        f"{DEFAULT_MD_LOG_FILENAME}; pass an empty string to skip.",
     )
     args = parser.parse_args()
 
     config = _load_config(args.config)
 
-    checkpoint = _required(args.checkpoint, config, "checkpoint", args.config)
-    qbaf = _required(args.qbaf, config, "qbaf", args.config)
+    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
     num_samples = _resolved(args.num_samples, config, "num_samples", None)
     k = _resolved(args.k, config, "k", DEFAULT_K)
     threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
@@ -392,14 +394,14 @@ def main() -> None:
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
     eval_batch_size = _resolved(args.eval_batch_size, config, "eval_batch_size", None)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", "outputs/contestation")
+    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
     # explicit) mirrors contest_all.py -- must not fall through _resolved's
     # "treat null/absent as unset" rule.
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
     md_log_path = args.md_log_path if args.md_log_path is not None else config.get("md_log_path")
     if md_log_path is None:
-        md_log_path = DEFAULT_MD_LOG_PATH
+        md_log_path = output_path(DEFAULT_MD_LOG_FILENAME)
 
     with open(qbaf, "r", encoding="utf-8") as f:
         qbaf_data = json.load(f)

@@ -20,7 +20,7 @@ Usage::
 
     python -m deeparguing.contest.sweep_global_contest_eval
     python -m deeparguing.contest.sweep_global_contest_eval \\
-        --ns 0,1,10,100 --seed 0 --output outputs/contestation/global_eval_sweep.csv
+        --ns 0,1,10,100 --seed 0 --output global_eval_sweep.csv
 """
 
 import argparse
@@ -47,9 +47,10 @@ from deeparguing.contest.run_contest import (load_all_samples,
                                                        load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
                                                      evaluate_contested_model)
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
 DEFAULT_NS = [0, 1, 5, 10, 25, 50, 100]
-DEFAULT_OUTPUT = "outputs/contestation/global_eval_sweep.csv"
+DEFAULT_OUTPUT = "global_eval_sweep.csv"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 3
 
@@ -172,6 +173,8 @@ def main() -> None:
             "checkpoint/qbaf not given on the command line and not set in "
             f"{args.config} -- add them there or pass --checkpoint/--qbaf."
         )
+    checkpoint = resolve_read_path(checkpoint)
+    qbaf_path = resolve_read_path(qbaf_path)
 
     contest_kwargs = dict(
         k=config.get("k", DEFAULT_K),
@@ -258,12 +261,11 @@ def main() -> None:
 
     df = pd.DataFrame(rows)
 
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.round(CSV_DECIMALS).to_csv(output_path, index=False)
-    logging.info(f"Wrote {len(rows)} rows to {output_path}")
+    csv_path = Path(resolve_write_path(args.output))
+    df.round(CSV_DECIMALS).to_csv(csv_path, index=False)
+    logging.info(f"Wrote {len(rows)} rows to {csv_path}")
 
-    png_path = output_path.with_suffix(".png")
+    png_path = csv_path.with_suffix(".png")
     _plot_acc_drop_vs_n(df, png_path)
     logging.info(f"Wrote accuracy-drop plot to {png_path}")
 

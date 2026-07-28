@@ -2,21 +2,24 @@
 
 ``cli/run.py`` trains/evaluates/exports; it is not the place to interactively
 contest one prediction. This script only *consumes* what a
-``--misclassified_log`` run already produced -- ``outputs/checkpoints/model_checkpoint.pt``
-(weights + fitted casebase, see ``run.py``) and ``outputs/qbaf/misclassified_qbaf.json``
+``--misclassified_log`` run already produced -- ``model_checkpoint.pt``
+(weights + fitted casebase, see ``run.py``) and ``misclassified_qbaf.json``
 (the real misclassified samples, already in model-input form) -- rebuilds the
 live model, and runs ``contest()`` against one real sample end to end.
+
+Checkpoint/qbaf default to those bare filenames, resolved via
+``deeparguing.output_paths.resolve_read_path``: today's ``outputs/<date>/``
+folder if the file is there, else the most recent earlier date folder that
+has it.
 
 Usage::
 
     python -m deeparguing.contest.run_contest \\
-        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
-        --qbaf outputs/qbaf/misclassified_qbaf.json \\
+        --checkpoint model_checkpoint.pt \\
+        --qbaf misclassified_qbaf.json \\
         --sample-index 0
 
-Requires a checkpoint produced by ``cli/run.py --run_test --misclassified_log``
-(re-run the CLI with that flag if ``outputs/checkpoints/model_checkpoint.pt``
-doesn't exist yet).
+Requires a checkpoint produced by ``cli/run.py --run_test --misclassified_log``.
 """
 
 import argparse
@@ -31,6 +34,7 @@ from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
                                                   MAX_ITERS, THRESHOLD,
                                                   contest)
 from deeparguing.gradual_aacbr import GradualAACBR
+from deeparguing.output_paths import resolve_read_path, today_output_dir
 
 
 def load_fitted_model_and_data(
@@ -117,8 +121,8 @@ def load_all_samples(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", default="outputs/checkpoints/model_checkpoint.pt")
-    parser.add_argument("--qbaf", default="outputs/qbaf/misclassified_qbaf.json")
+    parser.add_argument("--checkpoint", default="model_checkpoint.pt")
+    parser.add_argument("--qbaf", default="misclassified_qbaf.json")
     parser.add_argument("--sample-index", type=int, default=0)
     parser.add_argument(
         "--target-class",
@@ -162,17 +166,22 @@ def main() -> None:
     )
     parser.add_argument(
         "--log-dir",
-        default="outputs/contestation",
+        default=None,
         help=(
             "Directory to additionally write a per-run contest log file to "
             "(one line per iteration: edges perturbed, step size, weight "
-            "and strength deltas). Console logging is unaffected."
+            "and strength deltas). Console logging is unaffected. Defaults "
+            "to today's outputs/<date>/ folder."
         ),
     )
     args = parser.parse_args()
 
-    Path(args.log_dir).mkdir(parents=True, exist_ok=True)
-    log_path = Path(args.log_dir) / f"contest_sample{args.sample_index}.log"
+    args.checkpoint = resolve_read_path(args.checkpoint)
+    args.qbaf = resolve_read_path(args.qbaf)
+
+    log_dir = Path(args.log_dir) if args.log_dir else today_output_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"contest_sample{args.sample_index}.log"
 
     logging.basicConfig(
         level=args.log.upper(),

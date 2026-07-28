@@ -11,10 +11,9 @@ from deeparguing.cli.loggers import ExperimentLogger
 from deeparguing.criterion import CriterionType
 from deeparguing.criterion import CriterionType
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 from deeparguing.train.neural_trainer import NeuralTrainer
 from deeparguing.train.strategies import StandardValidationLog, ValidationLogStrategy
-
-SUMMARY_LOG_PATH = "outputs/logs/summary.md"
 
 
 class SimpleTrainer(NeuralTrainer):
@@ -125,7 +124,7 @@ class SimpleTrainer(NeuralTrainer):
                     print("WARNING: LOSS IS NAN")
                     write_markdown_log(
                         [f"WARNING: loss is NaN at epoch {epoch} -- training aborted"],
-                        SUMMARY_LOG_PATH,
+                        output_path("summary.md"),
                     )
                     return 0.0
 

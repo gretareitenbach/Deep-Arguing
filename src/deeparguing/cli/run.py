@@ -1,7 +1,6 @@
 import datetime
 import logging
 import os
-from pathlib import Path
 
 from optuna.samplers import TPESampler
 
@@ -35,6 +34,7 @@ from deeparguing.feature_extractor import *
 from deeparguing.helper import *
 from deeparguing.irrelevance_edge_weights import *
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 from deeparguing.criterion.losses import *
 from deeparguing.criterion import *
 from deeparguing.models import *
@@ -53,15 +53,13 @@ torch.backends.cudnn.benchmark = False
 torch.use_deterministic_algorithms(True)
 
 
-SUMMARY_LOG_PATH = "outputs/logs/summary.md"
-
-
 def write_markdown_summary(lines: list[str], mode: str = "a") -> None:
     """Append (or, with ``mode="w"``, start fresh) CLI log lines as markdown in
-    outputs/logs/summary.md -- mirrors the same substantive (non-progress)
-    output the run already prints/logs to the console, so it survives after
-    the terminal scrollback is gone. See ``deeparguing.md_log`` for formatting."""
-    write_markdown_log(lines, SUMMARY_LOG_PATH, mode=mode)
+    today's outputs/<date>/summary.md -- mirrors the same substantive
+    (non-progress) output the run already prints/logs to the console, so it
+    survives after the terminal scrollback is gone. See ``deeparguing.md_log``
+    for formatting."""
+    write_markdown_log(lines, output_path("summary.md"), mode=mode)
 
 
 def run(project: str = "gradual-aa-cbr"):
@@ -187,13 +185,11 @@ def run(project: str = "gradual-aa-cbr"):
                 theta_pre = parameters_to_vector(model.parameters()).clone().detach()
 
             if args.json_out:
-                QBAF_DIR = "outputs/qbaf"
-                Path(QBAF_DIR).mkdir(parents=True, exist_ok=True)
                 model.fit(X_casebase, y_casebase, X_defaults, y_defaults)
                 image_mean = data_dict.get("image_mean", None)
                 image_std = data_dict.get("image_std", None)
                 model.export_to_json(
-                    f"{QBAF_DIR}/pre_training_{args.json_out}.json",
+                    output_path(f"pre_training_{args.json_out}.json"),
                     image_mean=image_mean,
                     image_std=image_std,
                     new_cases=X_new_cases[: args.num_new_vis],
@@ -225,9 +221,7 @@ def run(project: str = "gradual-aa-cbr"):
             # model.A/X_train/default_indexes, since fit() sets those as
             # plain attributes, not buffers. Saved unconditionally (not just
             # under --misclassified_log) so a checkpoint is always available.
-            CHECKPOINT_DIR = "outputs/checkpoints"
-            Path(CHECKPOINT_DIR).mkdir(parents=True, exist_ok=True)
-            checkpoint_path = f"{CHECKPOINT_DIR}/model_checkpoint.pt"
+            checkpoint_path = output_path("model_checkpoint.pt")
             torch.save(
                 {
                     "config_paths": args.config,
@@ -253,7 +247,7 @@ def run(project: str = "gradual-aa-cbr"):
                 y_val,
                 batch_size=batch_size,
             )
-            print_results(acc, prec, rec, f1, cm, "VALIDATION", labels, log_path=SUMMARY_LOG_PATH)
+            print_results(acc, prec, rec, f1, cm, "VALIDATION", labels, log_path=output_path("summary.md"))
             ExperimentLogger.current().log_metrics(
                 {
                     "seed": seed,
@@ -280,7 +274,7 @@ def run(project: str = "gradual-aa-cbr"):
                 )
                 print_results(
                     acc_test, prec_test, rec_test, f1_test, cm_test, "TEST", labels,
-                    log_path=SUMMARY_LOG_PATH,
+                    log_path=output_path("summary.md"),
                 )
                 test_f1s.append(f1_test)
                 test_accs.append(acc_test)
@@ -317,11 +311,6 @@ def run(project: str = "gradual-aa-cbr"):
                     X_misc = X_test[selected_indices]
                     y_misc = y_test[selected_indices]
 
-                    GRAE_DIR = "outputs/grae"
-                    QBAF_DIR = "outputs/qbaf"
-                    Path(GRAE_DIR).mkdir(parents=True, exist_ok=True)
-                    Path(QBAF_DIR).mkdir(parents=True, exist_ok=True)
-
                     grae_result = None
                     if args.grae_log:
                         # ==================================================
@@ -345,7 +334,7 @@ def run(project: str = "gradual-aa-cbr"):
                             model, X_misc, target_indices, per_sample=True
                         )
 
-                        grae_export_path = f"{GRAE_DIR}/misclassified_grae.pt"
+                        grae_export_path = output_path("misclassified_grae.pt")
                         torch.save(
                             {
                                 "casebase_edges": grae_result.casebase_edges,
@@ -400,7 +389,7 @@ def run(project: str = "gradual-aa-cbr"):
                         # ==================================================
 
                     # Export to JSON
-                    export_path = f"{QBAF_DIR}/misclassified_qbaf.json"
+                    export_path = output_path("misclassified_qbaf.json")
 
                     image_mean = data_dict.get("image_mean", None)
                     image_std = data_dict.get("image_std", None)
@@ -450,7 +439,7 @@ def run(project: str = "gradual-aa-cbr"):
                     cm_train,
                     "TRAIN",
                     labels,
-                    log_path=SUMMARY_LOG_PATH,
+                    log_path=output_path("summary.md"),
                 )
                 train_f1s.append(f1_train)
                 train_accs.append(acc_train)
@@ -502,7 +491,7 @@ def run(project: str = "gradual-aa-cbr"):
                 image_mean = data_dict.get("image_mean", None)
                 image_std = data_dict.get("image_std", None)
                 model.export_to_json(
-                    f"{QBAF_DIR}/post_training_{args.json_out}.json",
+                    output_path(f"post_training_{args.json_out}.json"),
                     image_mean=image_mean,
                     image_std=image_std,
                     new_cases=X_new_cases[: args.num_new_vis],

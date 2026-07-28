@@ -15,9 +15,9 @@ lost to pruning can be recovered (or exceeded) by reweighting the survivors.
 Usage::
 
     python -m deeparguing.contest.prune_edges \\
-        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
+        --checkpoint model_checkpoint.pt \\
         --threshold 0.1 \\
-        --output outputs/checkpoints/pruned_model_checkpoint.pt
+        --output pruned_model_checkpoint.pt
 
 Operates directly on the checkpoint dict (as saved by ``cli/run.py``:
 ``config_paths``/``state_dict``/``A``/``X_train``/``y_train``/
@@ -25,6 +25,11 @@ Operates directly on the checkpoint dict (as saved by ``cli/run.py``:
 touches ``A``, so there's no need to re-run ``parse_model_config`` or reload
 the dataset just to resave it. The output is a drop-in checkpoint: every
 other ``contest/`` script's ``--checkpoint`` flag accepts it unchanged.
+
+``--checkpoint``/``--output`` default to bare filenames, resolved via
+``deeparguing.output_paths`` -- the checkpoint is looked up (today's
+``outputs/<date>/`` folder, else the most recent earlier date folder that has
+it) and the pruned output is always written to today's folder.
 """
 
 import argparse
@@ -33,9 +38,11 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
+
 DEFAULT_THRESHOLD = 0.1
-DEFAULT_CHECKPOINT = "outputs/checkpoints/model_checkpoint.pt"
-DEFAULT_OUTPUT = "outputs/checkpoints/pruned_model_checkpoint.pt"
+DEFAULT_CHECKPOINT = "model_checkpoint.pt"
+DEFAULT_OUTPUT = "pruned_model_checkpoint.pt"
 
 
 @dataclass(frozen=True)
@@ -85,8 +92,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print(f"Loading checkpoint from {args.checkpoint} ...")
-    checkpoint = torch.load(args.checkpoint, map_location=args.device)
+    checkpoint_path = resolve_read_path(args.checkpoint)
+    output_path = resolve_write_path(args.output)
+
+    print(f"Loading checkpoint from {checkpoint_path} ...")
+    checkpoint = torch.load(checkpoint_path, map_location=args.device)
 
     result = prune_edges(checkpoint["A"], threshold=args.threshold)
     print(
@@ -95,8 +105,8 @@ def main() -> None:
     )
 
     checkpoint["A"] = result.pruned_A
-    torch.save(checkpoint, args.output)
-    print(f"Saved pruned checkpoint to {args.output}")
+    torch.save(checkpoint, output_path)
+    print(f"Saved pruned checkpoint to {output_path}")
 
 
 if __name__ == "__main__":

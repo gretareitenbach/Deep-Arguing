@@ -1,7 +1,7 @@
 """Recompute the misclassified-sample QBAF export for an already-fitted
 checkpoint, without going through ``cli/run.py``'s full train loop.
 
-``cli/run.py --misclassified_log`` builds ``outputs/qbaf/misclassified_qbaf.json``
+``cli/run.py --misclassified_log`` builds ``misclassified_qbaf.json``
 as one step of a training run, against whatever ``model.A`` training just
 produced. That set goes stale the moment ``model.A`` changes by some other
 means -- e.g. ``contest/prune_edges.py`` hard-thresholding weak edges out of
@@ -17,24 +17,29 @@ GRAE attribution is intentionally not computed here (unlike
 ``cli/run.py --grae_log``) since neither ``contest_all.py`` nor ``contest.py``
 read it; add ``--grae`` support later if some other consumer needs it.
 
+``--checkpoint``/``--output`` default to bare filenames, resolved via
+``deeparguing.output_paths`` -- the checkpoint is looked up (today's
+``outputs/<date>/`` folder, else the most recent earlier date folder that has
+it) and the QBAF export is always written to today's folder.
+
 Usage::
 
     python -m deeparguing.contest.recompute_misclassified \\
-        --checkpoint outputs/checkpoints/pruned_model_checkpoint.pt \\
-        --output outputs/qbaf/pruned_misclassified_qbaf.json
+        --checkpoint pruned_model_checkpoint.pt \\
+        --output pruned_misclassified_qbaf.json
 """
 
 import argparse
 import logging
-from pathlib import Path
 
 import numpy as np
 import torch
 
 from deeparguing.contest.run_contest import load_fitted_model_and_data
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
-DEFAULT_CHECKPOINT = "outputs/checkpoints/pruned_model_checkpoint.pt"
-DEFAULT_OUTPUT = "outputs/qbaf/pruned_misclassified_qbaf.json"
+DEFAULT_CHECKPOINT = "pruned_model_checkpoint.pt"
+DEFAULT_OUTPUT = "pruned_misclassified_qbaf.json"
 
 
 def find_misclassified(
@@ -86,8 +91,9 @@ def main() -> None:
         level=args.log.upper(), format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
-    logging.info(f"Loading checkpoint from {args.checkpoint} ...")
-    model, data_dict = load_fitted_model_and_data(args.checkpoint, args.device)
+    checkpoint_path = resolve_read_path(args.checkpoint)
+    logging.info(f"Loading checkpoint from {checkpoint_path} ...")
+    model, data_dict = load_fitted_model_and_data(checkpoint_path, args.device)
     X = data_dict[f"X_{args.split}"]
     y = data_dict[f"y_{args.split}"]
 
@@ -111,14 +117,13 @@ def main() -> None:
     image_mean = data_dict.get("image_mean", None)
     image_std = data_dict.get("image_std", None)
 
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path_resolved = resolve_write_path(args.output)
 
     # Triggers a forward pass internally to populate new_cases_base_scores
     # and new_cases_attacks_adjacency before exporting (see
     # GradualAACBR.export_to_json).
     model.export_to_json(
-        str(output_path),
+        output_path_resolved,
         image_mean=image_mean,
         image_std=image_std,
         new_cases=X_misc,
@@ -127,7 +132,7 @@ def main() -> None:
     )
     logging.info(
         f"Exported {num_to_extract} misclassified samples and their QBAF "
-        f"tensors to {output_path}"
+        f"tensors to {output_path_resolved}"
     )
 
 

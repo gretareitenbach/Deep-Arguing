@@ -22,11 +22,15 @@ Usage::
     python -m deeparguing.contest.contest_all --config tuning/contest/contest.yaml
     python -m deeparguing.contest.contest_all --k 10 --margin 0.005   # one-off override
 
-By default this writes two things to ``log_dir`` (``outputs/contestation``):
-a timestamped JSON log (run config, summary counts, and a per-sample
-cleared/failed breakdown) and a checkpoint holding the new, contested
-``model.A`` -- set ``save_checkpoint: ""`` (or ``--save-checkpoint ""``) to
-skip the latter.
+By default this writes two things to ``log_dir`` (today's ``outputs/<date>/``
+folder -- see ``deeparguing.output_paths``): a timestamped JSON log (run
+config, summary counts, and a per-sample cleared/failed breakdown) and a
+checkpoint holding the new, contested ``model.A`` -- set
+``save_checkpoint: ""`` (or ``--save-checkpoint ""``) to skip the latter.
+The JSON log's filename prefix and the checkpoint's filename are
+configurable (``log_prefix``/``checkpoint_filename``) so a variant pipeline
+(e.g. the pruned-checkpoint config) doesn't collide with another variant's
+output landing in the same date folder on the same day.
 
 This runs one joint optimization over every misclassified sample (each
 outer iteration involves a batched forward pass, a batched backward pass,
@@ -49,6 +53,7 @@ from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          MAX_BACKTRACKS, TOL,
                                                          batch_contest)
 from deeparguing.contest.run_contest import load_all_samples, load_model
+from deeparguing.output_paths import resolve_read_path, today_output_dir
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"
 
@@ -151,15 +156,30 @@ def main() -> None:
         "--save-checkpoint",
         default=None,
         help="Where to save the model (with its perturbed model.A) after the "
-        "run. Defaults to '<log-dir>/contested_checkpoint.pt'; pass an empty "
+        "run. Defaults to '<log-dir>/<checkpoint-filename>'; pass an empty "
         "string to skip saving a checkpoint entirely.",
+    )
+    parser.add_argument(
+        "--checkpoint-filename",
+        default=None,
+        help="Filename (under log-dir) for the saved checkpoint. Default: "
+        "'contested_checkpoint.pt'. Override this in a variant config (e.g. "
+        "'pruned_contested_checkpoint.pt') so it doesn't collide with "
+        "another variant's output landing in the same date folder.",
+    )
+    parser.add_argument(
+        "--log-prefix",
+        default=None,
+        help="Filename prefix (under log-dir) for the timestamped JSON log. "
+        "Default: 'contestation'. Same collision-avoidance purpose as "
+        "--checkpoint-filename.",
     )
     args = parser.parse_args()
 
     config = _load_config(args.config)
 
-    checkpoint = _required(args.checkpoint, config, "checkpoint", args.config)
-    qbaf = _required(args.qbaf, config, "qbaf", args.config)
+    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
     num_samples = _resolved(args.num_samples, config, "num_samples", None)
     k = _resolved(args.k, config, "k", DEFAULT_K)
     threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
@@ -172,7 +192,9 @@ def main() -> None:
     alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
     max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", "outputs/contestation")
+    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    checkpoint_filename = _resolved(args.checkpoint_filename, config, "checkpoint_filename", "contested_checkpoint.pt")
+    log_prefix = _resolved(args.log_prefix, config, "log_prefix", "contestation")
     # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
     # explicit) means an empty string from the config must NOT fall through
     # to _resolved's "treat null/absent as unset" rule, so it's handled
@@ -234,7 +256,7 @@ def main() -> None:
     ]
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    log_path = log_dir / f"contestation_{timestamp}.json"
+    log_path = log_dir / f"{log_prefix}_{timestamp}.json"
     log = {
         "config": {
             "config_file": args.config,
@@ -277,7 +299,7 @@ def main() -> None:
     print(f"Saved run log to {log_path}")
 
     if save_checkpoint is None:
-        save_checkpoint = str(log_dir / "contested_checkpoint.pt")
+        save_checkpoint = str(log_dir / checkpoint_filename)
 
     if save_checkpoint:
         torch.save(

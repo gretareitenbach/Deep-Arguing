@@ -10,9 +10,12 @@
 # Any CLI flag passed to contest_all.py overrides the corresponding value
 # here (e.g. `--k 10` for a one-off run without editing this file).
 
-# Dataset / checkpoint paths -- pruned checkpoint + its recomputed misclassified set.
-checkpoint: outputs/checkpoints/pruned_model_checkpoint.pt
-qbaf: outputs/qbaf/pruned_misclassified_qbaf.json
+# Dataset / checkpoint paths -- pruned checkpoint + its recomputed
+# misclassified set. Bare filenames (no directory component) are resolved
+# via deeparguing.output_paths: today's outputs/<date>/ folder if the file
+# is there, else the most recent earlier date folder that has it.
+checkpoint: pruned_model_checkpoint.pt
+qbaf: pruned_misclassified_qbaf.json
 num_samples: null  # null = use every misclassified sample in qbaf
 
 # batch_contest hyperparameters (unchanged from contest.yaml).
@@ -29,5 +32,12 @@ max_backtracks: 10
 
 # Run/output settings.
 device: null  # null = auto-detect cuda if available, else cpu
-log_dir: outputs/contestation_pruned
-save_checkpoint: null  # null = default to '<log_dir>/contested_checkpoint.pt'; "" to skip saving
+log_dir: null  # null = today's outputs/<date>/ folder
+# checkpoint_filename/log_prefix are overridden here (vs. contest.yaml's
+# defaults of 'contested_checkpoint.pt'/'contestation') so this pipeline's
+# output doesn't collide with the unpruned run's, since both now land flat
+# in the same date folder rather than separate outputs/contestation(_pruned)/
+# subfolders.
+checkpoint_filename: pruned_contested_checkpoint.pt
+log_prefix: pruned_contestation
+save_checkpoint: null  # null = default to '<log_dir>/<checkpoint_filename>'; "" to skip saving

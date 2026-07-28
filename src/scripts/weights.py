@@ -1,6 +1,7 @@
 import math
 
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 
 # x = [17, 162, 2265, 50, 2680, 1297, 250, 354, 454, 44, 1094, 2891, 127, 312, 1395, 1815, 911, 1837]
 x = [55, 25]
@@ -20,6 +21,6 @@ for v in x:
 
 write_markdown_log(
     ["--- WEIGHTS ---", "```yaml\n" + "\n".join(lines) + "\n```"],
-    "outputs/logs/weights.md",
+    output_path("weights.md"),
     mode="w",
 )

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 import torch
 import torch.nn as nn
@@ -10,6 +9,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 
 from deeparguing.helper import load_torch_images, split_data
 from deeparguing.feature_extractor.resnet import ResNetCIFAR, Resnet32
+from deeparguing.output_paths import output_path
 
 
 def train(model: ResNetCIFAR, X_train: Tensor, y_train: Tensor, X_val: Tensor, y_val: Tensor, config: Any):
@@ -132,8 +132,7 @@ if __name__ == "__main__":
     )})
     
     
-    save_path = "outputs/checkpoints/resnet_30.pt"
-    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    save_path = output_path("resnet_30.pt")
     torch.save(model.state_dict(), save_path)
     
     wandb.finish()

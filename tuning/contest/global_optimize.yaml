@@ -10,9 +10,11 @@
 # value here (e.g. `--protect-lambda 2.0` for a one-off run without editing
 # this file).
 
-# Dataset / checkpoint paths.
-checkpoint: outputs/checkpoints/model_checkpoint.pt
-qbaf: outputs/qbaf/misclassified_qbaf.json
+# Dataset / checkpoint paths. Bare filenames (no directory component) are
+# resolved via deeparguing.output_paths: today's outputs/<date>/ folder if
+# the file is there, else the most recent earlier date folder that has it.
+checkpoint: model_checkpoint.pt
+qbaf: misclassified_qbaf.json
 num_samples: null  # null = use every misclassified sample in qbaf
 
 # batch_contest hyperparameters (inherited from tuning/contest/contest.yaml).
@@ -62,6 +64,6 @@ eval_batch_size: null
 
 # Run/output settings.
 device: null  # null = auto-detect cuda if available, else cpu
-log_dir: outputs/contestation
+log_dir: null  # null = today's outputs/<date>/ folder
 save_checkpoint: null  # null = default to '<log_dir>/global_optimize_checkpoint.pt'; "" to skip saving
-md_log_path: null  # null = default to 'outputs/logs/global_optimize.md'; "" to skip
+md_log_path: null  # null = default to today's outputs/<date>/global_optimize.md; "" to skip
