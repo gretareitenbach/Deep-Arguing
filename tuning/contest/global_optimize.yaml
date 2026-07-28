@@ -38,18 +38,25 @@ max_backtracks: 10
 # wasn't strong enough to hold the line within 10 iterations, and the
 # guardrail was too coarse-grained to accept the (likely cheaper) earlier
 # iterations before the later, costlier ones dragged the round over budget.
-# Dropped eval_every to 1 so the guardrail can accept/reject each iteration
-# individually instead of an all-or-nothing 10-iteration block, and raised
-# protect_lambda 1.0 -> 5.0 to lean harder on the soft penalty so fewer
-# iterations need the hard check to bail them out at all. Not yet
-# re-validated against a real run -- see the PR/session that introduced
-# this comment for the sweep to try next (protect_lambda in {5, 20, 50} at
-# eval_every=1) before trusting these as a new "winning config."
+#
+# Full 324-combo grid sweep (outputs/logs/global_optimize_sweep.md, run
+# 2026-07-27) over protect_lambda in {1,5,20,50}, eval_every in {1,5,10},
+# protect_margin in {0.005,0.01,0.05}, protect_sample_size in {100,200,500},
+# max_acc_drop in {0.005,0.01,0.02} confirmed protect_lambda=5 was too weak:
+# at eval_every=1 it only cleared 33/1637 samples (2.0%). protect_lambda=50
+# with protect_sample_size=200 clears 64/1637 (3.9%) for essentially the
+# same accuracy cost (drop 0.0018 vs 0.002) -- nearly double the samples
+# cleared, basically for free. At that lambda the soft penalty is strong
+# enough that eval_every=5/10 reach the identical result via clean
+# `converged` (not `max_iters`) in ~2.7s instead of ~192s, so eval_every=1
+# is no longer needed to keep the guardrail fine-grained. protect_margin
+# showed zero measurable effect across 0.005/0.01/0.05 in the sweep --
+# left unchanged, but worth checking whether it's actually wired in.
 protect_margin: 0.01
-protect_lambda: 5.0
+protect_lambda: 50.0
 protect_sample_size: 200
 max_acc_drop: 0.01      # stop and roll back once eval-split accuracy has dropped this much
-eval_every: 1            # outer iterations per round before the hard guardrail re-checks
+eval_every: 10           # outer iterations per round before the hard guardrail re-checks
 eval_split: val          # val | test -- keep test unpeeked; confirm on test afterward via run_global_contest_eval.py
 eval_batch_size: null
 
