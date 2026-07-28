@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.counterfactuals import compute_grae, finite_difference_grae
+from deeparguing.contest import compute_grae, finite_difference_grae
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import (
     TARGET_INDEX,

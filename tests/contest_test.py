@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.counterfactuals.contest import (
+from deeparguing.contest.contest import (
     MARGIN,
     THRESHOLD,
     ContestResult,
@@ -10,7 +10,7 @@ from deeparguing.counterfactuals.contest import (
     contest,
     select_top_k,
 )
-from deeparguing.counterfactuals.grae import compute_grae
+from deeparguing.contest.grae import compute_grae
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import (
     TARGET_INDEX,

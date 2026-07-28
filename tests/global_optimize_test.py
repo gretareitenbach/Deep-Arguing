@@ -2,8 +2,8 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.counterfactuals.batch_contest import batch_contest
-from deeparguing.counterfactuals.global_optimize import global_optimize
+from deeparguing.contest.batch_contest import batch_contest
+from deeparguing.contest.global_optimize import global_optimize
 from deeparguing.semantics.relu_semantics import ReluSemantics
 
 # ---------------------------------------------------------------------------

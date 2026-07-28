@@ -24,7 +24,7 @@ same thing the soft penalty nudges toward. This module deliberately leaves
 --split test`` against the checkpoint this script saves for a final,
 post-hoc confirmation.
 
-This module is the only place in ``counterfactuals/`` that imports from
+This module is the only place in ``contest/`` that imports from
 ``evals/`` (mirroring ``sweep_global_contest_eval.py``, the existing
 precedent) -- ``batch_contest.py`` itself stays a pure numerical primitive
 with no dataset/eval-split dependency, only ever seeing whatever
@@ -36,8 +36,8 @@ CLI-flag-overrides-YAML convention as ``contest_all.py``.
 
 Usage::
 
-    python -m deeparguing.counterfactuals.global_optimize
-    python -m deeparguing.counterfactuals.global_optimize \\
+    python -m deeparguing.contest.global_optimize
+    python -m deeparguing.contest.global_optimize \\
         --config tuning/contest/global_optimize.yaml \\
         --num-samples 20 --max-iters 20 --eval-every 5 --max-acc-drop 0.01
 """
@@ -52,17 +52,17 @@ from typing import Any, Sequence
 import torch
 from torch import Tensor
 
-from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
+from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS,
                                                          PROTECT_MARGIN, TOL,
                                                          BatchContestResult,
                                                          batch_contest)
-from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
+from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
                                                    MAX_ITERS, THRESHOLD)
-from deeparguing.counterfactuals.contest_all import (_load_config, _required,
+from deeparguing.contest.contest_all import (_load_config, _required,
                                                        _resolved)
-from deeparguing.counterfactuals.run_contest import (load_all_samples,
+from deeparguing.contest.run_contest import (load_all_samples,
                                                        load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
                                                      compute_baseline_metrics,

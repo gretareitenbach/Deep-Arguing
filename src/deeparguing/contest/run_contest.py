@@ -9,7 +9,7 @@ live model, and runs ``contest()`` against one real sample end to end.
 
 Usage::
 
-    python -m deeparguing.counterfactuals.run_contest \\
+    python -m deeparguing.contest.run_contest \\
         --checkpoint outputs/checkpoints/model_checkpoint.pt \\
         --qbaf outputs/qbaf/misclassified_qbaf.json \\
         --sample-index 0
@@ -27,7 +27,7 @@ from pathlib import Path
 import torch
 
 from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
-from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
+from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
                                                   MAX_ITERS, THRESHOLD,
                                                   contest)
 from deeparguing.gradual_aacbr import GradualAACBR

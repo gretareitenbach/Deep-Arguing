@@ -1,5 +1,5 @@
 """
-src/deeparguing/counterfactuals/batch_contest.py
+src/deeparguing/contest/batch_contest.py
 
 Joint contestability algorithm: instead of ``contest()``'s per-sample
 sequential loop (each misclassified sample solved independently against a
@@ -63,7 +63,7 @@ gradient, so a step is only accepted if it decreases the flip batch's
 hinge sum *plus* ``protect_lambda`` times the protect batch's. This is a
 soft, per-step penalty computed on a fixed sample; it does not by itself
 guarantee held-out accuracy doesn't drop -- see
-``counterfactuals/global_optimize.py`` for a hard, periodic full-split
+``contest/global_optimize.py`` for a hard, periodic full-split
 accuracy check with rollback layered on top of this.
 """
 

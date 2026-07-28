@@ -18,8 +18,8 @@ Per N it reuses, in order:
 
 Usage::
 
-    python -m deeparguing.counterfactuals.sweep_global_contest_eval
-    python -m deeparguing.counterfactuals.sweep_global_contest_eval \\
+    python -m deeparguing.contest.sweep_global_contest_eval
+    python -m deeparguing.contest.sweep_global_contest_eval \\
         --ns 0,1,10,100 --seed 0 --output outputs/contestation/global_eval_sweep.csv
 """
 
@@ -34,16 +34,16 @@ import pandas as pd
 import torch
 from torch import Tensor
 
-from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
+from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS, TOL,
                                                          BatchContestResult,
                                                          batch_contest)
-from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
+from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
                                                    MAX_ITERS, THRESHOLD)
-from deeparguing.counterfactuals.contest_all import (DEFAULT_CONFIG_PATH,
+from deeparguing.contest.contest_all import (DEFAULT_CONFIG_PATH,
                                                        _load_config)
-from deeparguing.counterfactuals.run_contest import (load_all_samples,
+from deeparguing.contest.run_contest import (load_all_samples,
                                                        load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
                                                      evaluate_contested_model)

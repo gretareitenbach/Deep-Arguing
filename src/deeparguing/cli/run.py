@@ -27,7 +27,7 @@ from deeparguing.cli import (parse_command_line, parse_model_config, plots,
 from deeparguing.cli.loggers import DummyLogger, ExperimentLogger, WandbLogger
 from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
-from deeparguing.counterfactuals.grae import compute_grae
+from deeparguing.contest.grae import compute_grae
 from deeparguing.criterion import *
 from deeparguing.evals import (evaluate_model, print_results,
                                visualize_overlayed_loss_landscapes)
@@ -220,7 +220,7 @@ def run(project: str = "gradual-aa-cbr"):
             model.eval()
 
             # Persist the trained model + fitted casebase so a separate
-            # process can reload it and run e.g. counterfactuals/contest.py
+            # process can reload it and run e.g. contest/contest.py
             # against a real sample -- state_dict() alone misses
             # model.A/X_train/default_indexes, since fit() sets those as
             # plain attributes, not buffers. Saved unconditionally (not just

@@ -1,4 +1,4 @@
-# Config for deeparguing.counterfactuals.global_optimize.
+# Config for deeparguing.contest.global_optimize.
 #
 # Builds on tuning/contest/contest.yaml's batch_contest hyperparameters
 # (k/threshold/margin/etc. below match it) and adds the global-optimization

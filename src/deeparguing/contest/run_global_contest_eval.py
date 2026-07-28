@@ -18,8 +18,8 @@ By default the results are also appended as a markdown table to
 
 Usage::
 
-    python -m deeparguing.counterfactuals.run_global_contest_eval
-    python -m deeparguing.counterfactuals.run_global_contest_eval \\
+    python -m deeparguing.contest.run_global_contest_eval
+    python -m deeparguing.contest.run_global_contest_eval \\
         --checkpoint outputs/checkpoints/model_checkpoint.pt \\
         --contested-checkpoint outputs/contestation/contested_checkpoint.pt \\
         --split test
@@ -33,7 +33,7 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.counterfactuals.run_contest import load_fitted_model_and_data
+from deeparguing.contest.run_contest import load_fitted_model_and_data
 from deeparguing.evals.global_contest_eval import (GlobalContestEvalResult,
                                                      GlobalEvalMetrics,
                                                      compute_baseline_metrics,

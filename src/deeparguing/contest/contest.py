@@ -1,5 +1,5 @@
 """
-src/deeparguing/counterfactuals/contest.py
+src/deeparguing/contest/contest.py
 
 Heuristic contestability algorithm: iteratively perturb the top-k edges of
 ``model.A`` (the casebase-internal adjacency, see ``grae.py``'s module

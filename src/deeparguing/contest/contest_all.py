@@ -6,7 +6,7 @@ against the same live ``model.A``, so edits accumulated one sample at a
 time and one sample's fix could partially undo another's. This script
 instead calls ``batch_contest()``, which optimizes one shared adjacency
 edit against every sample's hinge loss at once -- see
-``counterfactuals/batch_contest.py``'s module docstring for the full
+``contest/batch_contest.py``'s module docstring for the full
 algorithm (shared gradient, shared top-k edge selection, shared step).
 
 All hyperparameters and dataset/checkpoint paths live in a YAML config file
@@ -18,9 +18,9 @@ without editing it.
 
 Usage::
 
-    python -m deeparguing.counterfactuals.contest_all
-    python -m deeparguing.counterfactuals.contest_all --config tuning/contest/contest.yaml
-    python -m deeparguing.counterfactuals.contest_all --k 10 --margin 0.005   # one-off override
+    python -m deeparguing.contest.contest_all
+    python -m deeparguing.contest.contest_all --config tuning/contest/contest.yaml
+    python -m deeparguing.contest.contest_all --k 10 --margin 0.005   # one-off override
 
 By default this writes two things to ``log_dir`` (``outputs/contestation``):
 a timestamped JSON log (run config, summary counts, and a per-sample
@@ -43,12 +43,12 @@ from typing import Any
 import torch
 import yaml
 
-from deeparguing.counterfactuals.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
-from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
+from deeparguing.contest.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
+from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS, TOL,
                                                          batch_contest)
-from deeparguing.counterfactuals.run_contest import load_all_samples, load_model
+from deeparguing.contest.run_contest import load_all_samples, load_model
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"
 

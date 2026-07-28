@@ -1,5 +1,5 @@
 """
-src/deeparguing/counterfactuals/bottleneck.py
+src/deeparguing/contest/bottleneck.py
 
 Escape logic for the dead-gradient case ``contest()`` hits when
 ``_casebase_grae`` is uniformly ~0 for a sample's target class: not because

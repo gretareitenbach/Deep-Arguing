@@ -1,4 +1,4 @@
-# Config for deeparguing.counterfactuals.contest_all.
+# Config for deeparguing.contest.contest_all.
 #
 # Values below are the winning config found by an earlier grid search (see
 # git history -- the sweep script itself has since been removed): k=3 (the
