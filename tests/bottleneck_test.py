@@ -112,6 +112,34 @@ def test_select_bottleneck_edges_prefers_the_higher_leverage_source():
     assert edge_indices.tolist() == [_flat_index(_STRONG_ATTACKER, _BOTTLENECK)]
 
 
+def test_select_bottleneck_edges_excludes_a_default_sourced_incoming_edge():
+    """A default/topic argument (node 0) never legitimately originates an
+    edge (see contest.py's ``_mask_default_sources``), so even though it has
+    the largest raw leverage here, passing ``default_indexes`` must skip it
+    in favor of the next-best ordinary casebase source (node 2)."""
+    node_strengths = torch.tensor([100.0, 0.0, 5.0]).unsqueeze(-1)
+    A = torch.zeros(3, 3, 1)
+    default_indexes = torch.tensor([0])
+
+    edge_indices = select_bottleneck_edges(
+        node_strengths, A, bottleneck_node=1, k=1, default_indexes=default_indexes
+    )
+
+    assert edge_indices.tolist() == [_flat_index(2, 1, n=3)]
+
+
+def test_select_bottleneck_edges_without_default_indexes_keeps_old_behavior():
+    """``default_indexes`` defaults to ``None`` (no masking) -- callers that
+    don't pass it (e.g. these lower-level unit tests) see unchanged
+    behavior."""
+    node_strengths = torch.tensor([100.0, 0.0, 5.0]).unsqueeze(-1)
+    A = torch.zeros(3, 3, 1)
+
+    edge_indices = select_bottleneck_edges(node_strengths, A, bottleneck_node=1, k=1)
+
+    assert edge_indices.tolist() == [_flat_index(0, 1, n=3)]
+
+
 # ---------------------------------------------------------------------------
 # find_and_escape_bottleneck
 # ---------------------------------------------------------------------------

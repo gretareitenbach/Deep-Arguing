@@ -40,8 +40,9 @@ from torch import Tensor
 
 from deeparguing.gradual_aacbr import GradualAACBR
 
-from .contest import (DEFAULT_K, THRESHOLD, _forward_strengths,
-                       _perturb_adjacency, _target_and_rival, select_top_k)
+from .contest import (DEFAULT_K, THRESHOLD, _default_source_mask,
+                       _forward_strengths, _perturb_adjacency,
+                       _target_and_rival, select_top_k)
 
 # ---- Config -------------------------------------------------------------
 
@@ -128,28 +129,49 @@ def find_bottleneck(
 
 
 def _bottleneck_leverage_vector(
-    node_strengths: Tensor, A: Tensor, bottleneck_node: int
+    node_strengths: Tensor,
+    A: Tensor,
+    bottleneck_node: int,
+    default_indexes: Tensor | None = None,
 ) -> Tensor:
     """Flat (n*n*d) vector matching ``_casebase_grae``'s layout: zero
     everywhere except ``bottleneck_node``'s incoming edges
     (``A[:, bottleneck_node, :]``), where the local leverage of source node
     j's edge on ``bottleneck_node``'s own aggregation is exactly
     ``node_strengths[j]`` -- the aggregation step is linear, so this *is*
-    the partial derivative, no backward pass needed."""
+    the partial derivative, no backward pass needed.
+
+    ``default_indexes``, if given, additionally zeroes out any entry whose
+    source is one of them -- mirrors ``contest.py``'s
+    ``_mask_default_sources``: a default/topic argument never legitimately
+    originates an edge, and a bottleneck-escape step must respect that too,
+    or it can hand a class's own anchor argument its first-ever outgoing
+    edge. Left ``None`` by direct low-level tests of this function; real
+    callers (``find_and_escape_bottleneck``) pass ``model.default_indexes``."""
     n, m, d = A.shape
     leverage = torch.zeros(n, m, d, dtype=node_strengths.dtype, device=A.device)
     leverage[:, bottleneck_node, :] = node_strengths
-    return leverage.reshape(-1)
+    leverage = leverage.reshape(-1)
+    if default_indexes is not None:
+        leverage = leverage.masked_fill(_default_source_mask(default_indexes, A.shape), 0.0)
+    return leverage
 
 
 def select_bottleneck_edges(
-    node_strengths: Tensor, A: Tensor, bottleneck_node: int, k: int
+    node_strengths: Tensor,
+    A: Tensor,
+    bottleneck_node: int,
+    k: int,
+    default_indexes: Tensor | None = None,
 ) -> Tensor:
     """Indices (into the flattened ``model.A``, same convention as
     ``select_top_k``) of the k edges feeding into ``bottleneck_node`` with
     the largest ``|node_strengths[source]|`` -- see
-    ``_bottleneck_leverage_vector``."""
-    return select_top_k(_bottleneck_leverage_vector(node_strengths, A, bottleneck_node), k)
+    ``_bottleneck_leverage_vector`` (including its ``default_indexes``
+    masking)."""
+    return select_top_k(
+        _bottleneck_leverage_vector(node_strengths, A, bottleneck_node, default_indexes), k
+    )
 
 
 def expanding_step_search(
@@ -214,8 +236,13 @@ def find_and_escape_bottleneck(
         return None
     bottleneck_node, node_strengths = bottleneck
 
-    edge_indices = select_bottleneck_edges(node_strengths, model.A, bottleneck_node, k)
-    leverage_vector = _bottleneck_leverage_vector(node_strengths, model.A, bottleneck_node)
+    default_indexes = model.default_indexes if model.defaults_not_attack else None
+    edge_indices = select_bottleneck_edges(
+        node_strengths, model.A, bottleneck_node, k, default_indexes
+    )
+    leverage_vector = _bottleneck_leverage_vector(
+        node_strengths, model.A, bottleneck_node, default_indexes
+    )
     direction = leverage_vector[edge_indices]
     if not bool(direction.any()):
         # Every candidate edge's source is itself pinned at 0, so the local

@@ -81,8 +81,9 @@ from deeparguing.semantics.gradual_semantics import GradualSemantics
 from deeparguing.semantics.relu_semantics import ReluSemantics
 
 from .contest import (DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD,
-                       _forward_strengths_batch, _perturb_adjacency,
-                       _target_and_rival_batch, select_top_k)
+                       _forward_strengths_batch, _mask_default_sources,
+                       _perturb_adjacency, _target_and_rival_batch,
+                       select_top_k)
 from .grae import compute_grae
 
 # ---- Config -------------------------------------------------------------
@@ -340,6 +341,7 @@ def batch_contest(
                         )
                         g = g + protect_lambda * protect_grae_result.casebase_edges.reshape(-1)
 
+            g = _mask_default_sources(model, g)
             if g.abs().max().item() == 0.0:
                 continue  # even the leaky surrogate found no directional signal
 

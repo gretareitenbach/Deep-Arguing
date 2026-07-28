@@ -231,6 +231,42 @@ def select_top_k(grae_vector: Tensor, k: int) -> Tensor:
     return grae_vector.abs().topk(k).indices
 
 
+def _default_source_mask(default_indexes: Tensor, shape: torch.Size) -> Tensor:
+    """Boolean mask, flattened to match a ``(n, n, d)``-shaped ``model.A``,
+    marking every entry whose source/attacker node (the first axis) is one
+    of ``default_indexes``. Shared by every edge-selection call site via
+    ``_mask_default_sources``/``bottleneck.py``'s ``select_bottleneck_edges``."""
+    n, m, d = shape
+    mask = torch.zeros(n, m, d, dtype=torch.bool, device=default_indexes.device)
+    mask[default_indexes] = True
+    return mask.reshape(-1)
+
+
+def _mask_default_sources(model: GradualAACBR, vector: Tensor) -> Tensor:
+    """Zero out every entry of ``vector`` (flat, same ``n*n*d`` layout as
+    ``model.A``) whose source is one of ``model.default_indexes``.
+
+    Mirrors an invariant ``fit()`` already enforces (``attackers_default_mask``
+    in ``gradual_aacbr.py``'s ``__prepare_default``): when
+    ``model.defaults_not_attack`` (the default), a default/topic argument
+    never originates an edge. Edge selection here has to respect the same
+    invariant, or a contest step can hand a class's own anchor argument its
+    first-ever outgoing edge -- since strength propagation is recursive,
+    that can corrupt every prediction which routes through that anchor, not
+    just the sample(s) being contested. (Found via a real checkpoint: after
+    pruning, ``batch_contest`` picked 3 such edges out of a class's default
+    argument, clearing 57/1661 targeted samples while collapsing ~700
+    previously-correct same-class test predictions into a rival class.)
+
+    A no-op when ``model.defaults_not_attack`` is False, since such edges
+    are then a legitimate part of the fitted model to begin with.
+    """
+    if not model.defaults_not_attack:
+        return vector
+    assert model.A is not None
+    return vector.masked_fill(_default_source_mask(model.default_indexes, model.A.shape), 0.0)
+
+
 def bisection_line_search(
     model: GradualAACBR,
     sample: Tensor,
@@ -354,7 +390,7 @@ def contest(
                 target_strength, rival_class, rival_strength,
             )
 
-        grae_vector = _casebase_grae(model, sample, target_class)
+        grae_vector = _mask_default_sources(model, _casebase_grae(model, sample, target_class))
 
         if grae_vector.abs().max().item() <= LIVE_GRAD_THRESHOLD:
             # Dead gradient: a saturated ReLU node is blocking flow to

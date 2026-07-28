@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -6,6 +8,8 @@ from deeparguing.contest.contest import (
     MARGIN,
     THRESHOLD,
     ContestResult,
+    _default_source_mask,
+    _mask_default_sources,
     bisection_line_search,
     contest,
     select_top_k,
@@ -46,6 +50,67 @@ def test_select_top_k_respects_k():
     grae_vector = torch.tensor([1.0, -5.0, 2.0, 0.5])
     indices = select_top_k(grae_vector, 1)
     assert indices.tolist() == [1]
+
+
+# ---------------------------------------------------------------------------
+# _default_source_mask / _mask_default_sources
+#
+# fit() never lets a default/topic argument originate an edge (see
+# gradual_aacbr.py's __prepare_default/attackers_default_mask). A real
+# checkpoint showed contest edge-selection ignoring that invariant: after
+# pruning, batch_contest picked 3 brand-new edges *out of* a class's own
+# default argument, clearing 57/1661 targeted samples while collapsing
+# ~700 previously-correct same-class predictions into a rival class. These
+# tests pin down the fix.
+# ---------------------------------------------------------------------------
+
+
+def _fake_model(n: int, default_indexes: list[int], defaults_not_attack: bool = True):
+    return SimpleNamespace(
+        A=torch.zeros(n, n, 1),
+        default_indexes=torch.tensor(default_indexes),
+        defaults_not_attack=defaults_not_attack,
+    )
+
+
+def test_default_source_mask_flags_only_edges_out_of_default_nodes():
+    # n=3, d=1, default node is index 1 -- only entries with source==1
+    # (flat indices 3, 4, 5) should be flagged.
+    mask = _default_source_mask(torch.tensor([1]), torch.Size([3, 3, 1]))
+    assert mask.tolist() == [False, False, False, True, True, True, False, False, False]
+
+
+def test_mask_default_sources_zeroes_edges_from_default_nodes():
+    model = _fake_model(n=3, default_indexes=[1])
+    # Flat layout is (source, target, dim); source==1 occupies indices 3-5.
+    vector = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+
+    masked = _mask_default_sources(model, vector)
+
+    assert masked.tolist() == [1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 7.0, 8.0, 9.0]
+
+
+def test_mask_default_sources_is_noop_when_defaults_may_attack():
+    model = _fake_model(n=3, default_indexes=[1], defaults_not_attack=False)
+    vector = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+
+    masked = _mask_default_sources(model, vector)
+
+    assert masked.tolist() == vector.tolist()
+
+
+def test_select_top_k_after_masking_skips_a_default_sourced_edge():
+    """Composition test matching the real call site in ``contest()``: the
+    single largest-magnitude entry sits on an edge sourced from the default
+    node (flat index 4, source==1) and must lose out to the next-largest
+    once masked, instead of ever being handed to ``select_top_k``."""
+    model = _fake_model(n=3, default_indexes=[1])
+    grae_vector = torch.tensor([1.0, 2.0, 3.0, 4.0, 100.0, 6.0, 7.0, 8.0, 9.0])
+
+    masked = _mask_default_sources(model, grae_vector)
+    indices = select_top_k(masked, k=1)
+
+    assert indices.tolist() == [8]  # the 100.0 at a default-sourced edge is excluded
 
 
 # ---------------------------------------------------------------------------
