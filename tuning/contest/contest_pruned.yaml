@@ -1,0 +1,33 @@
+# Config for deeparguing.contest.contest_all, for use after
+# contest/prune_edges.py + contest/recompute_misclassified.py have produced
+# a pruned checkpoint and its own (post-pruning) misclassified-sample QBAF.
+#
+# Same hyperparameters as tuning/contest/contest.yaml's winning config (see
+# that file's header for how they were found) -- only the dataset/checkpoint
+# paths differ, so pruning's effect on contestability is measured under the
+# same batch_contest settings as the unpruned baseline.
+#
+# Any CLI flag passed to contest_all.py overrides the corresponding value
+# here (e.g. `--k 10` for a one-off run without editing this file).
+
+# Dataset / checkpoint paths -- pruned checkpoint + its recomputed misclassified set.
+checkpoint: outputs/checkpoints/pruned_model_checkpoint.pt
+qbaf: outputs/qbaf/pruned_misclassified_qbaf.json
+num_samples: null  # null = use every misclassified sample in qbaf
+
+# batch_contest hyperparameters (unchanged from contest.yaml).
+k: 3
+threshold: 0.5
+margin: 0.001
+max_iters: 50
+tol: 0.0001
+max_edits: null  # null = unbounded edit budget
+batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
+divergence_bound: 100.0
+alpha_init: 1.0  # larger values consistently hurt in sweeps -- see git history
+max_backtracks: 10
+
+# Run/output settings.
+device: null  # null = auto-detect cuda if available, else cpu
+log_dir: outputs/contestation_pruned
+save_checkpoint: null  # null = default to '<log_dir>/contested_checkpoint.pt'; "" to skip saving
