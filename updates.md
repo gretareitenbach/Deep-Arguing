@@ -791,3 +791,78 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     Added `tests/prune_edges_test.py` (thresholding on both signs, exclusive
     `<` boundary, edge counts, no in-place mutation, default threshold,
     zero-threshold no-op).
+
+- **Added pruning contestation** (`a7c6399`)
+  - New `src/deeparguing/contest/recompute_misclassified.py`: closes the gap
+    `prune_edges.py` opened -- `cli/run.py --misclassified_log`'s
+    `misclassified_qbaf.json` goes stale the moment `model.A` changes by any
+    means other than a full training run (e.g. pruning). Given any
+    checkpoint (pruned, contested, or fresh), rebuilds the live model + its
+    data split the same way `run_contest.py`/`run_global_contest_eval.py`
+    do, runs inference on `--split` to find which samples *that checkpoint*
+    gets wrong (`find_misclassified`: batched argmax-vs-argmax comparison,
+    same check `cli/run.py` uses), and exports exactly those as a QBAF file
+    in the `new_cases`/`new_cases_labels` shape `contest_all.py`/
+    `run_contest.py` already consume. GRAE attribution intentionally not
+    computed here, since neither `contest_all.py` nor `contest.py` reads it.
+  - New `tuning/contest/contest_pruned.yaml`: same winning `batch_contest`
+    hyperparameters as `contest.yaml` (k/margin/etc.), pointed at the pruned
+    checkpoint + its recomputed misclassified set instead, with its own
+    `log_dir` (`outputs/contestation_pruned`) so its `contested_checkpoint.pt`
+    doesn't overwrite the unpruned run's.
+
+- **Fixed target-arg edge error** (`f57d597`)
+  - `contest.py`/`batch_contest.py`/`bottleneck.py`: edge selection could
+    pick an edge whose *source* is one of `model.default_indexes` --
+    `fit()` already enforces that a default/topic argument never
+    legitimately originates an edge (`attackers_default_mask` in
+    `gradual_aacbr.py`'s `__prepare_default`), but nothing stopped a contest
+    step from handing one its first-ever outgoing edge. Since strength
+    propagation is recursive, that can corrupt every prediction routing
+    through that anchor, not just the sample(s) being contested -- found via
+    a real checkpoint: after pruning, `batch_contest` picked 3 such edges
+    out of a class's default argument, clearing 57/1661 targeted samples
+    while collapsing ~700 previously-correct same-class test predictions
+    into a rival class. New `_default_source_mask`/`_mask_default_sources`
+    in `contest.py`, wired into `contest()`'s per-sample gradient,
+    `batch_contest()`'s shared gradient, and `bottleneck.py`'s
+    `_bottleneck_leverage_vector`/`select_bottleneck_edges`/
+    `find_and_escape_bottleneck` (new `default_indexes` param, threaded
+    through from `model.default_indexes`). No-op when
+    `model.defaults_not_attack` is False, since such edges are then a
+    legitimate part of the fitted model to begin with. Extended
+    `tests/bottleneck_test.py` and `tests/contest_test.py` to cover the
+    masking.
+
+- **Reworked output folders** (`fee7a06`)
+  - `outputs/` was organized by category (`checkpoints/`, `contestation/`,
+    `contestation_pruned/`, `grae/`, `logs/`, `qbaf/`), each holding a
+    handful of fixed-name files -- reorganized to be date-based instead:
+    every run now writes flat into `outputs/<DDMonYYYY>/` (e.g.
+    `outputs/28Jul2026/`), no subfolders. New
+    `src/deeparguing/output_paths.py`: `output_path(filename)` always
+    resolves to today's date folder (creating it); `find_output(filename)`
+    looks a bare filename up in today's folder first, then walks backward
+    through earlier date folders and returns the newest one that has it, so
+    a pipeline stage (e.g. `contest_all.py` looking for
+    `model_checkpoint.pt`) finds an earlier day's output without the caller
+    re-specifying a full path; `resolve_read_path`/`resolve_write_path` wrap
+    both around a bare-filename-vs-explicit-path convention -- a path with a
+    directory component is always left untouched, so CLI/config overrides
+    still work.
+  - Rewired every script/config that reads or writes under `outputs/`
+    (`cli/run.py`, the `contest/` pipeline scripts, both sweep scripts,
+    `simple_trainer.py`/`curriculum_trainer.py`, the pretrain/verify/weights
+    scripts, and `tuning/contest/*.yaml`) onto the new module. Existing
+    files under `outputs/` (gitignored, not part of this commit) were moved
+    into date folders matching their actual mtimes.
+  - `contest_all.py` writes a `contested_checkpoint.pt`; the unpruned and
+    pruned configs previously kept theirs apart only by writing to
+    different subfolders (`outputs/contestation/` vs.
+    `outputs/contestation_pruned/`), which would now collide if both ran on
+    the same day. New `checkpoint_filename`/`log_prefix` config knobs
+    (`--checkpoint-filename`/`--log-prefix` CLI flags) let a variant
+    override its output filenames; `contest_pruned.yaml` now writes
+    `pruned_contested_checkpoint.pt`/`pruned_contestation_*.json`, extending
+    the `pruned_` convention `prune_edges.py`/`recompute_misclassified.py`
+    already used for checkpoint/qbaf filenames.
