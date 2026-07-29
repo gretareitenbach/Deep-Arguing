@@ -70,7 +70,7 @@ from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
 from deeparguing.gradual_aacbr import GradualAACBR
 from deeparguing.md_log import write_markdown_log
 from deeparguing.output_paths import (output_path, resolve_read_path,
-                                       today_output_dir)
+                                       resolve_write_path, today_output_dir)
 
 DEFAULT_CONFIG_PATH = "tuning/contest/global_optimize.yaml"
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
@@ -563,6 +563,11 @@ def main() -> None:
         save_checkpoint = str(log_dir / "global_optimize_checkpoint.pt")
 
     if save_checkpoint:
+        # Bare filename -> today's outputs/<date>/ folder, same convention as
+        # checkpoint/qbaf's resolve_read_path above -- so e.g. `--save-checkpoint
+        # pruned_global_optimize_checkpoint.pt` lands in the dated folder without
+        # having to spell out outputs/<today>/ by hand.
+        save_checkpoint = resolve_write_path(save_checkpoint)
         torch.save(
             {
                 "state_dict": model.state_dict(),

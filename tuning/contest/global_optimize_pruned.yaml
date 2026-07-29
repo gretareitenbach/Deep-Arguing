@@ -49,13 +49,13 @@ log_dir: null  # null = today's outputs/<date>/ folder -- same folder the
                # subfolders -- see output_paths.py), so save_checkpoint below
                # is set explicitly to avoid colliding with the unpruned run's
                # global_optimize_checkpoint.pt.
-# global_optimize.py has no checkpoint_filename/log_prefix knob (unlike
-# contest_all.py), and save_checkpoint/md_log_path below are used literally,
-# not joined with log_dir -- pass --save-checkpoint on the CLI with an
-# explicit outputs/<today>/pruned_global_optimize_checkpoint.pt path so it
-# still lands in the dated folder (see updates.md's "Reworked output
-# folders" entry for the convention).
-save_checkpoint: null
+# save_checkpoint is resolved the same way as checkpoint/qbaf: a bare
+# filename (no directory component) always lands in today's outputs/<date>/
+# folder. Left as null, it would default to "global_optimize_checkpoint.pt"
+# -- identical to the unpruned run's default and in the same folder, so
+# whichever of the two runs finishes second silently overwrites the other's
+# checkpoint. Set explicitly here so both survive.
+save_checkpoint: pruned_global_optimize_checkpoint.pt
 md_log_path: null  # shared/appended global_optimize.md is fine -- each
                     # entry's "Checkpoint:" line distinguishes pruned vs
                     # unpruned runs.
