@@ -79,6 +79,7 @@ DEFAULT_MAX_ACC_DROP = 0.01
 DEFAULT_EVAL_EVERY = 10
 DEFAULT_EVAL_SPLIT = "val"
 DEFAULT_MD_LOG_FILENAME = "global_optimize.md"
+DEFAULT_SEED = 0
 
 
 @dataclasses.dataclass
@@ -344,6 +345,14 @@ def main() -> None:
         "and use run_global_contest_eval.py --split test for a final check.",
     )
     parser.add_argument("--eval-batch-size", type=int, default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seeds torch before the protect set (_build_protect_set's "
+        "torch.randperm) is drawn, so runs are reproducible and match "
+        f"sweep_global_optimize.py's per-combo seeding. Default: {DEFAULT_SEED}.",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument(
         "--log-dir",
@@ -393,6 +402,7 @@ def main() -> None:
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
     eval_batch_size = _resolved(args.eval_batch_size, config, "eval_batch_size", None)
+    seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
@@ -417,8 +427,14 @@ def main() -> None:
 
     print(
         f"Running global optimization over {samples.shape[0]} misclassified samples, "
-        f"protecting {eval_split}-split accuracy (max_acc_drop={max_acc_drop}, eval_every={eval_every})..."
+        f"protecting {eval_split}-split accuracy (max_acc_drop={max_acc_drop}, eval_every={eval_every}, seed={seed})..."
     )
+    # Seeded right before the run (not earlier) so it governs exactly the
+    # randomness global_optimize() itself introduces -- _build_protect_set's
+    # torch.randperm draw of the protect set. Without this, two runs of the
+    # identical config can pull different protect sets and diverge wildly in
+    # outcome; matches sweep_global_optimize.py's per-combo reseeding.
+    torch.manual_seed(seed)
     result = global_optimize(
         model, samples, true_classes, X_eval, y_eval,
         k=k, threshold=threshold, margin=margin, max_iters=max_iters, tol=tol,
@@ -483,6 +499,7 @@ def main() -> None:
             "max_acc_drop": max_acc_drop,
             "eval_every": eval_every,
             "eval_split": eval_split,
+            "seed": seed,
         },
         "summary": {
             "num_total": result.batch_result.num_total,
@@ -526,7 +543,7 @@ def main() -> None:
                 f"Eval split: {eval_split}",
                 f"Config: k={k} margin={margin} protect_margin={protect_margin} "
                 f"protect_lambda={protect_lambda} protect_sample_size={protect_sample_size} "
-                f"max_acc_drop={max_acc_drop} eval_every={eval_every} max_iters={max_iters}",
+                f"max_acc_drop={max_acc_drop} eval_every={eval_every} max_iters={max_iters} seed={seed}",
                 f"Cleared {result.batch_result.num_cleared}/{result.batch_result.num_total} samples "
                 f"({result.batch_result.num_cleared / max(1, result.batch_result.num_total):.1%}), "
                 f"{result.batch_result.num_edges_changed} edges changed",

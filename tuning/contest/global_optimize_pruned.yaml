@@ -32,12 +32,13 @@ alpha_init: 1.0
 max_backtracks: 10
 
 # Global-optimization-specific (unchanged from global_optimize.yaml -- see
-# that file's header for the sweep that picked these).
-protect_margin: 0.01
+# that file's header for the sweep/seeding-bug history that picked these).
+seed: 0
+protect_margin: 0.05
 protect_lambda: 50.0
 protect_sample_size: 200
 max_acc_drop: 0.01
-eval_every: 10
+eval_every: 5
 eval_split: val
 eval_batch_size: null
 

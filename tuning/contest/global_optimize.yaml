@@ -41,24 +41,44 @@ max_backtracks: 10
 # guardrail was too coarse-grained to accept the (likely cheaper) earlier
 # iterations before the later, costlier ones dragged the round over budget.
 #
-# Full 324-combo grid sweep (outputs/logs/global_optimize_sweep.md, run
-# 2026-07-27) over protect_lambda in {1,5,20,50}, eval_every in {1,5,10},
-# protect_margin in {0.005,0.01,0.05}, protect_sample_size in {100,200,500},
-# max_acc_drop in {0.005,0.01,0.02} confirmed protect_lambda=5 was too weak:
-# at eval_every=1 it only cleared 33/1637 samples (2.0%). protect_lambda=50
-# with protect_sample_size=200 clears 64/1637 (3.9%) for essentially the
-# same accuracy cost (drop 0.0018 vs 0.002) -- nearly double the samples
-# cleared, basically for free. At that lambda the soft penalty is strong
-# enough that eval_every=5/10 reach the identical result via clean
-# `converged` (not `max_iters`) in ~2.7s instead of ~192s, so eval_every=1
-# is no longer needed to keep the guardrail fine-grained. protect_margin
-# showed zero measurable effect across 0.005/0.01/0.05 in the sweep --
-# left unchanged, but worth checking whether it's actually wired in.
-protect_margin: 0.01
+# The 2026-07-27 324-combo sweep (protect_lambda=50/protect_sample_size=200
+# converging cleanly to 64/1637, drop 0.0018) picked the values below, and a
+# 2026-07-28 real run against those exact values reproduced that result. But
+# a same-day real run afterward -- same config, same checkpoint -- collapsed
+# instead: round 1 cost -9% accuracy in just 5 iterations and the guardrail
+# rolled back everything (0/1637 cleared). Root cause: global_optimize.py
+# never seeded torch before _build_protect_set's torch.randperm draw, so
+# every live run pulled a *different* random 200-sample protect set --
+# unlike sweep_global_optimize.py, which reseeds (torch.manual_seed) before
+# every combo. The sweep's numbers only ever held for its seed's particular
+# draw; an unlucky unseeded draw could (and did) fail to hold the line at
+# all. Fixed by adding `seed` here (threaded through to a torch.manual_seed
+# call right before the run) so live runs are reproducible and actually
+# match what a sweep validated.
+#
+# With that bug fixed, protect_lambda=1/protect_lambda=5 correctly built a
+# protect set are far weaker: at eval_every=1 protect_lambda=5 only cleared
+# 33/1637 (2.0%). A same-day-seeded 120-combo resweep (post edge-masking
+# fix below; see "fixed target arg edge error") --
+# outputs/29Jul2026/global_optimize_sweep_resweep.md, run 2026-07-29 --
+# confirmed protect_lambda=50/protect_sample_size=200 is still the strongest
+# combo, but with the edge-masking fix in place the picture shifted: overall
+# clearance dropped (mean success rate ~1.5% vs ~4% pre-fix, since default-
+# source edges -- previously a source of cheap, fast, but unsafe moves -- are
+# no longer available), and eval_every=10 became the *worst* eval_every
+# value (mean success 1.0% vs eval_every=5's 1.6%) since checking the
+# guardrail less often lets more damage accumulate per round before it's
+# caught. The single best combo (ranked by cleared, then acc drop) was
+# eval_every=5/protect_margin=0.05: 83/1637 cleared (5.1%), drop +0.0073,
+# 15 edges changed -- adopted below in place of the stale eval_every=10/
+# protect_margin=0.01 pick.
+seed: 0                 # reseeds torch right before the protect-set draw -- see above; must match
+                         # what any sweep run you're comparing against used (sweep default is also 0)
+protect_margin: 0.05
 protect_lambda: 50.0
 protect_sample_size: 200
 max_acc_drop: 0.01      # stop and roll back once eval-split accuracy has dropped this much
-eval_every: 10           # outer iterations per round before the hard guardrail re-checks
+eval_every: 5            # outer iterations per round before the hard guardrail re-checks
 eval_split: val          # val | test -- keep test unpeeked; confirm on test afterward via run_global_contest_eval.py
 eval_batch_size: null
 
