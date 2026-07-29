@@ -1,0 +1,60 @@
+# Config for deeparguing.contest.global_optimize, for use after
+# contest/prune_edges.py + contest/recompute_misclassified.py have produced
+# a pruned checkpoint and its own (post-pruning) misclassified-sample QBAF.
+#
+# Same hyperparameters as tuning/contest/global_optimize.yaml's winning
+# config (see that file's header for how they were found) -- only the
+# dataset/checkpoint paths differ, so pruning's effect on global optimization
+# is measured under the same settings as the unpruned baseline.
+#
+# Any CLI flag passed to global_optimize.py overrides the corresponding
+# value here (e.g. `--protect-lambda 2.0` for a one-off run without editing
+# this file).
+
+# Dataset / checkpoint paths -- pruned checkpoint + its recomputed
+# misclassified set. Bare filenames (no directory component) are resolved
+# via deeparguing.output_paths: today's outputs/<date>/ folder if the file
+# is there, else the most recent earlier date folder that has it.
+checkpoint: pruned_model_checkpoint.pt
+qbaf: pruned_misclassified_qbaf.json
+num_samples: null  # null = use every misclassified sample in qbaf
+
+# batch_contest hyperparameters (unchanged from global_optimize.yaml).
+k: 3
+threshold: 0.5
+margin: 0.001
+max_iters: 200
+tol: 0.0001
+max_edits: null
+batch_size: null
+divergence_bound: 100.0
+alpha_init: 1.0
+max_backtracks: 10
+
+# Global-optimization-specific (unchanged from global_optimize.yaml -- see
+# that file's header for the sweep that picked these).
+protect_margin: 0.01
+protect_lambda: 50.0
+protect_sample_size: 200
+max_acc_drop: 0.01
+eval_every: 10
+eval_split: val
+eval_batch_size: null
+
+# Run/output settings.
+device: null
+log_dir: null  # null = today's outputs/<date>/ folder -- same folder the
+               # unpruned run also writes to (outputs/ is flat, no
+               # subfolders -- see output_paths.py), so save_checkpoint below
+               # is set explicitly to avoid colliding with the unpruned run's
+               # global_optimize_checkpoint.pt.
+# global_optimize.py has no checkpoint_filename/log_prefix knob (unlike
+# contest_all.py), and save_checkpoint/md_log_path below are used literally,
+# not joined with log_dir -- pass --save-checkpoint on the CLI with an
+# explicit outputs/<today>/pruned_global_optimize_checkpoint.pt path so it
+# still lands in the dated folder (see updates.md's "Reworked output
+# folders" entry for the convention).
+save_checkpoint: null
+md_log_path: null  # shared/appended global_optimize.md is fine -- each
+                    # entry's "Checkpoint:" line distinguishes pruned vs
+                    # unpruned runs.
