@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+from deeparguing.output_paths import resolve_read_path
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1):
@@ -106,7 +107,7 @@ class ResNetCIFAR(FeatureExtractor):
                     nn.init.constant_(m.bn2.weight, 0)
 
         if weights_path is not None:
-            self.load_state_dict(torch.load(weights_path))
+            self.load_state_dict(torch.load(resolve_read_path(weights_path)))
 
         self.freeze_weights = freeze_weights
 
