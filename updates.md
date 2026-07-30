@@ -866,3 +866,21 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `pruned_contested_checkpoint.pt`/`pruned_contestation_*.json`, extending
     the `pruned_` convention `prune_edges.py`/`recompute_misclassified.py`
     already used for checkpoint/qbaf filenames.
+
+## 2026-07-30
+
+- **Cleaned up comments** (`9402e8c`)
+  - `src/deeparguing/contest/*.py` (all 12 modules): the module docstrings and
+    inline comments had accumulated into multi-paragraph essays covering
+    design rationale, historical bug fixes, and diagnostic walkthroughs (e.g.
+    `batch_contest.py`'s docstring alone ran ~70 lines). Trimmed every module
+    docstring to a few lines describing what the file does plus CLI usage
+    where applicable, and every function docstring down to its
+    parameters/return value, dropping the "why"/"notes" prose (most of which
+    is still recoverable from this changelog and `git log`). Kept a small
+    number of short inline comments where a constant or invariant is genuinely
+    non-obvious (e.g. `run_contest.py`'s default-row-index invariant).
+  - `tuning/contest/*.yaml` (all 4 configs): removed every comment, including
+    the sweep-history notes in `global_optimize.yaml` documenting how
+    `protect_lambda=50`/`eval_every=5` were picked (also preserved above and
+    in `git log` for `global_optimize.yaml`).
