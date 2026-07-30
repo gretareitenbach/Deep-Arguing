@@ -1,25 +1,7 @@
-# Config for deeparguing.contest.global_optimize, for use after
-# contest/prune_edges.py + contest/recompute_misclassified.py have produced
-# a pruned checkpoint and its own (post-pruning) misclassified-sample QBAF.
-#
-# Same hyperparameters as tuning/contest/global_optimize.yaml's winning
-# config (see that file's header for how they were found) -- only the
-# dataset/checkpoint paths differ, so pruning's effect on global optimization
-# is measured under the same settings as the unpruned baseline.
-#
-# Any CLI flag passed to global_optimize.py overrides the corresponding
-# value here (e.g. `--protect-lambda 2.0` for a one-off run without editing
-# this file).
-
-# Dataset / checkpoint paths -- pruned checkpoint + its recomputed
-# misclassified set. Bare filenames (no directory component) are resolved
-# via deeparguing.output_paths: today's outputs/<date>/ folder if the file
-# is there, else the most recent earlier date folder that has it.
 checkpoint: pruned_model_checkpoint.pt
 qbaf: pruned_misclassified_qbaf.json
-num_samples: null  # null = use every misclassified sample in qbaf
+num_samples: null
 
-# batch_contest hyperparameters (unchanged from global_optimize.yaml).
 k: 3
 threshold: 0.5
 margin: 0.001
@@ -31,8 +13,6 @@ divergence_bound: 100.0
 alpha_init: 1.0
 max_backtracks: 10
 
-# Global-optimization-specific (unchanged from global_optimize.yaml -- see
-# that file's header for the sweep/seeding-bug history that picked these).
 seed: 0
 protect_margin: 0.05
 protect_lambda: 50.0
@@ -42,20 +22,7 @@ eval_every: 5
 eval_split: val
 eval_batch_size: null
 
-# Run/output settings.
 device: null
-log_dir: null  # null = today's outputs/<date>/ folder -- same folder the
-               # unpruned run also writes to (outputs/ is flat, no
-               # subfolders -- see output_paths.py), so save_checkpoint below
-               # is set explicitly to avoid colliding with the unpruned run's
-               # global_optimize_checkpoint.pt.
-# save_checkpoint is resolved the same way as checkpoint/qbaf: a bare
-# filename (no directory component) always lands in today's outputs/<date>/
-# folder. Left as null, it would default to "global_optimize_checkpoint.pt"
-# -- identical to the unpruned run's default and in the same folder, so
-# whichever of the two runs finishes second silently overwrites the other's
-# checkpoint. Set explicitly here so both survive.
+log_dir: null
 save_checkpoint: pruned_global_optimize_checkpoint.pt
-md_log_path: null  # shared/appended global_optimize.md is fine -- each
-                    # entry's "Checkpoint:" line distinguishes pruned vs
-                    # unpruned runs.
+md_log_path: null

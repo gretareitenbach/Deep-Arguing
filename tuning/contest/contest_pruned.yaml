@@ -1,43 +1,20 @@
-# Config for deeparguing.contest.contest_all, for use after
-# contest/prune_edges.py + contest/recompute_misclassified.py have produced
-# a pruned checkpoint and its own (post-pruning) misclassified-sample QBAF.
-#
-# Same hyperparameters as tuning/contest/contest.yaml's winning config (see
-# that file's header for how they were found) -- only the dataset/checkpoint
-# paths differ, so pruning's effect on contestability is measured under the
-# same batch_contest settings as the unpruned baseline.
-#
-# Any CLI flag passed to contest_all.py overrides the corresponding value
-# here (e.g. `--k 10` for a one-off run without editing this file).
-
-# Dataset / checkpoint paths -- pruned checkpoint + its recomputed
-# misclassified set. Bare filenames (no directory component) are resolved
-# via deeparguing.output_paths: today's outputs/<date>/ folder if the file
-# is there, else the most recent earlier date folder that has it.
 checkpoint: pruned_model_checkpoint.pt
 qbaf: pruned_misclassified_qbaf.json
-num_samples: null  # null = use every misclassified sample in qbaf
+num_samples: null
 
-# batch_contest hyperparameters (unchanged from contest.yaml).
 k: 3
 threshold: 0.5
 margin: 0.001
 max_iters: 50
 tol: 0.0001
-max_edits: null  # null = unbounded edit budget
-batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
+max_edits: null
+batch_size: null
 divergence_bound: 100.0
-alpha_init: 1.0  # larger values consistently hurt in sweeps -- see git history
+alpha_init: 1.0
 max_backtracks: 10
 
-# Run/output settings.
-device: null  # null = auto-detect cuda if available, else cpu
-log_dir: null  # null = today's outputs/<date>/ folder
-# checkpoint_filename/log_prefix are overridden here (vs. contest.yaml's
-# defaults of 'contested_checkpoint.pt'/'contestation') so this pipeline's
-# output doesn't collide with the unpruned run's, since both now land flat
-# in the same date folder rather than separate outputs/contestation(_pruned)/
-# subfolders.
+device: null
+log_dir: null
 checkpoint_filename: pruned_contested_checkpoint.pt
 log_prefix: pruned_contestation
-save_checkpoint: null  # null = default to '<log_dir>/<checkpoint_filename>'; "" to skip saving
+save_checkpoint: null

@@ -1,31 +1,9 @@
 """Gradient-based Relation Attribution Explanations (G-RAEs).
 
-Implements Definition 13 of the Contestability paper (Yin, Potyka, Rago,
-Kampik & Toni), computing the gradient of an argument's final strength
-with respect to individual edge weights, using PyTorch autograd instead
-of the paper's perturbation-based approximation (their Algorithm 1).
-
-G-RAEs are computed with respect to both edge tensors that feed a
-new case's classification:
-
-    - ``model.A``: the casebase-internal adjacency. Shared across every
-      prediction the model makes (built once in ``fit()``), so edits
-      here are the only ones with a persistent, global effect. This is
-      what Week 3's heuristic algorithm will eventually adjust, and
-      what Week 4 measures the ripple effect of.
-    - ``model.new_cases_attacks_adjacency``: the new case's own edges
-      into the casebase. Recomputed fresh per prediction, so edits here
-      are local to a single sample.
-
-Neither tensor is a true PyTorch leaf when it comes out of a normal
-forward pass -- each is the output of a learned network (
-``casebase_edge_weights`` / ``irrelevance_edge_weights`` respectively).
-To get the gradient with respect to the *edge weight values themselves*
-(matching the paper's definition, which perturbs w(r) directly), we
-detach both tensors into fresh leaves before re-running the downstream
-semantics computation. Gradients then stop at the leaves rather than
-continuing back through the generating networks or the raw input
-pixels.
+Computes the gradient of an argument's final strength with respect to
+individual edge weights of ``model.A`` (casebase-internal adjacency) and
+``model.new_cases_attacks_adjacency`` (new case's own edges), using PyTorch
+autograd.
 """
 
 import itertools
@@ -46,25 +24,15 @@ class GRAEResult:
     Attributes
     ----------
     casebase_edges : Tensor
-        Gradient of the (summed, batched) target strength with respect
-        to ``model.A``. Shape matches ``model.A`` (n, n, d).
-
-        Note: since ``model.A`` is shared across the batch, a single
-        backward pass over multiple new cases gives the *aggregate*
-        sensitivity across all of them, not a per-sample breakdown. If
-        a per-sample casebase-edge G-RAE is needed (e.g. for the
-        Direct Influence sign check), backward passes must be run
-        one sample at a time -- see ``per_sample`` on
-        ``compute_grae``.
+        Gradient of the (summed, batched) target strength with respect to
+        ``model.A``. Shape matches ``model.A`` (n, n, d), or (B, n, n, d)
+        if ``per_sample`` was requested.
     new_case_edges : Tensor
-        Gradient of each sample's own target strength with respect to
-        its row of ``model.new_cases_attacks_adjacency``. Shape (B, n,
-        d) -- naturally per-sample already, since this tensor is
-        batched to begin with.
+        Gradient of each sample's own target strength with respect to its
+        row of ``model.new_cases_attacks_adjacency``. Shape (B, n, d).
     target_indices : Sequence[int]
         The default-argument index used as the topic argument for each
-        sample in the batch (i.e. which class's strength we
-        differentiated).
+        sample in the batch.
     """
 
     casebase_edges: Tensor
@@ -75,14 +43,14 @@ class GRAEResult:
 def _batched_casebase_base_scores(model: GradualAACBR, batch_size: int) -> Tensor:
     """Recompute and batch-tile the casebase's own base scores.
 
-    Mirrors ``GradualAACBR._GradualAACBR__batch_base_scores``. Does not
-    depend on either G-RAE leaf, so it is run under ``no_grad`` -- we
-    only want gradients flowing to ``A_leaf``/``E_leaf``, not back into
-    the base-score network.
+    Returns
+    -------
+    Tensor
+        Shape (B, n, d).
     """
     with torch.no_grad():
         scores = model.compute_base_scores(model.X_train)
-    return torch.tile(scores.unsqueeze(0), (batch_size, 1, 1))  # B x n x d
+    return torch.tile(scores.unsqueeze(0), (batch_size, 1, 1))
 
 
 def _replay_default_strengths(
@@ -93,22 +61,29 @@ def _replay_default_strengths(
     new_cases_base_scores: Tensor,
     semantics: GradualSemantics | None = None,
 ) -> Tensor:
-    """Replay ``__new_case_influence`` + ``gradual_semantics`` with ``A``/``E`` swapped in.
+    """Replay ``__new_case_influence`` + ``gradual_semantics`` with ``A``/``E``
+    swapped in for ``model.A``/``model.new_cases_attacks_adjacency``.
 
-    Mirrors ``GradualAACBR.forward``/``__new_case_influence`` exactly,
-    except ``model.A`` and ``model.new_cases_attacks_adjacency`` are
-    replaced by ``A`` and ``E`` (the detached leaves in ``compute_grae``,
-    or perturbed copies in ``finite_difference_grae``).
+    Parameters
+    ----------
+    model : GradualAACBR
+    A : Tensor
+        Casebase adjacency to use instead of ``model.A``.
+    E : Tensor
+        New-case adjacency to use instead of ``model.new_cases_attacks_adjacency``.
+    casebase_base_scores : Tensor
+    new_cases_base_scores : Tensor
+    semantics : GradualSemantics | None
+        If given, replaces ``model.gradual_semantics`` for this replay only.
 
-    ``semantics``, if given, replaces ``model.gradual_semantics`` for this
-    replay only -- used by ``batch_contest`` to get a gradient through a
-    differentiable surrogate (e.g. leaky-ReLU standing in for a hard ReLU
-    that's saturated exactly at 0) without changing what the model actually
-    computes anywhere else.
+    Returns
+    -------
+    Tensor
+        Every default class's strength, shape (B, D).
     """
     semantics = semantics or model.gradual_semantics
     aggregations = semantics.aggregation_func(
-        E.unsqueeze(1), new_cases_base_scores  # B x 1 x n x d
+        E.unsqueeze(1), new_cases_base_scores
     )
     influenced_base_scores = semantics.influence_func(
         casebase_base_scores, aggregations
@@ -116,9 +91,9 @@ def _replay_default_strengths(
     strengths = semantics(model.post_process_func(A), influenced_base_scores)
 
     if model.dimensions > 1:
-        final_strengths = torch.matmul(strengths, model.W)  # (B, n, d) -> (B, n)
+        final_strengths = torch.matmul(strengths, model.W)
     else:
-        final_strengths = strengths.squeeze(-1)  # (B, n, 1) -> (B, n)
+        final_strengths = strengths.squeeze(-1)
 
     return final_strengths[:, model.default_indexes]
 
@@ -136,63 +111,28 @@ def compute_grae(
     Parameters
     ----------
     model : GradualAACBR
-        A model that has already been ``fit()``. ``model.A`` must be
-        populated.
+        A fitted model (``model.A`` populated).
     new_cases : Tensor
-        Batch of new case characterisations, shape (B, x1, ..., xn) --
-        same shape ``model.forward`` expects. Typically the
-        misclassified samples pulled from ``misclassified_qbaf.json``.
+        Batch of new case characterisations, shape (B, x1, ..., xn).
     target_indices : Sequence[int]
         Length-B sequence giving, for each sample, which entry of
-        ``model.default_indexes`` to treat as the topic argument (i.e.
-        the desired/correct class to differentiate the strength of --
-        not necessarily the class the model actually predicted).
-    per_sample : bool, default True
-        If True, also loop over the batch one sample at a time to
-        recover a per-sample ``casebase_edges`` gradient (see
-        ``GRAEResult.casebase_edges``), at the cost of B extra backward
-        passes. If False, ``casebase_edges`` is the aggregate gradient
-        across the whole batch.
+        ``model.default_indexes`` to differentiate the strength of.
+    per_sample : bool, default False
+        If True, also recover a per-sample ``casebase_edges`` gradient at
+        the cost of B extra backward passes. If False, ``casebase_edges``
+        is the aggregate gradient across the whole batch.
     rival_indices : Sequence[int | None] | None, default None
         If given, length-B, one entry per sample: differentiate
         ``target_strength - rival_strength`` instead of just
         ``target_strength`` for that sample (``None`` for a sample means
-        "no rival, differentiate target only" -- e.g. the
-        single-topic-argument case where the rival is a fixed constant,
-        not a function of ``A``). Used by ``batch_contest`` so the shared
-        gradient reflects the full margin ``m_i(A) = target_i(A) -
-        rival_i(A)``, not just the target side of it.
+        differentiate target only).
     semantics_override : GradualSemantics | None, default None
-        If given, replaces ``model.gradual_semantics`` for this replay
-        only (see ``_replay_default_strengths``) -- e.g. a leaky-ReLU
-        surrogate so saturated (exactly-0) nodes still carry a gradient.
+        If given, replaces ``model.gradual_semantics`` for this replay only.
 
     Returns
     -------
     GRAEResult
-        See above. All returned tensors are detached (no further
-        autograd tracking needed downstream).
-
-    Notes
-    -----
-    Implementation sketch:
-
-    1. Run (or reuse) a forward pass so ``model.A`` and
-       ``model.new_cases_attacks_adjacency`` are populated for
-       ``new_cases``.
-    2. Detach both into fresh leaves, ``A_leaf`` and ``E_leaf``, each
-       with ``requires_grad_(True)``.
-    3. Replay only the downstream computation
-       (``__new_case_influence``'s aggregation/influence step, then
-       ``gradual_semantics(A_leaf, ...)``) using the leaves in place of
-       the originals -- do not recompute
-       ``casebase_edge_weights``/``irrelevance_edge_weights`` from
-       scratch, or the leaves are pointless.
-    4. Gather ``final_strengths[range(B), target_indices]``, sum, and
-       call ``.backward()`` once.
-    5. ``E_leaf.grad`` is already per-sample. For ``A_leaf.grad``,
-       either use the aggregate (default) or loop per-sample with
-       ``retain_graph=True`` if ``per_sample`` is requested.
+        All returned tensors are detached.
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -206,8 +146,6 @@ def compute_grae(
         )
 
     with torch.no_grad():
-        # Populates model.new_cases_attacks_adjacency / new_cases_base_scores
-        # for this batch; the resulting graph itself is discarded.
         model(new_cases)
 
     A_leaf = model.A.detach().clone().requires_grad_(True)
@@ -268,40 +206,24 @@ def finite_difference_grae(
     target_index: int,
     epsilon: float = 1e-4,
 ) -> GRAEResult:
-    """Approximate G-RAEs via perturbation (Algorithm 1 in the paper).
-
-    A brute-force cross-check for ``compute_grae``'s analytic
-    gradients: perturb one edge weight at a time by ``epsilon``,
-    recompute the target strength, and divide the difference by
-    ``epsilon``. Intended for a single sample on a small casebase --
-    this is O(n) forward passes and will not scale to the full
-    misclassified-sample batch.
+    """Approximate G-RAEs via perturbation, as a cross-check for
+    ``compute_grae``'s analytic gradients.
 
     Parameters
     ----------
     model : GradualAACBR
-        A model that has already been ``fit()``.
+        A fitted model.
     new_case : Tensor
         A single new case characterisation, shape (1, x1, ..., xn).
     target_index : int
-        Which entry of ``model.default_indexes`` to treat as the topic
-        argument.
+        Which entry of ``model.default_indexes`` to treat as the topic argument.
     epsilon : float, default 1e-4
-        Perturbation size. Too large biases the estimate; too small
-        risks floating point noise dominating the difference.
+        Perturbation size.
 
     Returns
     -------
     GRAEResult
-        Same shape/structure as ``compute_grae``'s output, so the two
-        can be compared directly (e.g. ``torch.allclose``).
-
-    Notes
-    -----
-    Tuesday's cross-check: run this and ``compute_grae`` on the same
-    small synthetic casebase (3-4 nodes) and confirm they agree within
-    a reasonable tolerance before trusting the analytic version on
-    real CIFAR-10 samples.
+        Same shape/structure as ``compute_grae``'s output.
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -315,7 +237,7 @@ def finite_difference_grae(
         model(new_case)
 
     A0 = model.A.detach().clone()
-    E0 = model.new_cases_attacks_adjacency.detach().clone()  # (1, n, d)
+    E0 = model.new_cases_attacks_adjacency.detach().clone()
 
     casebase_base_scores = _batched_casebase_base_scores(model, batch_size=1)
     new_cases_base_scores = model.new_cases_base_scores.detach()

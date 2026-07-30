@@ -1,38 +1,7 @@
 """Global optimization: maximize misclassified-sample flips via
 ``batch_contest`` while protecting the model's global (held-out-split)
-accuracy.
-
-Two mechanisms working together (see ``batch_contest.py``'s module
-docstring for the first, this module's docstring for the second):
-
-  1. A soft per-step penalty: a "protect" batch of currently
-     correctly-classified held-out examples, sampled once up front (see
-     ``_build_protect_set``), rides along in every ``batch_contest`` call's
-     shared loss/gradient/line search via its ``protect_samples``/
-     ``protect_lambda`` params.
-  2. A hard, periodic guardrail: every ``eval_every`` outer iterations,
-     this module calls out to ``evals/global_contest_eval.py`` -- a real,
-     full-held-out-split accuracy check, exactly what ``batch_contest``'s
-     soft penalty above only ever approximates on a fixed sample -- and
-     rolls ``model.A`` back to the last snapshot that stayed within
-     ``max_acc_drop`` of baseline if the check fails, then stops.
-
-Both mechanisms are evaluated against the same held-out split
-(``--eval-split``, default ``val``), so the hard check is verifying the
-same thing the soft penalty nudges toward. This module deliberately leaves
-``test`` as an honest, unpeeked split -- run ``run_global_contest_eval.py
---split test`` against the checkpoint this script saves for a final,
-post-hoc confirmation.
-
-This module is the only place in ``contest/`` that imports from
-``evals/`` (mirroring ``sweep_global_contest_eval.py``, the existing
-precedent) -- ``batch_contest.py`` itself stays a pure numerical primitive
-with no dataset/eval-split dependency, only ever seeing whatever
-``protect_samples`` tensor this orchestrator hands it.
-
-All hyperparameters and dataset/checkpoint paths live in a YAML config file
-(default ``tuning/contest/global_optimize.yaml``), following the same
-CLI-flag-overrides-YAML convention as ``contest_all.py``.
+accuracy, using a soft per-step protect-set penalty plus a hard periodic
+accuracy guardrail with rollback.
 
 Usage::
 
@@ -84,8 +53,10 @@ DEFAULT_SEED = 0
 
 @dataclasses.dataclass
 class GlobalOptimizeResult:
-    # cumulative touched-edge bookkeeping across every accepted round;
-    # cleared/final_target_strengths/etc. reflect the final model.A.
+    """Outcome of ``global_optimize()``. ``batch_result``'s touched-edge
+    bookkeeping is cumulative across every accepted round; its cleared/
+    final_target_strengths/etc. reflect the final ``model.A``."""
+
     batch_result: BatchContestResult
     baseline: GlobalEvalMetrics
     final_metrics: GlobalEvalMetrics
@@ -103,11 +74,10 @@ def _build_protect_set(
     keep only currently correctly-classified rows, and sample up to
     ``sample_size`` of them once.
 
-    Sampled once per run, not resampled per round: both ``batch_contest``'s
-    line search (old vs. trial loss within one call) and this module's
-    round-over-round ``acc_drop`` comparison are only meaningful if the
-    protect subset staying fixed isn't itself a confound. Broader coverage,
-    if wanted, comes from a larger ``sample_size``, not resampling.
+    Returns
+    -------
+    tuple[Tensor, list[int]]
+        The sampled inputs and their true class labels.
     """
     with torch.no_grad():
         predicted = model(X_eval).argmax(dim=-1)
@@ -122,9 +92,8 @@ def _build_protect_set(
 
 
 def _rounds_table(rounds: list[dict[str, Any]]) -> str:
-    """Markdown table of each round's outcome -- the same numbers logged to
-    the console per round, one row each, so a run's whole trajectory (not
-    just the final state) survives in the markdown summary."""
+    """Markdown table of each round's outcome (iterations, cleared count,
+    accuracy, drop, rollback)."""
     if not rounds:
         return "No rounds ran."
     lines = [
@@ -165,8 +134,36 @@ def global_optimize(
 ) -> GlobalOptimizeResult:
     """Repeatedly call ``batch_contest`` in ``eval_every``-sized rounds,
     checking real held-out accuracy between rounds and rolling back to the
-    last passing snapshot if ``max_acc_drop`` is exceeded. See module
-    docstring for the two-mechanism design."""
+    last passing snapshot if ``max_acc_drop`` is exceeded.
+
+    Parameters
+    ----------
+    model : GradualAACBR
+        A fitted model (``model.A`` populated).
+    samples : Tensor
+        Misclassified samples to contest, shape (B, x1, ..., xn).
+    true_classes : Sequence[int]
+        Length-B, the desired class for each sample.
+    X_eval, y_eval : Tensor
+        Held-out split used for both the protect set and the guardrail check.
+    k, threshold, margin, max_iters, tol, max_edits, batch_size,
+    divergence_bound, alpha_init, max_backtracks
+        Passed through to ``batch_contest``.
+    protect_margin, protect_lambda, protect_sample_size
+        Protect-set penalty configuration; see ``batch_contest``'s
+        ``protect_*`` parameters and ``_build_protect_set``.
+    max_acc_drop : float
+        Guardrail threshold: roll back and stop once eval-split accuracy
+        has dropped this much from baseline.
+    eval_every : int
+        Outer iterations per round before the guardrail re-checks accuracy.
+    eval_batch_size : int | None
+        Batch size for the guardrail's forward pass.
+
+    Returns
+    -------
+    GlobalOptimizeResult
+    """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
 
@@ -176,10 +173,6 @@ def global_optimize(
     )
     has_protect = protect_samples.shape[0] > 0
 
-    # Zero-effect snapshot of the current (pre-optimization) state -- always
-    # a valid BatchContestResult to fall back to if no round ever runs or
-    # passes the guardrail, so the rest of this function never has to
-    # special-case "no result yet".
     result = batch_contest(
         model, samples, true_classes,
         k=k, threshold=threshold, margin=margin, max_iters=0,
@@ -242,15 +235,9 @@ def global_optimize(
         last_good_A = model.A.detach().clone()
 
         if round_result.iterations < round_budget:
-            # batch_contest already decided to stop internally (tol reached,
-            # no usable step, or its own edit budget hit) -- no point
-            # running another round.
             stopped_reason = "converged"
             break
 
-    # `result`'s own touched-edge bookkeeping only covers its own (last
-    # accepted) round -- override with the cumulative footprint across every
-    # accepted round so a caller sees the true total, not just the last one.
     result = dataclasses.replace(
         result, num_edges_changed=len(total_touched), touched_edge_indices=sorted(total_touched)
     )
@@ -276,8 +263,8 @@ def main() -> None:
     parser.add_argument(
         "--config",
         default=DEFAULT_CONFIG_PATH,
-        help="YAML file holding hyperparameters and paths (see tuning/contest/global_optimize.yaml). "
-        "Any other flag passed here overrides the corresponding value in it.",
+        help="YAML file holding hyperparameters and paths. Any other flag "
+        "passed here overrides the corresponding value in it.",
     )
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--qbaf", default=None)
@@ -307,8 +294,7 @@ def main() -> None:
         "--protect-margin",
         type=float,
         default=None,
-        help="Margin a protect-set sample must keep above its rival before it's "
-        "considered eroded (see batch_contest.py's protect_margin).",
+        help="Margin a protect-set sample must keep above its rival.",
     )
     parser.add_argument(
         "--protect-lambda",
@@ -320,8 +306,8 @@ def main() -> None:
         "--protect-sample-size",
         type=int,
         default=None,
-        help="How many currently-correctly-classified eval-split examples to sample "
-        "once, up front, as the protect set.",
+        help="How many currently-correctly-classified eval-split examples to "
+        "sample once, up front, as the protect set.",
     )
     parser.add_argument(
         "--max-acc-drop",
@@ -340,18 +326,15 @@ def main() -> None:
     parser.add_argument(
         "--eval-split",
         default=None,
-        help="Held-out split ('val' or 'test') used for both the protect-set "
-        "pool and the guardrail check. Default: val -- keep 'test' unpeeked "
-        "and use run_global_contest_eval.py --split test for a final check.",
+        help="Held-out split ('val' or 'test') used for the protect-set pool "
+        "and the guardrail check. Default: val.",
     )
     parser.add_argument("--eval-batch-size", type=int, default=None)
     parser.add_argument(
         "--seed",
         type=int,
         default=None,
-        help="Seeds torch before the protect set (_build_protect_set's "
-        "torch.randperm) is drawn, so runs are reproducible and match "
-        f"sweep_global_optimize.py's per-combo seeding. Default: {DEFAULT_SEED}.",
+        help=f"Seeds torch before the protect set is drawn. Default: {DEFAULT_SEED}.",
     )
     parser.add_argument("--device", default=None)
     parser.add_argument(
@@ -405,9 +388,6 @@ def main() -> None:
     seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
-    # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
-    # explicit) mirrors contest_all.py -- must not fall through _resolved's
-    # "treat null/absent as unset" rule.
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
     md_log_path = args.md_log_path if args.md_log_path is not None else config.get("md_log_path")
     if md_log_path is None:
@@ -429,11 +409,6 @@ def main() -> None:
         f"Running global optimization over {samples.shape[0]} misclassified samples, "
         f"protecting {eval_split}-split accuracy (max_acc_drop={max_acc_drop}, eval_every={eval_every}, seed={seed})..."
     )
-    # Seeded right before the run (not earlier) so it governs exactly the
-    # randomness global_optimize() itself introduces -- _build_protect_set's
-    # torch.randperm draw of the protect set. Without this, two runs of the
-    # identical config can pull different protect sets and diverge wildly in
-    # outcome; matches sweep_global_optimize.py's per-combo reseeding.
     torch.manual_seed(seed)
     result = global_optimize(
         model, samples, true_classes, X_eval, y_eval,
@@ -458,8 +433,6 @@ def main() -> None:
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Unravel each touched flat index into (source, target, dim) plus its
-    # before/after weight, same convention as contest_all.py's log.
     n1, n2, d = model.A.shape
     original_flat = original_A.reshape(-1)
     new_flat = model.A.reshape(-1)
@@ -563,10 +536,6 @@ def main() -> None:
         save_checkpoint = str(log_dir / "global_optimize_checkpoint.pt")
 
     if save_checkpoint:
-        # Bare filename -> today's outputs/<date>/ folder, same convention as
-        # checkpoint/qbaf's resolve_read_path above -- so e.g. `--save-checkpoint
-        # pruned_global_optimize_checkpoint.pt` lands in the dated folder without
-        # having to spell out outputs/<today>/ by hand.
         save_checkpoint = resolve_write_path(save_checkpoint)
         torch.save(
             {

@@ -1,16 +1,7 @@
 """Grid-sweep the five global-optimization-specific hyperparameters of
 ``global_optimize.py`` -- ``protect_lambda``, ``eval_every``, ``protect_margin``,
 ``protect_sample_size``, ``max_acc_drop`` -- against a single fixed baseline
-checkpoint, and report each combo's outcome (samples flipped, held-out
-accuracy drop, edges changed, guardrail behavior) in a markdown report.
-
-Purely an orchestration script: for each combo it resets ``model.A`` to a
-fresh copy of the baseline and calls ``global_optimize()`` unchanged (see
-``global_optimize.py``'s module docstring for the two-mechanism algorithm
-being swept). The other, non-swept ``batch_contest`` hyperparameters
-(k/threshold/margin/max_iters/etc.) come from the same YAML config
-``global_optimize.py`` itself uses, or CLI overrides, and stay fixed across
-every combo within one sweep run.
+checkpoint, and report each combo's outcome in a markdown report.
 
 Usage::
 
@@ -18,10 +9,6 @@ Usage::
     python -m deeparguing.contest.sweep_global_optimize \\
         --protect-lambdas 1,5,20,50 --eval-everys 1,5,10 \\
         --max-combos 40 --output global_optimize_sweep.md
-
-Grid size is the product of every ``--*-s`` list's length -- five 3-value
-lists is already 243 full ``global_optimize`` runs. Pass ``--max-combos`` to
-randomly subsample (seeded by ``--seed``) instead of running the full grid.
 """
 
 import argparse
@@ -52,14 +39,9 @@ from deeparguing.output_paths import resolve_read_path, resolve_write_path
 DEFAULT_OUTPUT = "global_optimize_sweep.md"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 6
-# Above this many combos in the full grid, nudge the user toward --max-combos
-# instead of silently launching a very long run.
-LARGE_GRID_WARNING_THRESHOLD = 100
+LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
 
-# Candidate values for each swept hyperparameter. Deliberately small (2 each,
-# 32 combos total) so a bare invocation stays tractable -- override any of
-# the five ``--*-s`` flags with a longer comma-separated list to broaden the
-# search once you know how much compute budget you have.
+# Candidate values for each swept hyperparameter.
 DEFAULT_PROTECT_LAMBDAS = [5.0, 20.0]
 DEFAULT_EVAL_EVERYS = [1, 5]
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
@@ -94,11 +76,13 @@ def _run_combo(
     combo: Combo, fixed_kwargs: dict[str, Any], seed: int,
 ) -> tuple[Any, float]:
     """Reset ``model.A`` to the baseline and run ``global_optimize`` for one
-    combo. Reseeded before every combo (not just once for the whole sweep)
-    so that the protect-set sampling inside ``global_optimize`` starts from
-    the same RNG state each time -- otherwise two combos' results could
-    differ because of RNG drift accumulated by earlier combos in the sweep,
-    not because of the hyperparameters actually being compared.
+    combo, reseeding torch first so every combo's protect-set sampling
+    starts from the same RNG state.
+
+    Returns
+    -------
+    tuple[Any, float]
+        The ``GlobalOptimizeResult`` and elapsed wall time in seconds.
     """
     model.A = original_A.clone()
     torch.manual_seed(seed)
@@ -157,10 +141,13 @@ def _full_results_table(df: pd.DataFrame) -> str:
 
 
 def _marginal_tables(df: pd.DataFrame) -> str:
-    """For each swept hyperparameter, average outcomes across every other
-    axis -- a lightweight way to see which knob actually moves the needle,
-    since the full grid table alone is hard to read once there are dozens
-    of rows."""
+    """For each swept hyperparameter, average outcomes across every other axis.
+
+    Returns
+    -------
+    str
+        Markdown sections, one per swept column.
+    """
     sections = []
     for col in SWEEP_COLUMNS:
         grouped = (

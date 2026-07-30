@@ -1,54 +1,12 @@
 """
 src/deeparguing/contest/contest.py
 
-Heuristic contestability algorithm: iteratively perturb the top-k edges of
-``model.A`` (the casebase-internal adjacency, see ``grae.py``'s module
-docstring) by |G-RAE| along the gradient direction, using a bracket-and-bisect
-line search to find close to the minimal step that flips the model's argmax
-prediction onto the target class.
-
-Update rule summary:
-  - Edges moved:  top-k by |G-RAE| magnitude (k is a tunable sweep param)
-  - Step size:    bracket (geometric backtracking) then bisect within it to
-                   converge toward the minimal crossing alpha
-  - Stopping:     target class strength beats the best rival class's
-                   strength by at least ``margin``, or max_iters
-
-Note: strengths across classes are not mutually exclusive or bounded to
-[0, 1] (no softmax/normalization ties them together -- see
-``GradualAACBR.forward``'s final ``strengths @ W`` combination), so a fixed
-absolute threshold cannot by itself tell you whether the target class
-actually won the argmax. Every forward pass already computes every class's
-strength at once, so tracking the best rival costs nothing extra -- we just
-stop discarding it. If ``target_class`` is the *only* default argument
-(the single-topic-argument setting from the original Contestability paper,
-with no classification competition to speak of), there is no rival to
-compare against; ``threshold`` is then used as a fixed virtual competitor,
-recovering the original absolute-threshold criterion for that case.
-
-This does *not* make the top-k edge selection rival-aware: ``_casebase_grae``
-still differentiates only the target class's strength, so a step can raise
-the rival too; the stopping check below will simply reject such a step and
-try another top-k direction next iteration.
-
-Dead gradients: ``_casebase_grae`` can come back uniformly ~0 for a sample
-because ``target_class``'s own final strength is pinned at exactly 0 by its
-outer ReLU -- since the aggregation
-step is dense (every entry of ``model.A`` has a well-defined one-hop
-gradient contribution equal to its source node's strength, whether or not
-that entry happens to be nonzero right now), that outer saturation is what
-zeroes the derivative *uniformly*, not merely some upstream node being
-saturated. Fixing an upstream node that feeds the target (rather than the
-target's own incoming edges directly) is still often the more useful lever,
-since it can cascade forward and revive the target as a side effect. Each
-iteration checks ``grae_vector``'s magnitude and routes accordingly: "live"
-takes the ordinary top-k/bisection path below; "dead" instead calls
-``bottleneck.find_and_escape_bottleneck``, which walks toward the target to
-find a saturated node and grows a step that un-sticks it (see
-``bottleneck.py``'s module docstring). Both paths feed the same
-trace-recording/commit logic, so a dead-then-escaped sample continues
-through ordinary gradient steps on the next iteration once
-``_casebase_grae`` is recomputed and live again.
+Single-sample contestability search: iteratively perturbs the top-k edges of
+``model.A`` along the G-RAE gradient direction, using a bracket-and-bisect
+line search to find the minimal step that makes the target class beat the
+best rival class by at least ``margin``. Falls back to
+``bottleneck.find_and_escape_bottleneck`` when the gradient is uniformly ~0
+(a saturated ReLU node).
 """
 
 from dataclasses import dataclass, field
@@ -63,34 +21,26 @@ from .grae import compute_grae
 
 # ---- Config -----------------------------------------------------------
 
-DEFAULT_K = 3             # edges perturbed per iteration; sweep 1,3,5
-THRESHOLD = 0.5           # virtual rival strength when target_class has no real rival
-MARGIN = 0.01             # target must beat the best rival class by this much
-LIVE_GRAD_THRESHOLD = 1e-9  # max|grae_vector| at or below this counts as "dead" -- routes
-                            # to bottleneck.find_and_escape_bottleneck instead of the
-                            # ordinary line search. Not re-validated against a real max|grad|
-                            # distribution (bimodal: exact 0.0s vs. a comfortable spread
-                            # above) -- check that assumption before relying on this value
-                            # on a new checkpoint/dataset.
-ALPHA_MAX = 1.0           # initial line-search step size
-BACKTRACK_FACTOR = 0.5    # shrink factor per failed bracketing trial
-MAX_BACKTRACKS = 10       # bracketing-phase retry cap (per iteration)
-MAX_BISECTIONS = 30       # refinement-phase retry cap, once a bracket is found
-                          # (each step is one cheap no_grad forward pass, and
-                          # halves the bracket -- 30 gets ~1e-9 relative
-                          # resolution on alpha_max=1.0 for ~20 extra passes
-                          # over the old cap of 10)
-BISECT_TOL = 1e-6         # stop bisecting once the bracket is this narrow
-MAX_ITERS = 50            # outer loop cap -> mark as failed-to-flip if hit
+DEFAULT_K = 3               # edges perturbed per iteration; sweep 1,3,5
+THRESHOLD = 0.5              # virtual rival strength when target_class has no real rival
+MARGIN = 0.01                # target must beat the best rival class by this much
+LIVE_GRAD_THRESHOLD = 1e-9   # max|grae_vector| at or below this counts as "dead"
+ALPHA_MAX = 1.0               # initial line-search step size
+BACKTRACK_FACTOR = 0.5       # shrink factor per failed bracketing trial
+MAX_BACKTRACKS = 10          # bracketing-phase retry cap (per iteration)
+MAX_BISECTIONS = 30          # refinement-phase retry cap, once a bracket is found
+BISECT_TOL = 1e-6            # stop bisecting once the bracket is this narrow
+MAX_ITERS = 50               # outer loop cap -> mark as failed-to-flip if hit
 
 
 class EdgeTraceStep(NamedTuple):
-    """One accepted perturbation step. Tuple-unpacking still works but
-    prefer the named fields for readability. ``*_rival_class`` is the
-    strongest non-target class at that point (``None`` if target_class has
-    no real rival -- see module docstring) -- tracked separately
-    before/after because a step can change which class is the rival, not
-    just its strength."""
+    """One accepted perturbation step.
+
+    Fields: edge_ids, alpha, old_weights, new_weights, old_target_strength,
+    new_target_strength, old_rival_class, old_rival_strength,
+    new_rival_class, new_rival_strength. ``*_rival_class`` is ``None`` if
+    target_class has no real rival.
+    """
 
     edge_ids: list[int]
     alpha: float
@@ -106,6 +56,10 @@ class EdgeTraceStep(NamedTuple):
 
 @dataclass
 class ContestResult:
+    """Outcome of ``contest()``: whether the target class flipped, how many
+    iterations it took, the largest single edge-weight change made, the
+    full step-by-step trace, and the final target/rival strengths."""
+
     success: bool
     iterations: int
     max_weight_delta: float
@@ -117,17 +71,20 @@ class ContestResult:
 
 def _casebase_grae(model: GradualAACBR, sample: Tensor, target_class: int) -> Tensor:
     """Gradient of ``target_class``'s strength for ``sample`` w.r.t. every
-    entry of ``model.A``, flattened to 1-D so it lines up with the flat
-    indices ``select_top_k``/``bisection_line_search`` operate on."""
+    entry of ``model.A``.
+
+    Returns a flattened (n*n*d,) tensor matching ``select_top_k``'s index
+    convention.
+    """
     result = compute_grae(model, sample, target_indices=[target_class])
     return result.casebase_edges.reshape(-1)
 
 
 def _forward_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
     """Forward pass of ``sample`` with ``model.A`` temporarily swapped for ``A``.
-    Returns every default class's strength (shape (D,)), not just the target's --
-    a single forward pass computes them all together, so callers that need to
-    know how the *other* classes moved don't need a second pass."""
+
+    Returns every default class's strength, shape (D,).
+    """
     original_A = model.A
     try:
         model.A = A
@@ -141,14 +98,13 @@ def _forward_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor
 def _target_and_rival(
     strengths: Tensor, target_class: int, threshold: float
 ) -> tuple[float, int | None, float]:
-    """Split a strength vector into (target_strength, rival_class, rival_strength),
-    where rival is the highest-strength class other than target_class -- the one
-    that must be overtaken for target_class to actually win the argmax.
+    """Split a strength vector into (target_strength, rival_class,
+    rival_strength), where rival is the highest-strength class other than
+    ``target_class``.
 
-    If target_class is the only default argument, there are no other classes
-    to compare against: rival_class is None and rival_strength falls back to
-    the fixed threshold, so the caller's ``target - rival >= margin`` check
-    still recovers the original single-topic-argument criterion."""
+    If ``target_class`` is the only default argument, ``rival_class`` is
+    ``None`` and ``rival_strength`` falls back to ``threshold``.
+    """
     if strengths.numel() == 1:
         return strengths[target_class].item(), None, threshold
     other = strengths.clone()
@@ -158,9 +114,10 @@ def _target_and_rival(
 
 
 def _forward_strengths_batch(model: GradualAACBR, samples: Tensor, A: Tensor) -> Tensor:
-    """Batched analogue of ``_forward_strengths``: forward pass of every
-    sample in ``samples`` with ``model.A`` temporarily swapped for ``A``,
-    returning every default class's strength for every sample, shape (B, D)."""
+    """Batched analogue of ``_forward_strengths``.
+
+    Returns every default class's strength for every sample, shape (B, D).
+    """
     original_A = model.A
     try:
         model.A = A
@@ -174,13 +131,11 @@ def _forward_strengths_batch(model: GradualAACBR, samples: Tensor, A: Tensor) ->
 def _target_and_rival_batch(
     strengths: Tensor, target_classes: Sequence[int], threshold: float
 ) -> tuple[Tensor, list[int | None], Tensor]:
-    """Batched analogue of ``_target_and_rival``: returns
-    (target_strengths, rival_classes, rival_strengths), each length B (or
-    shape (B,) for the tensors). The rival is recomputed fresh from
-    ``strengths`` every call -- since it's just an argmax over the current
-    forward pass, it naturally picks up whichever class is the strongest
-    non-target rival *right now*, which can switch as ``A`` changes between
-    calls."""
+    """Batched analogue of ``_target_and_rival``.
+
+    Returns (target_strengths, rival_classes, rival_strengths), each of
+    length B (shape (B,) for the tensors).
+    """
     batch_size, num_classes = strengths.shape
     idx = torch.arange(batch_size, device=strengths.device)
     target_t = torch.as_tensor(list(target_classes), dtype=torch.long, device=strengths.device)
@@ -204,21 +159,6 @@ def _perturb_adjacency(
     """Copy of ``A`` with the entries at ``edge_indices`` (flat indices)
     shifted by ``alpha * direction`` and clamped to [-1, 1]; all other
     entries are unchanged.
-
-    ``model.A``'s sign encodes attack (negative) vs. support (positive) --
-    see ``grae.py``'s module docstring -- but which regime a given entry is
-    *eligible* for is fixed by the casebase labels at fit() time (attack-
-    eligible vs. support-eligible pairs), not by its current value, and a
-    currently-zero edge of either kind looks identical from ``A`` alone. So
-    the clamp only caps magnitude at 1 (matching the [0, 1] edge-weight
-    convention every ``casebase_edge_weights``/``compute_partial_order``
-    implementation is built to produce) rather than also trying to lock
-    each entry to the sign it happened to start with -- that would silently
-    zero out valid moves like a 0-weight edge becoming a small support
-    (see ``bisection_line_search``'s top-k picks in ``contest_test.py``,
-    which routinely land on exactly such edges). Without this clamp,
-    ``bottleneck``'s geometrically-growing alpha in particular can walk an
-    edge arbitrarily far past +-1.
     """
     new_A = A.detach().clone()
     flat = new_A.view(-1)
@@ -233,9 +173,9 @@ def select_top_k(grae_vector: Tensor, k: int) -> Tensor:
 
 def _default_source_mask(default_indexes: Tensor, shape: torch.Size) -> Tensor:
     """Boolean mask, flattened to match a ``(n, n, d)``-shaped ``model.A``,
-    marking every entry whose source/attacker node (the first axis) is one
-    of ``default_indexes``. Shared by every edge-selection call site via
-    ``_mask_default_sources``/``bottleneck.py``'s ``select_bottleneck_edges``."""
+    marking every entry whose source node (the first axis) is one of
+    ``default_indexes``.
+    """
     n, m, d = shape
     mask = torch.zeros(n, m, d, dtype=torch.bool, device=default_indexes.device)
     mask[default_indexes] = True
@@ -246,20 +186,7 @@ def _mask_default_sources(model: GradualAACBR, vector: Tensor) -> Tensor:
     """Zero out every entry of ``vector`` (flat, same ``n*n*d`` layout as
     ``model.A``) whose source is one of ``model.default_indexes``.
 
-    Mirrors an invariant ``fit()`` already enforces (``attackers_default_mask``
-    in ``gradual_aacbr.py``'s ``__prepare_default``): when
-    ``model.defaults_not_attack`` (the default), a default/topic argument
-    never originates an edge. Edge selection here has to respect the same
-    invariant, or a contest step can hand a class's own anchor argument its
-    first-ever outgoing edge -- since strength propagation is recursive,
-    that can corrupt every prediction which routes through that anchor, not
-    just the sample(s) being contested. (Found via a real checkpoint: after
-    pruning, ``batch_contest`` picked 3 such edges out of a class's default
-    argument, clearing 57/1661 targeted samples while collapsing ~700
-    previously-correct same-class test predictions into a rival class.)
-
-    A no-op when ``model.defaults_not_attack`` is False, since such edges
-    are then a legitimate part of the fitted model to begin with.
+    A no-op when ``model.defaults_not_attack`` is False.
     """
     if not model.defaults_not_attack:
         return vector
@@ -284,21 +211,14 @@ def bisection_line_search(
     """Two-phase search for close to the smallest alpha (along ``direction``)
     that makes target_class beat the best rival class by at least margin.
 
-    Phase 1 (bracket): shrink alpha geometrically from alpha_max, same as
-    plain backtracking, until a trial crosses the margin -- this handles
-    "the direction is weak, a bigger step is needed." This gives a bracket
-    [last failing alpha (or 0), first crossing alpha].
+    Phase 1 (bracket): shrink alpha geometrically from ``alpha_max`` until a
+    trial crosses the margin. Phase 2 (bisect): binary search inside that
+    bracket to converge toward the minimal crossing point.
 
-    Phase 2 (bisect): binary search inside that bracket to converge toward
-    the minimal crossing point, instead of accepting the first crossing
-    trial found. Plain backtracking stops at the first success, which can
-    accept a wildly oversized step whenever alpha_max itself overshoots the
-    margin on the very first trial (no shrinking ever happens in that case).
-
-    Returns: (accepted_alpha, new_A, new_target_strength, rival_class,
-    rival_strength) for the smallest known-crossing alpha found, or the
-    smallest-alpha trial if none crossed within max_backtracks, or None if
-    max_backtracks == 0.
+    Returns ``(accepted_alpha, new_A, new_target_strength, rival_class,
+    rival_strength)`` for the smallest known-crossing alpha found, or the
+    smallest-alpha trial if none crossed within ``max_backtracks``, or
+    ``None`` if ``max_backtracks == 0``.
     """
     assert model.A is not None
 
@@ -315,7 +235,7 @@ def bisection_line_search(
 
     # ---- Phase 1: bracket ----
     alpha_lo, alpha_hi = 0.0, alpha_max
-    best: tuple[float, Tensor, float, int | None, float] | None = None  # fallback: smallest-alpha trial tried
+    best: tuple[float, Tensor, float, int | None, float] | None = None
     hi_result: tuple[Tensor, float, int | None, float] | None = None
 
     alpha = alpha_max
@@ -328,10 +248,9 @@ def bisection_line_search(
         alpha_lo = alpha
         alpha *= factor
     else:
-        return best  # never crossed within budget -> caller treats as no acceptable step
+        return best  # never crossed within budget
 
-    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] to refine toward the
-    # minimal crossing point ----
+    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] ----
     for _ in range(max_bisections):
         if alpha_hi - alpha_lo < bisect_tol:
             break
@@ -355,16 +274,26 @@ def contest(
     margin: float = MARGIN,
     max_iters: int = MAX_ITERS,
 ) -> ContestResult:
-    """Main loop. See module docstring for update rule.
+    """Contest a single sample's prediction towards ``target_class``.
 
-    This is the single-sample, sequential contestation loop -- for
-    contesting many samples against one shared ``model.A`` at once, see
-    ``batch_contest`` instead, which replaces this loop's per-sample
-    top-k/bisection search with one shared hinge-loss gradient step per
-    outer iteration."""
+    Parameters
+    ----------
+    model : GradualAACBR
+        A fitted model (``model.A`` populated).
+    sample : Tensor
+        A single new case, shape (1, x1, ..., xn).
+    target_class : int
+        Which entry of ``model.default_indexes`` to push the sample's
+        strength towards.
+    k, threshold, margin, max_iters
+        See module-level defaults above.
+
+    Returns
+    -------
+    ContestResult
+    """
     # Deferred import: bottleneck.py imports several private helpers back
-    # from this module, so importing it at module load time (before those
-    # names exist yet) would be circular.
+    # from this module, so importing it at module load time would be circular.
     from .bottleneck import find_and_escape_bottleneck
 
     if model.A is None:
@@ -393,9 +322,6 @@ def contest(
         grae_vector = _mask_default_sources(model, _casebase_grae(model, sample, target_class))
 
         if grae_vector.abs().max().item() <= LIVE_GRAD_THRESHOLD:
-            # Dead gradient: a saturated ReLU node is blocking flow to
-            # target_class's default argument. Escape it instead of
-            # searching along a direction that's uniformly ~0.
             step = find_and_escape_bottleneck(
                 model, sample, target_class, grae_vector, k=k, threshold=threshold
             )
@@ -409,7 +335,7 @@ def contest(
             step = None if bisection_step is None else (edge_indices, *bisection_step)
 
         if step is None:
-            break  # structurally hopeless: plateaued, or no edge can escape the bottleneck
+            break  # plateaued, or no edge can escape the bottleneck
 
         edge_indices, alpha, new_A, new_target_strength, new_rival_class, new_rival_strength = step
         old_values = model.A.view(-1)[edge_indices]
@@ -436,7 +362,6 @@ def contest(
             new_target_strength, new_rival_class, new_rival_strength,
         )
 
-    # exhausted max_iters or plateaued without winning the argmax
     if target_strength - rival_strength >= margin:
         return ContestResult(
             True, iters_run - 1, max_delta, trace,

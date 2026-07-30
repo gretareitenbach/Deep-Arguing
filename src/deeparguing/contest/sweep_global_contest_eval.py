@@ -2,20 +2,6 @@
 several N, and record each resulting ``model.A``'s global test-set impact --
 one CSV row per N.
 
-This is purely an orchestration script: it does not reimplement anything.
-Per N it reuses, in order:
-  - ``load_fitted_model_and_data``/``load_all_samples`` (``run_contest.py``)
-    to rebuild the model once and pull the first N misclassified samples
-    out of the QBAF export, exactly like ``contest_all.py --num-samples``.
-  - ``batch_contest`` (``batch_contest.py``) to jointly contest those N
-    samples against a fresh copy of the baseline ``model.A``.
-  - the touched-edge old/new-weight bookkeeping ``contest_all.py`` already
-    computes for its own JSON log, to get weight-delta and edge-reversal
-    stats.
-  - ``compute_baseline_metrics``/``evaluate_contested_model``
-    (``evals/global_contest_eval.py``) to score the resulting adjacency on
-    the full held-out split relative to the (once-computed) baseline.
-
 Usage::
 
     python -m deeparguing.contest.sweep_global_contest_eval
@@ -66,7 +52,15 @@ _PLOT_SECONDARY_INK = "#52514e"
 
 def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
     """Line chart of accuracy drop vs. N, each point labeled with how many
-    of that N's contested samples flipped to correctly classified."""
+    of that N's contested samples flipped to correctly classified.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must have "N", "acc_drop", "samples_flipped" columns.
+    png_path : Path
+        Where to save the chart.
+    """
     df = df.sort_values("N")
 
     fig, ax = plt.subplots(figsize=(7, 4.5), facecolor=_PLOT_SURFACE)
@@ -106,9 +100,13 @@ def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
 def _touched_edge_old_new(
     original_A: Tensor, contested_A: Tensor, touched_edge_indices: list[int]
 ) -> tuple[list[float], list[float]]:
-    """Old/new weight for each edge ``batch_contest`` touched -- same lookup
-    ``contest_all.py`` does for its per-run JSON log, reused here for the
-    weight-delta/edge-reversal columns."""
+    """Old/new weight for each edge ``batch_contest`` touched.
+
+    Returns
+    -------
+    tuple[list[float], list[float]]
+        Parallel lists of old and new weights.
+    """
     original_flat = original_A.reshape(-1)
     contested_flat = contested_A.reshape(-1)
     olds = [original_flat[i].item() for i in touched_edge_indices]
@@ -121,9 +119,14 @@ def contest_n(
 ) -> tuple[BatchContestResult | None, Tensor]:
     """Reset ``model.A`` to a fresh copy of the baseline, then contest the
     given samples (already truncated to the first N misclassified ones by
-    the caller). N=0 (empty ``samples``) skips ``batch_contest`` entirely --
-    an empty batch has nothing to jointly optimize -- and just returns the
-    untouched baseline adjacency."""
+    the caller).
+
+    Returns
+    -------
+    tuple[BatchContestResult | None, Tensor]
+        The batch_contest result (``None`` if ``samples`` is empty) and the
+        resulting ``model.A``.
+    """
     model.A = original_A.clone()
     if samples.shape[0] == 0:
         return None, original_A.clone()

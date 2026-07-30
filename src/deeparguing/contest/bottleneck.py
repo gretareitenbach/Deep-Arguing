@@ -1,38 +1,10 @@
 """
 src/deeparguing/contest/bottleneck.py
 
-Escape logic for the dead-gradient case ``contest()`` hits when
-``_casebase_grae`` is uniformly ~0 for a sample's target class: not because
-the sample is genuinely stuck, but because a hard-ReLU node somewhere
-upstream of ``target_class``'s default argument has saturated (its own
-strength is pinned at exactly 0), blocking gradient flow through it (see
-``grae.py``'s module docstring).
-
-``GradualAACBR.forward(..., return_all_strengths=True)`` already exposes
-every casebase node's own converged strength for a given sample -- not just
-the target class's -- so no changes to ``gradual_aacbr.py`` are needed to
-see "intermediate" strengths; this module just reads that out.
-
-Update rule summary (mirrors ``contest.py``'s docstring):
-  - Bottleneck node: first node with strength exactly 0, found by a greedy
-    walk *backward* from ``target_class``'s default argument, following the
-    single strongest incoming edge (strongest attacker/supporter) at each
-    hop (same greedy spirit as ``select_top_k``'s top-k edges, not an
-    exhaustive search). Walking backward from the target -- rather than
-    forward from the sample's own initial contact point -- guarantees every
-    node visited is an actual ancestor of the target's strength
-    computation, not an arbitrary node the greedy walk happened to wander
-    into.
-  - Edges moved: the bottleneck node's incoming edges, ranked by
-    |source node's own strength| -- since the aggregation step is linear,
-    this is exactly the local partial derivative of the bottleneck's own
-    aggregation w.r.t. that edge weight, read directly off the forward pass
-    already computed (no backward pass needed).
-  - Step size: geometric growth from a small ``alpha_init``, the mirror
-    image of ``bisection_line_search``'s backtracking phase.
-  - Stopping: the bottleneck node's own strength becomes nonzero ("un-stuck"
-    -- a different, weaker condition than crossing the classification
-    margin), or ``max_steps`` is hit.
+Escape logic for the dead-gradient case ``contest()`` hits when a hard-ReLU
+node upstream of ``target_class`` has saturated (its strength pinned at
+exactly 0). Walks backward from the target to find the saturated node, then
+grows a step along its highest-leverage incoming edge until it un-sticks.
 """
 
 import torch
@@ -52,10 +24,10 @@ MAX_EXPANSIONS = 20              # expansion-phase retry cap
 
 
 def _node_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
-    """Forward pass of ``sample`` with ``model.A`` temporarily swapped for
-    ``A``, returning every casebase node's own converged strength -- shape
-    (n, d) -- not just the target class's final strength
-    (``_forward_strengths`` only reads out the default rows)."""
+    """Forward pass of ``sample`` with ``model.A`` temporarily swapped for ``A``.
+
+    Returns every casebase node's own converged strength, shape (n, d).
+    """
     original_A = model.A
     try:
         model.A = A
@@ -70,37 +42,25 @@ def _node_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
 def find_bottleneck(
     model: GradualAACBR, sample: Tensor, target_class: int
 ) -> tuple[int, Tensor] | None:
-    """Greedily walk the influence graph *backward* from ``target_class``'s
-    default argument, following the single strongest incoming edge (i.e.
-    the strongest attacker/supporter) at each hop, looking for the first
-    ancestor whose own strength is pinned at exactly 0 -- a saturated ReLU.
+    """Walk the influence graph backward from ``target_class``'s default
+    argument, following the strongest incoming edge at each hop, looking
+    for the first ancestor whose own strength is pinned at exactly 0.
 
-    Walking backward from the target (rather than forward from wherever
-    the sample happens to make first contact with the casebase) guarantees
-    every node visited is an actual ancestor of ``target_class``'s
-    strength computation -- reachable via a real, existing chain of
-    attacks/supports that feeds into it -- rather than an arbitrary node
-    the greedy walk stumbles into that may have no bearing on the target's
-    strength at all.
+    Parameters
+    ----------
+    model : GradualAACBR
+        A fitted model.
+    sample : Tensor
+        A single new case, shape (1, x1, ..., xn).
+    target_class : int
+        Which entry of ``model.default_indexes`` to walk backward from.
 
-    ``target_class``'s default argument is *always* itself pinned at 0
-    whenever this is called (a uniformly dead ``grae_vector`` mathematically
-    requires it -- see ``contest.py``'s module docstring), so the walk
-    starts one hop further back, at its strongest attacker, rather than
-    trivially returning the target itself: a deeper upstream saturated node
-    is often the more useful lever, since escaping it cascades forward
-    through the rest of the chain (see this module's docstring) and is what
-    ``test_find_bottleneck_locates_the_saturated_node`` in
-    ``bottleneck_test.py`` checks for. Falls back to ``target_class``'s
-    default argument directly if the walk dead-ends (exhausts its unvisited
-    incoming edges) before ever finding a saturated ancestor.
-
-    Returns ``(bottleneck_node, node_strengths)``, where ``node_strengths``
-    is the (n, d) per-node strength tensor already computed to do this walk
-    (reused by ``select_bottleneck_edges`` rather than recomputed). Returns
-    ``None`` only if neither an upstream ancestor nor ``target_class``'s
-    default argument itself turns up saturated -- i.e. there is no ReLU
-    bottleneck here, and a dead gradient (if any) has some other cause.
+    Returns
+    -------
+    tuple[int, Tensor] | None
+        ``(bottleneck_node, node_strengths)`` where ``node_strengths`` is
+        the (n, d) per-node strength tensor computed during the walk, or
+        ``None`` if no saturated node is found.
     """
     assert model.A is not None
     A = model.post_process_func(model.A)
@@ -117,7 +77,7 @@ def find_bottleneck(
         incoming[list(visited)] = -1.0
         nxt = int(incoming.argmax().item())
         if incoming[nxt] <= 0:
-            break  # dead end -- fall back to checking target_idx directly below
+            break  # dead end
         visited.add(nxt)
         current = nxt
         if is_saturated(current):
@@ -125,7 +85,7 @@ def find_bottleneck(
 
     if is_saturated(target_idx):
         return target_idx, node_strengths
-    return None  # neither the walk nor target_idx itself is saturated
+    return None
 
 
 def _bottleneck_leverage_vector(
@@ -134,20 +94,27 @@ def _bottleneck_leverage_vector(
     bottleneck_node: int,
     default_indexes: Tensor | None = None,
 ) -> Tensor:
-    """Flat (n*n*d) vector matching ``_casebase_grae``'s layout: zero
+    """Flat (n*n*d,) vector matching ``_casebase_grae``'s layout: zero
     everywhere except ``bottleneck_node``'s incoming edges
-    (``A[:, bottleneck_node, :]``), where the local leverage of source node
-    j's edge on ``bottleneck_node``'s own aggregation is exactly
-    ``node_strengths[j]`` -- the aggregation step is linear, so this *is*
-    the partial derivative, no backward pass needed.
+    (``A[:, bottleneck_node, :]``), where source node j's entry is
+    ``node_strengths[j]``.
 
-    ``default_indexes``, if given, additionally zeroes out any entry whose
-    source is one of them -- mirrors ``contest.py``'s
-    ``_mask_default_sources``: a default/topic argument never legitimately
-    originates an edge, and a bottleneck-escape step must respect that too,
-    or it can hand a class's own anchor argument its first-ever outgoing
-    edge. Left ``None`` by direct low-level tests of this function; real
-    callers (``find_and_escape_bottleneck``) pass ``model.default_indexes``."""
+    Parameters
+    ----------
+    node_strengths : Tensor
+        Per-node strengths, shape (n, d).
+    A : Tensor
+        Casebase adjacency, shape (n, n, d).
+    bottleneck_node : int
+        Index of the saturated node.
+    default_indexes : Tensor | None
+        If given, zeroes out any entry whose source is one of them.
+
+    Returns
+    -------
+    Tensor
+        Flat (n*n*d,) leverage vector.
+    """
     n, m, d = A.shape
     leverage = torch.zeros(n, m, d, dtype=node_strengths.dtype, device=A.device)
     leverage[:, bottleneck_node, :] = node_strengths
@@ -166,9 +133,8 @@ def select_bottleneck_edges(
 ) -> Tensor:
     """Indices (into the flattened ``model.A``, same convention as
     ``select_top_k``) of the k edges feeding into ``bottleneck_node`` with
-    the largest ``|node_strengths[source]|`` -- see
-    ``_bottleneck_leverage_vector`` (including its ``default_indexes``
-    masking)."""
+    the largest ``|node_strengths[source]|``.
+    """
     return select_top_k(
         _bottleneck_leverage_vector(node_strengths, A, bottleneck_node, default_indexes), k
     )
@@ -184,20 +150,15 @@ def expanding_step_search(
     growth_factor: float = BOTTLENECK_GROWTH_FACTOR,
     max_steps: int = MAX_EXPANSIONS,
 ) -> tuple[float, Tensor] | None:
-    """Mirror image of ``bisection_line_search``'s bracketing phase: starts
-    small and grows ``alpha`` (instead of shrinking from ``alpha_max``)
-    until ``bottleneck_node``'s own strength is no longer pinned at exactly
-    0, or ``max_steps`` is hit.
+    """Grow ``alpha`` geometrically from ``alpha_init`` until
+    ``bottleneck_node``'s own strength is no longer pinned at exactly 0, or
+    ``max_steps`` is hit.
 
-    Terminates on "un-stuck", a different (and weaker) condition than
-    crossing the classification margin ``bisection_line_search`` checks for
-    -- escaping the bottleneck doesn't by itself mean ``target_class`` wins
-    the argmax, only that the gradient is live again so the ordinary search
-    can take over next iteration. Hence a separate function rather than
-    reusing ``bisection_line_search``.
-
-    Returns ``(alpha, new_A)`` for the first un-stuck trial, or ``None`` if
-    it never un-sticks within budget.
+    Returns
+    -------
+    tuple[float, Tensor] | None
+        ``(alpha, new_A)`` for the first un-stuck trial, or ``None`` if it
+        never un-sticks within budget.
     """
     assert model.A is not None
     alpha = alpha_init
@@ -218,17 +179,31 @@ def find_and_escape_bottleneck(
     k: int = DEFAULT_K,
     threshold: float = THRESHOLD,
 ) -> tuple[Tensor, float, Tensor, float, int | None, float] | None:
-    """Handle the dead-gradient case: find the saturated bottleneck node,
-    rank its incoming edges by local leverage, and grow a step along the
-    highest-leverage one until it un-sticks.
+    """Find the saturated bottleneck node, rank its incoming edges by local
+    leverage, and grow a step along the highest-leverage one until it
+    un-sticks.
 
-    Returns the same 6-tuple shape ``contest()``'s ordinary path builds
-    (``edge_indices``, prefixed onto ``bisection_line_search``'s 5-tuple)
-    -- ``(edge_indices, alpha, new_A, new_target_strength, new_rival_class,
-    new_rival_strength)`` -- so both branches feed one shared trace-recording
-    path, or ``None`` if no bottleneck exists or it can't be escaped within
-    budget -- either way, ``contest()`` treats the sample as structurally
-    hopeless.
+    Parameters
+    ----------
+    model : GradualAACBR
+        A fitted model.
+    sample : Tensor
+        A single new case, shape (1, x1, ..., xn).
+    target_class : int
+        Which entry of ``model.default_indexes`` is being contested.
+    grae_vector : Tensor
+        The (dead) gradient vector from ``contest()``, used as a fallback
+        direction if the local leverage vector is entirely zero.
+    k, threshold
+        See ``contest.py``'s module-level defaults.
+
+    Returns
+    -------
+    tuple | None
+        ``(edge_indices, alpha, new_A, new_target_strength,
+        new_rival_class, new_rival_strength)``, matching
+        ``bisection_line_search``'s result shape, or ``None`` if no
+        bottleneck exists or it can't be escaped within budget.
     """
     assert model.A is not None
     bottleneck = find_bottleneck(model, sample, target_class)
@@ -245,13 +220,9 @@ def find_and_escape_bottleneck(
     )
     direction = leverage_vector[edge_indices]
     if not bool(direction.any()):
-        # Every candidate edge's source is itself pinned at 0, so the local
-        # (linear, one-hop) leverage vanishes at all of them -- but a
-        # multi-hop path could still carry a nonzero true gradient through
-        # these same positions, so fall back to it before giving up.
         direction = grae_vector[edge_indices]
         if not bool(direction.any()):
-            return None  # no directional signal at all -- genuinely stuck
+            return None
 
     step = expanding_step_search(model, sample, edge_indices, direction, bottleneck_node)
     if step is None:

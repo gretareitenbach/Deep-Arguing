@@ -1,16 +1,7 @@
 """Prune weak edges out of a fitted model's casebase adjacency (``model.A``)
 by hard-thresholding on magnitude, as a cheap first pass before contesting.
-
-Big picture: a fitted casebase can carry a lot of near-zero edges that
-contribute almost nothing to any prediction. Zeroing them out (rather than
-gradient-editing them, as ``contest()``/``batch_contest()``/
-``global_optimize()`` do) is a blunt, non-iterative way to simplify the
-adjacency and see what it costs -- some previously-correct samples may
-become newly misclassified once their weak-but-load-bearing edges are gone.
-The intended next steps (not done by this module) are to re-run inference
-on the pruned checkpoint to rebuild the misclassified set, then hand that
-set to ``contest_all``/``global_optimize`` to see how much of the accuracy
-lost to pruning can be recovered (or exceeded) by reweighting the survivors.
+Operates directly on the checkpoint dict, so the output is a drop-in
+checkpoint any other ``contest/`` script's ``--checkpoint`` flag accepts.
 
 Usage::
 
@@ -18,18 +9,6 @@ Usage::
         --checkpoint model_checkpoint.pt \\
         --threshold 0.1 \\
         --output pruned_model_checkpoint.pt
-
-Operates directly on the checkpoint dict (as saved by ``cli/run.py``:
-``config_paths``/``state_dict``/``A``/``X_train``/``y_train``/
-``default_indexes``) rather than reconstructing a live model -- pruning only
-touches ``A``, so there's no need to re-run ``parse_model_config`` or reload
-the dataset just to resave it. The output is a drop-in checkpoint: every
-other ``contest/`` script's ``--checkpoint`` flag accepts it unchanged.
-
-``--checkpoint``/``--output`` default to bare filenames, resolved via
-``deeparguing.output_paths`` -- the checkpoint is looked up (today's
-``outputs/<date>/`` folder, else the most recent earlier date folder that has
-it) and the pruned output is always written to today's folder.
 """
 
 import argparse
@@ -60,10 +39,16 @@ class PruneResult:
 def prune_edges(A: Tensor, threshold: float = DEFAULT_THRESHOLD) -> PruneResult:
     """Zero every entry of ``A`` with ``abs(weight) < threshold``.
 
-    Thresholding on magnitude (not raw value) is deliberate: entries encode
-    attack (negative) vs. support (positive) via sign (see ``grae.py``'s
-    module docstring), so a weak edge of either sign is equally a candidate
-    for pruning.
+    Parameters
+    ----------
+    A : Tensor
+        Casebase adjacency.
+    threshold : float
+        Magnitude cutoff; entries below this are zeroed regardless of sign.
+
+    Returns
+    -------
+    PruneResult
     """
     num_edges_before = int(A.count_nonzero().item())
     pruned_A = A.clone()

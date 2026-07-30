@@ -1,41 +1,14 @@
 """Run a single joint optimization over every misclassified sample against a
-shared model.A, instead of contesting each sample sequentially.
-
-The old sequential loop (see git history) ran ``contest()`` once per sample
-against the same live ``model.A``, so edits accumulated one sample at a
-time and one sample's fix could partially undo another's. This script
-instead calls ``batch_contest()``, which optimizes one shared adjacency
-edit against every sample's hinge loss at once -- see
-``contest/batch_contest.py``'s module docstring for the full
-algorithm (shared gradient, shared top-k edge selection, shared step).
-
-All hyperparameters and dataset/checkpoint paths live in a YAML config file
-(default ``tuning/contest/contest.yaml``, which holds the winning config
-found by an earlier grid search -- see git history, the sweep script itself
-has since been removed) rather than being hardcoded here. Any CLI flag, if
-given, overrides the corresponding value from that file for a one-off run
-without editing it.
+shared ``model.A``, via ``batch_contest()``, instead of contesting each
+sample sequentially. Hyperparameters and dataset/checkpoint paths come from
+a YAML config file (default ``tuning/contest/contest.yaml``); any CLI flag
+overrides the corresponding config value.
 
 Usage::
 
     python -m deeparguing.contest.contest_all
     python -m deeparguing.contest.contest_all --config tuning/contest/contest.yaml
-    python -m deeparguing.contest.contest_all --k 10 --margin 0.005   # one-off override
-
-By default this writes two things to ``log_dir`` (today's ``outputs/<date>/``
-folder -- see ``deeparguing.output_paths``): a timestamped JSON log (run
-config, summary counts, and a per-sample cleared/failed breakdown) and a
-checkpoint holding the new, contested ``model.A`` -- set
-``save_checkpoint: ""`` (or ``--save-checkpoint ""``) to skip the latter.
-The JSON log's filename prefix and the checkpoint's filename are
-configurable (``log_prefix``/``checkpoint_filename``) so a variant pipeline
-(e.g. the pruned-checkpoint config) doesn't collide with another variant's
-output landing in the same date folder on the same day.
-
-This runs one joint optimization over every misclassified sample (each
-outer iteration involves a batched forward pass, a batched backward pass,
-and a line search) -- run it on whatever machine has the compute for that,
-not necessarily this one.
+    python -m deeparguing.contest.contest_all --k 10 --margin 0.005
 """
 
 import argparse
@@ -72,9 +45,8 @@ def _load_config(config_path: str) -> dict[str, Any]:
 
 def _resolved(cli_value: Any, config: dict[str, Any], key: str, fallback: Any) -> Any:
     """CLI flag (if given) overrides the config file's value, which
-    overrides ``fallback``. A ``null`` in the config file is treated the
-    same as the key being absent (falls through to ``fallback``), since
-    both mean "nothing was actually specified" for every setting here."""
+    overrides ``fallback``. A ``null``/absent key in the config file both
+    fall through to ``fallback``."""
     if cli_value is not None:
         return cli_value
     if config.get(key) is not None:
@@ -195,10 +167,6 @@ def main() -> None:
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     checkpoint_filename = _resolved(args.checkpoint_filename, config, "checkpoint_filename", "contested_checkpoint.pt")
     log_prefix = _resolved(args.log_prefix, config, "log_prefix", "contestation")
-    # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
-    # explicit) means an empty string from the config must NOT fall through
-    # to _resolved's "treat null/absent as unset" rule, so it's handled
-    # directly rather than via _resolved.
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
 
     with open(qbaf, "r", encoding="utf-8") as f:
@@ -236,10 +204,6 @@ def main() -> None:
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Unravel each touched flat index into (source, target, dim) plus its
-    # before/after weight -- lets a later global-accuracy investigation
-    # correlate a specific edge with whatever samples depend on it, instead
-    # of only knowing how many edges moved in total.
     n1, n2, d = model.A.shape
     original_flat = original_A.reshape(-1)
     new_flat = model.A.reshape(-1)

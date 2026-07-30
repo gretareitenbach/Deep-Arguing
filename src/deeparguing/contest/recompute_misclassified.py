@@ -1,26 +1,8 @@
 """Recompute the misclassified-sample QBAF export for an already-fitted
-checkpoint, without going through ``cli/run.py``'s full train loop.
-
-``cli/run.py --misclassified_log`` builds ``misclassified_qbaf.json``
-as one step of a training run, against whatever ``model.A`` training just
-produced. That set goes stale the moment ``model.A`` changes by some other
-means -- e.g. ``contest/prune_edges.py`` hard-thresholding weak edges out of
-a checkpoint. This script closes that gap: given any checkpoint (pruned,
-contested, or a fresh training checkpoint), it rebuilds the live model +
-its data split the same way ``run_contest.py``/``run_global_contest_eval.py``
-do, runs inference on ``--split`` to find which samples the *checkpoint as
-given* gets wrong, and exports exactly those samples as a QBAF file in the
-same shape ``contest_all.py``/``run_contest.py`` already consume (a
-``new_cases``/``new_cases_labels`` pair -- see ``run_contest.load_all_samples``).
-
-GRAE attribution is intentionally not computed here (unlike
-``cli/run.py --grae_log``) since neither ``contest_all.py`` nor ``contest.py``
-read it; add ``--grae`` support later if some other consumer needs it.
-
-``--checkpoint``/``--output`` default to bare filenames, resolved via
-``deeparguing.output_paths`` -- the checkpoint is looked up (today's
-``outputs/<date>/`` folder, else the most recent earlier date folder that has
-it) and the QBAF export is always written to today's folder.
+checkpoint (e.g. after pruning changed ``model.A``), without going through
+``cli/run.py``'s full train loop. Rebuilds the model + data split, runs
+inference on ``--split``, and exports the samples it gets wrong in the same
+shape ``contest_all.py``/``run_contest.py`` consume.
 
 Usage::
 
@@ -46,8 +28,20 @@ def find_misclassified(
     model, X: torch.Tensor, y: torch.Tensor, batch_size: int | None = None
 ) -> np.ndarray:
     """Run batched inference and return the indices where the model's argmax
-    prediction disagrees with the argmax ground-truth label (same comparison
-    ``cli/run.py``'s ``--misclassified_log`` block uses)."""
+    prediction disagrees with the argmax ground-truth label.
+
+    Parameters
+    ----------
+    model : GradualAACBR
+    X, y : torch.Tensor
+    batch_size : int | None
+        Defaults to a single batch of all of ``X``.
+
+    Returns
+    -------
+    np.ndarray
+        Indices into ``X``/``y`` of the misclassified rows.
+    """
     model.eval()
     current_batch_size = batch_size if batch_size is not None else len(X)
 

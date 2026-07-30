@@ -1,22 +1,7 @@
 """Compute global (full-split) test metrics for a contested model, relative
-to its uncontested baseline.
-
-Consumes exactly what ``contest_all.py`` already produces: the *baseline*
-checkpoint it started from (``model_checkpoint.pt``, from ``cli/run.py``)
-and the *contested* checkpoint it wrote out (``contested_checkpoint.pt``,
-same format plus the edited ``A``). Both default to those bare filenames,
-resolved via ``deeparguing.output_paths.resolve_read_path`` -- today's
-``outputs/<date>/`` folder if the file is there, else the most recent
-earlier date folder that has it. Rebuilds the live model + held-out split
-from the baseline checkpoint's own config, evaluates it once (the baseline),
-swaps in the contested checkpoint's ``A`` and evaluates again, and reports
-the delta -- see ``deeparguing.evals.global_contest_eval`` for the two calls
-this wraps.
-
-By default the results are also appended as a markdown table to today's
-``outputs/<date>/global_contest_eval.md`` (one section per run, mirroring
-``deeparguing.md_log``'s convention used elsewhere -- e.g.
-``outputs/<date>/summary.md``); pass ``--log-path ""`` to skip writing it.
+to its uncontested baseline. Rebuilds the model + held-out split from the
+baseline checkpoint, evaluates it, swaps in the contested checkpoint's
+``A`` and evaluates again, and reports the delta.
 
 Usage::
 
@@ -47,9 +32,13 @@ DEFAULT_LOG_FILENAME = "global_contest_eval.md"
 
 
 def load_model_and_split(checkpoint_path: str, device: str, split: str):
-    """Rebuild the model + reload its fitted state from a checkpoint (see
-    ``run_contest.load_fitted_model_and_data``), plus pull out the held-out
-    ``X_<split>``/``y_<split>`` pair from its config's data split."""
+    """Rebuild the model + reload its fitted state from a checkpoint.
+
+    Returns
+    -------
+    tuple
+        (model, X_<split>, y_<split>).
+    """
     model, data_dict = load_fitted_model_and_data(checkpoint_path, device)
     X = data_dict[f"X_{split}"]
     y = data_dict[f"y_{split}"]
@@ -58,8 +47,7 @@ def load_model_and_split(checkpoint_path: str, device: str, split: str):
 
 def _metrics_table(baseline: GlobalEvalMetrics, result: GlobalContestEvalResult) -> str:
     """Markdown table of accuracy/precision/recall/f1 for baseline vs.
-    contested, plus the signed delta -- the same four numbers logged to the
-    console, rendered as a table instead of one line each."""
+    contested, plus the signed delta."""
     deltas = {
         "Accuracy": result.delta_accuracy,
         "Precision": result.delta_precision,

@@ -1,16 +1,6 @@
-"""Standalone driver for the single-sample contestability loop in ``contest.py``.
-
-``cli/run.py`` trains/evaluates/exports; it is not the place to interactively
-contest one prediction. This script only *consumes* what a
-``--misclassified_log`` run already produced -- ``model_checkpoint.pt``
-(weights + fitted casebase, see ``run.py``) and ``misclassified_qbaf.json``
-(the real misclassified samples, already in model-input form) -- rebuilds the
-live model, and runs ``contest()`` against one real sample end to end.
-
-Checkpoint/qbaf default to those bare filenames, resolved via
-``deeparguing.output_paths.resolve_read_path``: today's ``outputs/<date>/``
-folder if the file is there, else the most recent earlier date folder that
-has it.
+"""Standalone driver for the single-sample contestability loop in
+``contest.py``. Rebuilds a fitted model from a checkpoint and runs
+``contest()`` against one real misclassified sample end to end.
 
 Usage::
 
@@ -40,14 +30,19 @@ from deeparguing.output_paths import resolve_read_path, today_output_dir
 def load_fitted_model_and_data(
     checkpoint_path: str, device: str
 ) -> tuple[GradualAACBR, dict]:
-    """Rebuild the model architecture from the checkpoint's config and reload it,
-    returning the config's ``data_dict`` alongside it (e.g. for callers that
-    also need a held-out ``X_<split>``/``y_<split>`` pair -- see
-    ``run_global_contest_eval.load_model_and_split``).
+    """Rebuild the model architecture from the checkpoint's config and
+    reload its weights and fit()-produced state.
 
-    ``state_dict()`` only covers registered parameters/buffers, so the
-    fit()-produced attributes (``A``/``X_train``/``default_indexes``) are
-    restored separately from the checkpoint.
+    Parameters
+    ----------
+    checkpoint_path : str
+    device : str
+
+    Returns
+    -------
+    tuple[GradualAACBR, dict]
+        The reloaded model, and the config's ``data_dict`` (e.g. for
+        callers that need a held-out ``X_<split>``/``y_<split>`` pair).
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
@@ -68,7 +63,7 @@ def load_fitted_model_and_data(
 
 def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
     """Rebuild and reload the model from a checkpoint, discarding its config's
-    data split (see ``load_fitted_model_and_data`` for callers that need it)."""
+    data split."""
     model, _ = load_fitted_model_and_data(checkpoint_path, device)
     return model
 
@@ -76,7 +71,13 @@ def load_model(checkpoint_path: str, device: str) -> GradualAACBR:
 def load_sample(
     qbaf_path: str, sample_index: int, device: str
 ) -> tuple[torch.Tensor, int]:
-    """Pull one misclassified sample (already model-input shaped) out of the QBAF export."""
+    """Pull one misclassified sample out of the QBAF export.
+
+    Returns
+    -------
+    tuple[torch.Tensor, int]
+        The model-input-shaped sample (shape (1, ...)) and its true class.
+    """
     with open(qbaf_path, "r", encoding="utf-8") as f:
         qbaf = json.load(f)
 
@@ -101,7 +102,21 @@ def load_sample(
 def load_all_samples(
     qbaf: dict, device: str, num_samples: int | None = None
 ) -> tuple[torch.Tensor, list[int]]:
-    """Pull every misclassified sample + true label out of a loaded QBAF export."""
+    """Pull misclassified samples + true labels out of a loaded QBAF export.
+
+    Parameters
+    ----------
+    qbaf : dict
+        Loaded QBAF export (must have a ``new_cases`` entry).
+    device : str
+    num_samples : int | None
+        If given, caps the number of samples returned to the first N.
+
+    Returns
+    -------
+    tuple[torch.Tensor, list[int]]
+        Samples (shape (n, ...)) and their true class labels.
+    """
     if "new_cases" not in qbaf:
         raise ValueError(
             "qbaf has no 'new_cases' entry -- re-run the CLI with "
@@ -128,34 +143,23 @@ def main() -> None:
         "--target-class",
         type=int,
         default=None,
-        help=(
-            "Class to push the sample's strength towards. Defaults to the "
-            "sample's own ground-truth label (i.e. contest the model's "
-            "wrong prediction back towards the correct class)."
-        ),
+        help="Class to push the sample's strength towards. Defaults to the "
+        "sample's own ground-truth label.",
     )
     parser.add_argument("--k", type=int, default=DEFAULT_K)
     parser.add_argument(
         "--margin",
         type=float,
         default=MARGIN,
-        help=(
-            "How much target_class's strength must exceed the strongest "
-            "other class's strength before the search declares victory "
-            "(an argmax-relative win margin, not an absolute threshold -- "
-            "class strengths are not normalized/mutually exclusive)."
-        ),
+        help="How much target_class's strength must exceed the strongest "
+        "rival class's strength before the search declares victory.",
     )
     parser.add_argument(
         "--threshold",
         type=float,
         default=THRESHOLD,
-        help=(
-            "Fallback virtual rival strength, only used if the model has a "
-            "single default/topic argument (no other class to compare "
-            "against). Irrelevant for this CIFAR-10 multiclass checkpoint, "
-            "which always has a real rival class."
-        ),
+        help="Fallback virtual rival strength, used only if the model has a "
+        "single default/topic argument.",
     )
     parser.add_argument("--max-iters", type=int, default=MAX_ITERS)
     parser.add_argument(
@@ -167,12 +171,8 @@ def main() -> None:
     parser.add_argument(
         "--log-dir",
         default=None,
-        help=(
-            "Directory to additionally write a per-run contest log file to "
-            "(one line per iteration: edges perturbed, step size, weight "
-            "and strength deltas). Console logging is unaffected. Defaults "
-            "to today's outputs/<date>/ folder."
-        ),
+        help="Directory to additionally write a per-run contest log file to. "
+        "Defaults to today's outputs/<date>/ folder.",
     )
     args = parser.parse_args()
 
@@ -198,11 +198,7 @@ def main() -> None:
 
     sample, true_class = load_sample(args.qbaf, args.sample_index, args.device)
     target_class = args.target_class if args.target_class is not None else true_class
-    # default_indexes rows are ordered the same as X_defaults/y_defaults
-    # ("labels.flip([0])"), but "labels" itself (torch.unique(y, dim=0)) is
-    # already in reverse-class order for one-hot rows, so the two reversals
-    # cancel out: default row for class c sits at c directly (verified
-    # against a real checkpoint's y_train[default_indexes] -- no offset).
+    # default row for class c sits at index c directly (no offset)
     target_index = target_class
 
     logging.info(

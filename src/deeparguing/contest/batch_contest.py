@@ -1,70 +1,12 @@
 """
 src/deeparguing/contest/batch_contest.py
 
-Joint contestability algorithm: instead of ``contest()``'s per-sample
-sequential loop (each misclassified sample solved independently against a
-live, shared ``model.A``, so one sample's fix can partially undo another's),
-this optimizes one shared adjacency edit against every sample's hinge loss
-at once.
-
-Loss:  L(A) = sum_i max(0, margin - m_i(A))
-where  m_i(A) = target_strength_i(A) - rival_strength_i(A).
-
-Outer loop, until every hinge term is 0, ``max_iters`` is hit, or the edit
-budget is exhausted:
-  1. Forward the whole batch (or a mini-batch, see ``batch_size``), computing
-     every sample's target/rival strength. The rival is recomputed fresh
-     every pass (``_target_and_rival_batch``'s argmax), since it can switch
-     as ``A`` moves.
-  2. hinge = relu(margin - m); active = hinge > 0. This mask replaces
-     ``contest()``'s per-sample ``result.success`` bookkeeping. If nothing
-     is active, stop.
-  3. One backward pass of the summed hinge over the active samples
-     (``compute_grae`` with ``rival_indices`` set, so the gradient reflects
-     the full margin, not just the target side of it) gives the shared
-     ``grad_A L``.
-  4. Sparsify with ``select_top_k`` on the flattened gradient.
-  5. Backtracking line search for a shared step size that decreases the
-     active-sample hinge sum and doesn't diverge (see divergence guard
-     below).
-  6. Apply once to the shared ``A``, magnitude-clamped exactly like
-     ``contest.py``'s ``_perturb_adjacency``.
-
-Dead gradients: ``contest()`` handles a sample whose gradient is uniformly
-~0 (a saturated ReLU pinning some ancestor's strength at exactly 0) by
-routing to ``bottleneck.find_and_escape_bottleneck``, a per-sample graph
-walk -- which doesn't fold into a single batched step, since it needs each
-sample's own node-strength graph. Instead, this module computes the shared
-gradient through a leaky-ReLU surrogate (``_leaky_relu_surrogate``): a copy
-of ``model.gradual_semantics`` with its ReLU's exact-zero region replaced by
-a small nonzero slope, used only for this backward pass. Every active
-sample -- saturated or not -- then contributes a smooth, nonzero direction
-to the same shared gradient, so "dead" never needs to be a special case.
-The real forward passes that decide the hinge loss, the stopping condition,
-and the line search all keep using the model's actual (hard-ReLU) semantics
-unchanged.
-
-Divergence guard: ``ReluSemantics`` has no upper saturation (unlike e.g.
-``QuadraticEnergySemantics``), so ``forward_till_convergence``'s repeated
-``relu(relu(base) + aggregation)`` can in principle diverge for a large
-enough step. The line search rejects any trial whose active-sample target
-strength exceeds ``divergence_bound`` before even checking whether it
-decreased the loss, so a step that blows up strengths can never be
-accepted just because the (also blown-up) hinge sum happened to look small.
-
-Protecting global accuracy: nothing above knows or cares about samples
-outside the flip batch, so a step that clears every targeted sample can
-still erode the margin of samples elsewhere that were already correct.
-``protect_samples``/``protect_target_classes``/``protect_margin``/
-``protect_lambda`` (all optional, default off) add a second hinge term for
-a caller-supplied "protect" batch -- e.g. a sample of currently
-correctly-classified validation examples -- to the same shared loss and
-gradient, so a step is only accepted if it decreases the flip batch's
-hinge sum *plus* ``protect_lambda`` times the protect batch's. This is a
-soft, per-step penalty computed on a fixed sample; it does not by itself
-guarantee held-out accuracy doesn't drop -- see
-``contest/global_optimize.py`` for a hard, periodic full-split
-accuracy check with rollback layered on top of this.
+Joint contestability algorithm: optimizes one shared adjacency edit
+(``model.A``) against every sample's hinge loss at once, instead of
+``contest()``'s per-sample sequential loop. Each outer iteration forwards
+the batch, computes a shared gradient (via a leaky-ReLU surrogate so
+saturated nodes still carry a gradient), sparsifies it with top-k edge
+selection, and takes a shared backtracking-line-search step.
 """
 
 import copy
@@ -88,39 +30,38 @@ from .grae import compute_grae
 
 # ---- Config -------------------------------------------------------------
 
-TOL = 1e-4                  # stop once the active-sample hinge sum is at or below this
-LEAKY_NEGATIVE_SLOPE = 0.01  # slope of the gradient-only ReLU surrogate in its "dead" region
-DIVERGENCE_BOUND = 100.0    # reject a trial step if it pushes any active target strength above this
-ALPHA_INIT = 1.0            # initial line-search step size
-BACKTRACK_FACTOR = 0.5      # shrink factor per failed line-search trial
-MAX_BACKTRACKS = 10         # line-search retry cap per outer iteration
-PROTECT_MARGIN = MARGIN     # default margin a "protect" sample must keep above its rival
+TOL = 1e-4                   # stop once the active-sample hinge sum is at or below this
+LEAKY_NEGATIVE_SLOPE = 0.01   # slope of the gradient-only ReLU surrogate in its "dead" region
+DIVERGENCE_BOUND = 100.0      # reject a trial step if it pushes any active target strength above this
+ALPHA_INIT = 1.0              # initial line-search step size
+BACKTRACK_FACTOR = 0.5        # shrink factor per failed line-search trial
+MAX_BACKTRACKS = 10           # line-search retry cap per outer iteration
+PROTECT_MARGIN = MARGIN       # default margin a "protect" sample must keep above its rival
 
 
 @dataclass
 class BatchContestResult:
+    """Outcome of ``batch_contest()``."""
+
     cleared: Tensor  # bool (B,) -- whether target beat rival by >= margin at the end
     num_cleared: int
     num_total: int
     num_edges_changed: int
-    touched_edge_indices: list[int]  # flat indices into model.A that were edited, for correlating specific edges with any later global-accuracy shift
+    touched_edge_indices: list[int]  # flat indices into model.A that were edited
     iterations: int
     final_target_strengths: Tensor
     final_rival_classes: list[int | None]
     final_rival_strengths: Tensor
-    # Populated only when batch_contest was called with protect_samples; None otherwise.
-    final_protect_target_strengths: Tensor | None = None
+    final_protect_target_strengths: Tensor | None = None  # only set if protect_samples was given
     final_protect_cleared: Tensor | None = None
 
 
 def _leaky_relu_surrogate(semantics: GradualSemantics, negative_slope: float) -> GradualSemantics:
-    """A differentiable relaxation of ``semantics``, used only to compute
-    ``grad_A L`` in ``batch_contest``. A copy of ``semantics`` with its ReLU
-    swapped for leaky-ReLU: identical for positive input, but a small
-    nonzero slope where the real ReLU would be exactly flat, so a node
-    saturated at 0 still carries a usable gradient direction. The real
-    forward passes elsewhere keep using ``semantics`` (the true hard ReLU)
-    untouched."""
+    """Copy of ``semantics`` with its ReLU swapped for leaky-ReLU, used only
+    to compute ``grad_A L`` in ``batch_contest`` so saturated nodes still
+    carry a gradient. Real forward passes elsewhere keep using ``semantics``
+    (the true hard ReLU) unchanged.
+    """
     if not isinstance(semantics, ReluSemantics):
         raise TypeError(
             "the leaky-relu gradient surrogate only makes sense for "
@@ -149,14 +90,24 @@ def _joint_backtracking_step(
     protect_margin: float = PROTECT_MARGIN,
     protect_lambda: float = 0.0,
 ) -> Tensor | None:
-    """Shrink alpha from ``alpha_init`` until a trial both stays under the
-    divergence guard -- on the flip batch, and on the protect batch too if
-    one is given -- and decreases the combined loss (flip hinge sum, plus
-    ``protect_lambda`` times the protect-batch hinge sum when
-    ``protect_active_samples`` is given) below ``old_loss``. Returns the
-    accepted ``new_A``, or ``None`` if nothing within budget qualifies -- the
-    caller treats that as no usable step this iteration for this
-    (mini-)batch."""
+    """Shrink alpha from ``alpha_init`` until a trial stays under
+    ``divergence_bound`` (on the flip batch, and the protect batch too if
+    given) and decreases the combined loss below ``old_loss``.
+
+    Parameters
+    ----------
+    model, active_samples, active_targets, edge_indices, direction
+        Current model and the active flip batch's samples/targets/edit.
+    threshold, margin, old_loss, alpha_init, factor, max_backtracks, divergence_bound
+        Search parameters; see ``batch_contest``.
+    protect_active_samples, protect_active_targets, protect_margin, protect_lambda
+        Optional protect batch contributing a second hinge term to the loss.
+
+    Returns
+    -------
+    Tensor | None
+        The accepted ``new_A``, or ``None`` if nothing within budget qualifies.
+    """
     assert model.A is not None
     has_protect = (
         protect_lambda > 0.0
@@ -212,34 +163,41 @@ def batch_contest(
     protect_margin: float = PROTECT_MARGIN,
     protect_lambda: float = 0.0,
 ) -> BatchContestResult:
-    """Main loop. See module docstring for the algorithm.
+    """Jointly contest a batch of samples against one shared ``model.A``.
 
-    ``batch_size``, if given, splits each outer iteration into shuffled
-    mini-batches (one step per mini-batch, reshuffled every pass) instead of
-    the full-batch default (one step per outer iteration, over every active
-    sample at once).
+    Parameters
+    ----------
+    model : GradualAACBR
+        A fitted model (``model.A`` populated).
+    samples : Tensor
+        Batch of new cases to contest, shape (B, x1, ..., xn).
+    target_classes : Sequence[int]
+        Length-B, the desired class for each sample.
+    k, threshold, margin, max_iters
+        See ``contest.py``'s module-level defaults.
+    tol : float
+        Stop once the active-sample hinge sum is at or below this.
+    max_edits : int | None
+        Stop once this many distinct edges (flattened indices into
+        ``model.A``) have been touched. ``None`` (default) is unbounded.
+    batch_size : int | None
+        If given, splits each outer iteration into shuffled mini-batches
+        (one step per mini-batch) instead of the full-batch default.
+    leaky_negative_slope, divergence_bound, alpha_init, backtrack_factor, max_backtracks
+        See module-level defaults above.
+    protect_samples, protect_target_classes : Tensor | None, Sequence[int] | None
+        Optional second batch (e.g. currently correctly-classified
+        validation examples) to protect from margin erosion. Each protect
+        sample contributes ``clamp(protect_margin - (own_target -
+        own_rival), min=0)`` to the shared loss, weighted by
+        ``protect_lambda``. Left at ``None``/``protect_lambda=0.0`` by
+        default, in which case this has no effect.
+    protect_margin, protect_lambda
+        See above.
 
-    ``max_edits``, if given, stops the loop once that many distinct edges
-    (flattened indices into ``model.A``) have been touched -- the edit
-    budget. Left as ``None`` (unbounded) by default, since no such cap
-    exists elsewhere in this codebase to inherit.
-
-    ``protect_samples``/``protect_target_classes`` (optional): a second
-    batch -- e.g. currently correctly-classified validation examples -- to
-    protect from margin erosion while the flip batch above is optimized.
-    Each protect sample contributes ``clamp(protect_margin -
-    (own_target - own_rival), min=0)`` to the shared loss, weighted by
-    ``protect_lambda``, and its gradient is combined into the same shared
-    top-k edge selection and line search used for the flip batch -- it's
-    just a second term in the same objective, not a separate mechanism.
-    Recomputed fresh every chunk (never mini-batched itself) since
-    ``model.A`` may have moved since the last chunk's step. A chunk with no
-    active flip sample takes no step at all (unchanged from before this
-    param existed), so protect violations are only ever corrected as a
-    side effect of a flip-driven step, never on their own initiative. Left
-    at ``protect_lambda=0.0``/``protect_samples=None`` by default, in which
-    case every new code path here is skipped entirely and behavior is
-    unchanged from before this parameter existed.
+    Returns
+    -------
+    BatchContestResult
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -308,9 +266,6 @@ def batch_contest(
             )
             g = grae_result.casebase_edges.reshape(-1)
 
-            # Protect-set hinge against the current model.A -- see
-            # batch_contest's docstring for why this is recomputed fresh
-            # every chunk and only contributes alongside an active flip step.
             protect_active_samples: Tensor | None = None
             protect_active_targets: list[int] | None = None
             protect_old_loss = 0.0
@@ -343,7 +298,7 @@ def batch_contest(
 
             g = _mask_default_sources(model, g)
             if g.abs().max().item() == 0.0:
-                continue  # even the leaky surrogate found no directional signal
+                continue
 
             edge_indices = select_top_k(g, k)
             direction = g[edge_indices]

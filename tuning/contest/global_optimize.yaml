@@ -1,89 +1,28 @@
-# Config for deeparguing.contest.global_optimize.
-#
-# Builds on tuning/contest/contest.yaml's batch_contest hyperparameters
-# (k/threshold/margin/etc. below match it) and adds the global-optimization
-# settings: a soft protect-set penalty on every step, plus a hard periodic
-# accuracy guardrail with rollback. See global_optimize.py's module
-# docstring for the full design.
-#
-# Any CLI flag passed to global_optimize.py overrides the corresponding
-# value here (e.g. `--protect-lambda 2.0` for a one-off run without editing
-# this file).
-
-# Dataset / checkpoint paths. Bare filenames (no directory component) are
-# resolved via deeparguing.output_paths: today's outputs/<date>/ folder if
-# the file is there, else the most recent earlier date folder that has it.
 checkpoint: model_checkpoint.pt
 qbaf: misclassified_qbaf.json
-num_samples: null  # null = use every misclassified sample in qbaf
+num_samples: null
 
-# batch_contest hyperparameters (inherited from tuning/contest/contest.yaml).
 k: 3
 threshold: 0.5
 margin: 0.001
-max_iters: 200  # larger than contest.yaml's 50: rounds now checkpoint/guard periodically
+max_iters: 200
 tol: 0.0001
-max_edits: null  # null = unbounded edit budget, cumulative across rounds
-batch_size: null  # null = full-batch (mini-batching consistently underperformed in sweeps)
+max_edits: null
+batch_size: null
 divergence_bound: 100.0
 alpha_init: 1.0
 max_backtracks: 10
 
-# Global-optimization-specific.
-#
-# eval_every=10/protect_lambda=1.0 (the original defaults) were re-run
-# against the real CIFAR-10 ReluSemantics checkpoint on 2026-07-22 and
-# produced zero net flips both times: round 1's first 10 iterations already
-# cost -4.62 accuracy (144/1637 samples) to -9.47 accuracy (2/50 samples)
-# before the guardrail ever got to look, blowing straight past
-# max_acc_drop=0.01 and rolling the whole round back. The soft penalty
-# wasn't strong enough to hold the line within 10 iterations, and the
-# guardrail was too coarse-grained to accept the (likely cheaper) earlier
-# iterations before the later, costlier ones dragged the round over budget.
-#
-# The 2026-07-27 324-combo sweep (protect_lambda=50/protect_sample_size=200
-# converging cleanly to 64/1637, drop 0.0018) picked the values below, and a
-# 2026-07-28 real run against those exact values reproduced that result. But
-# a same-day real run afterward -- same config, same checkpoint -- collapsed
-# instead: round 1 cost -9% accuracy in just 5 iterations and the guardrail
-# rolled back everything (0/1637 cleared). Root cause: global_optimize.py
-# never seeded torch before _build_protect_set's torch.randperm draw, so
-# every live run pulled a *different* random 200-sample protect set --
-# unlike sweep_global_optimize.py, which reseeds (torch.manual_seed) before
-# every combo. The sweep's numbers only ever held for its seed's particular
-# draw; an unlucky unseeded draw could (and did) fail to hold the line at
-# all. Fixed by adding `seed` here (threaded through to a torch.manual_seed
-# call right before the run) so live runs are reproducible and actually
-# match what a sweep validated.
-#
-# With that bug fixed, protect_lambda=1/protect_lambda=5 correctly built a
-# protect set are far weaker: at eval_every=1 protect_lambda=5 only cleared
-# 33/1637 (2.0%). A same-day-seeded 120-combo resweep (post edge-masking
-# fix below; see "fixed target arg edge error") --
-# outputs/29Jul2026/global_optimize_sweep_resweep.md, run 2026-07-29 --
-# confirmed protect_lambda=50/protect_sample_size=200 is still the strongest
-# combo, but with the edge-masking fix in place the picture shifted: overall
-# clearance dropped (mean success rate ~1.5% vs ~4% pre-fix, since default-
-# source edges -- previously a source of cheap, fast, but unsafe moves -- are
-# no longer available), and eval_every=10 became the *worst* eval_every
-# value (mean success 1.0% vs eval_every=5's 1.6%) since checking the
-# guardrail less often lets more damage accumulate per round before it's
-# caught. The single best combo (ranked by cleared, then acc drop) was
-# eval_every=5/protect_margin=0.05: 83/1637 cleared (5.1%), drop +0.0073,
-# 15 edges changed -- adopted below in place of the stale eval_every=10/
-# protect_margin=0.01 pick.
-seed: 0                 # reseeds torch right before the protect-set draw -- see above; must match
-                         # what any sweep run you're comparing against used (sweep default is also 0)
+seed: 0
 protect_margin: 0.05
 protect_lambda: 50.0
 protect_sample_size: 200
-max_acc_drop: 0.01      # stop and roll back once eval-split accuracy has dropped this much
-eval_every: 5            # outer iterations per round before the hard guardrail re-checks
-eval_split: val          # val | test -- keep test unpeeked; confirm on test afterward via run_global_contest_eval.py
+max_acc_drop: 0.01
+eval_every: 5
+eval_split: val
 eval_batch_size: null
 
-# Run/output settings.
-device: null  # null = auto-detect cuda if available, else cpu
-log_dir: null  # null = today's outputs/<date>/ folder
-save_checkpoint: null  # null = default to '<log_dir>/global_optimize_checkpoint.pt'; "" to skip saving
-md_log_path: null  # null = default to today's outputs/<date>/global_optimize.md; "" to skip
+device: null
+log_dir: null
+save_checkpoint: null
+md_log_path: null
