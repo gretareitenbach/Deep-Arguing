@@ -1,0 +1,28 @@
+checkpoint: pruned_model_checkpoint.pt
+qbaf: pruned_misclassified_qbaf.json
+num_samples: null
+
+k: 3
+threshold: 0.5
+margin: 0.001
+max_iters: 200
+tol: 0.0001
+max_edits: null
+batch_size: null
+divergence_bound: 100.0
+alpha_init: 1.0
+max_backtracks: 10
+
+seed: 0
+protect_margin: 0.05
+protect_lambda: 50.0
+protect_sample_size: 200
+max_acc_drop: 0.01
+eval_every: 5
+eval_split: val
+eval_batch_size: null
+
+device: null
+log_dir: null
+save_checkpoint: pruned_global_optimize_checkpoint.pt
+md_log_path: null

@@ -1,5 +1,5 @@
-checkpoint: model_checkpoint.pt
-qbaf: misclassified_qbaf.json
+checkpoint: pruned_model_checkpoint.pt
+qbaf: pruned_misclassified_qbaf.json
 num_samples: null
 
 k: 3
@@ -15,4 +15,6 @@ max_backtracks: 10
 
 device: null
 log_dir: null
+checkpoint_filename: pruned_contested_checkpoint.pt
+log_prefix: pruned_contestation
 save_checkpoint: null

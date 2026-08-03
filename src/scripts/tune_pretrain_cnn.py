@@ -11,10 +11,11 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from deeparguing.feature_extractor.simple_cnn import SimpleCNN
 from deeparguing.helper import load_torch_images, split_data
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import output_path
 
 
-BEST_MODEL_PATH = "outputs/checkpoints/best_simple_cnn.pt"
-TUNE_LOG_PATH = "outputs/logs/tune_pretrain_cnn.md"
+BEST_MODEL_PATH = output_path("best_simple_cnn.pt")
+TUNE_LOG_PATH = output_path("tune_pretrain_cnn.md")
 best_accuracy_global = 0.0   # updated across sweep runs
 
 

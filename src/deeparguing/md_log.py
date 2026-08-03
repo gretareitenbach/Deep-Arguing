@@ -1,7 +1,8 @@
-"""Mirror substantive (non-progress) terminal output into a markdown file under
-``outputs/logs/``, so results/metrics/diagnostics survive after the terminal
-scrollback is gone -- console/logging output is unaffected, this just also
-writes the same content to disk.
+"""Mirror substantive (non-progress) terminal output into a markdown file
+(conventionally under today's ``outputs/<date>/``, see
+``deeparguing.output_paths``), so results/metrics/diagnostics survive after
+the terminal scrollback is gone -- console/logging output is unaffected,
+this just also writes the same content to disk.
 
 Lines of the form ``"--- X ---"`` become level-2 headings; a line already
 containing a newline (e.g. a pre-rendered code block) is written through

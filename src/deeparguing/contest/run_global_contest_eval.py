@@ -1,27 +1,14 @@
 """Compute global (full-split) test metrics for a contested model, relative
-to its uncontested baseline.
-
-Consumes exactly what ``contest_all.py`` already produces in
-``outputs/contestation/``: the *baseline* checkpoint it started from
-(``outputs/checkpoints/model_checkpoint.pt``, from ``cli/run.py``) and the
-*contested* checkpoint it wrote out (``outputs/contestation/contested_checkpoint.pt``,
-same format plus the edited ``A``). Rebuilds the live model + held-out split
-from the baseline checkpoint's own config, evaluates it once (the baseline),
-swaps in the contested checkpoint's ``A`` and evaluates again, and reports
-the delta -- see ``deeparguing.evals.global_contest_eval`` for the two calls
-this wraps.
-
-By default the results are also appended as a markdown table to
-``outputs/logs/global_contest_eval.md`` (one section per run, mirroring
-``deeparguing.md_log``'s convention used elsewhere -- e.g.
-``outputs/logs/summary.md``); pass ``--log-path ""`` to skip writing it.
+to its uncontested baseline. Rebuilds the model + held-out split from the
+baseline checkpoint, evaluates it, swaps in the contested checkpoint's
+``A`` and evaluates again, and reports the delta.
 
 Usage::
 
-    python -m deeparguing.counterfactuals.run_global_contest_eval
-    python -m deeparguing.counterfactuals.run_global_contest_eval \\
-        --checkpoint outputs/checkpoints/model_checkpoint.pt \\
-        --contested-checkpoint outputs/contestation/contested_checkpoint.pt \\
+    python -m deeparguing.contest.run_global_contest_eval
+    python -m deeparguing.contest.run_global_contest_eval \\
+        --checkpoint model_checkpoint.pt \\
+        --contested-checkpoint contested_checkpoint.pt \\
         --split test
 """
 
@@ -33,20 +20,25 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.counterfactuals.run_contest import load_fitted_model_and_data
+from deeparguing.contest.run_contest import load_fitted_model_and_data
 from deeparguing.evals.global_contest_eval import (GlobalContestEvalResult,
                                                      GlobalEvalMetrics,
                                                      compute_baseline_metrics,
                                                      evaluate_contested_model)
 from deeparguing.md_log import write_markdown_log
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
-DEFAULT_LOG_PATH = "outputs/logs/global_contest_eval.md"
+DEFAULT_LOG_FILENAME = "global_contest_eval.md"
 
 
 def load_model_and_split(checkpoint_path: str, device: str, split: str):
-    """Rebuild the model + reload its fitted state from a checkpoint (see
-    ``run_contest.load_fitted_model_and_data``), plus pull out the held-out
-    ``X_<split>``/``y_<split>`` pair from its config's data split."""
+    """Rebuild the model + reload its fitted state from a checkpoint.
+
+    Returns
+    -------
+    tuple
+        (model, X_<split>, y_<split>).
+    """
     model, data_dict = load_fitted_model_and_data(checkpoint_path, device)
     X = data_dict[f"X_{split}"]
     y = data_dict[f"y_{split}"]
@@ -55,8 +47,7 @@ def load_model_and_split(checkpoint_path: str, device: str, split: str):
 
 def _metrics_table(baseline: GlobalEvalMetrics, result: GlobalContestEvalResult) -> str:
     """Markdown table of accuracy/precision/recall/f1 for baseline vs.
-    contested, plus the signed delta -- the same four numbers logged to the
-    console, rendered as a table instead of one line each."""
+    contested, plus the signed delta."""
     deltas = {
         "Accuracy": result.delta_accuracy,
         "Precision": result.delta_precision,
@@ -91,12 +82,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--checkpoint",
-        default="outputs/checkpoints/model_checkpoint.pt",
+        default="model_checkpoint.pt",
         help="Baseline (uncontested) checkpoint produced by cli/run.py.",
     )
     parser.add_argument(
         "--contested-checkpoint",
-        default="outputs/contestation/contested_checkpoint.pt",
+        default="contested_checkpoint.pt",
         help="Checkpoint holding the contested model.A, produced by contest_all.py.",
     )
     parser.add_argument(
@@ -115,15 +106,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--log-path",
-        default=DEFAULT_LOG_PATH,
+        default=DEFAULT_LOG_FILENAME,
         help="Markdown file to append a results table to (created if missing). "
-        f"Default: {DEFAULT_LOG_PATH}. Pass an empty string to skip logging.",
+        f"Default: today's outputs/<date>/{DEFAULT_LOG_FILENAME}. Pass an "
+        "empty string to skip logging.",
     )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=args.log.upper(), format="%(asctime)s - %(levelname)s - %(message)s"
     )
+
+    args.checkpoint = resolve_read_path(args.checkpoint)
+    args.contested_checkpoint = resolve_read_path(args.contested_checkpoint)
 
     logging.info(f"Loading baseline checkpoint from {args.checkpoint} ...")
     model, X, y = load_model_and_split(args.checkpoint, args.device, args.split)
@@ -158,6 +153,7 @@ def main() -> None:
     )
 
     if args.log_path:
+        log_path = resolve_write_path(args.log_path)
         write_markdown_log(
             [
                 "--- GLOBAL CONTEST EVAL ---",
@@ -169,9 +165,9 @@ def main() -> None:
                 _confusion_matrix_block("Baseline", baseline.confusion_matrix),
                 _confusion_matrix_block("Contested", result.metrics.confusion_matrix),
             ],
-            args.log_path,
+            log_path,
         )
-        logging.info(f"Appended results table to {args.log_path}")
+        logging.info(f"Appended results table to {log_path}")
 
 
 if __name__ == "__main__":

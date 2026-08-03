@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+from deeparguing.output_paths import resolve_read_path
 
 class LSTMFeatureExtractor(FeatureExtractor):
     def __init__(
@@ -33,7 +34,7 @@ class LSTMFeatureExtractor(FeatureExtractor):
         self.fc_out = nn.Linear(lstm_out_dim, output_features)
 
         if weights_path is not None:
-            self.load_state_dict(torch.load(weights_path))
+            self.load_state_dict(torch.load(resolve_read_path(weights_path)))
 
         if freeze_weights:
             for p in self.parameters():

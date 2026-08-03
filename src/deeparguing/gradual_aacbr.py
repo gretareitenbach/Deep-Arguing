@@ -8,6 +8,7 @@ import torch
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, Normalize
 from torch import Tensor
+from tqdm import tqdm
 
 from deeparguing.base_scores.compute_base_scores import BaseScoreType
 from deeparguing.casebase_edge_weights.compute_partial_order import \
@@ -733,6 +734,8 @@ class GradualAACBR(torch.nn.Module):
         grae_casebase_edges: Tensor | None = None,
         grae_new_case_edges: Tensor | None = None,
         grae_target_indices: Sequence[int] | None = None,
+        batch_size: int | None = None,
+        disable_tqdm: bool = False,
     ) -> None:
         """
         Exports the base scores of the casebase (X_train) and the adjacency matrix to a JSON file.
@@ -759,6 +762,12 @@ class GradualAACBR(torch.nn.Module):
         grae_target_indices : Sequence[int] | None
             The default-argument index (into ``self.default_indexes``) each
             sample's G-RAE was differentiated against.
+        batch_size : int | None
+            Chunk size for the ``new_cases`` forward pass (also shown as the
+            progress bar's step size). Defaults to a single unbatched pass
+            over all of ``new_cases``, same as before this parameter existed.
+        disable_tqdm : bool
+            Disable the progress bar over ``new_cases`` chunks.
         """
         if self.A is None:
             raise Exception("Ensure the model has been fit first.")
@@ -799,7 +808,34 @@ class GradualAACBR(torch.nn.Module):
             data["normalization_std"] = image_std.detach().cpu().numpy().tolist()
 
         if new_cases is not None:
-            final_strengths = self(new_cases, return_all_strengths=True)
+            n_new_cases = new_cases.shape[0]
+            chunk_size = batch_size if batch_size is not None else n_new_cases
+
+            # Chunked forward pass (each new case is independent of the
+            # others, so this is just batching, not an algorithm change) --
+            # new_cases_base_scores/new_cases_attacks_adjacency are set as a
+            # side effect of __new_case_influence inside forward(), so they
+            # must be accumulated across chunks too, not just overwritten by
+            # the last one.
+            strengths_chunks = []
+            base_scores_chunks = []
+            attacks_adjacency_chunks = []
+            for i in tqdm(
+                range(0, n_new_cases, chunk_size),
+                desc="Forwarding new cases for export",
+                dynamic_ncols=True,
+                disable=disable_tqdm,
+            ):
+                strengths_chunks.append(
+                    self(new_cases[i : i + chunk_size], return_all_strengths=True)
+                )
+                base_scores_chunks.append(self.new_cases_base_scores)
+                attacks_adjacency_chunks.append(self.new_cases_attacks_adjacency)
+
+            final_strengths = torch.cat(strengths_chunks, dim=0)
+            self.new_cases_base_scores = torch.cat(base_scores_chunks, dim=0)
+            self.new_cases_attacks_adjacency = torch.cat(attacks_adjacency_chunks, dim=0)
+
             data["new_cases"] = new_cases.detach().cpu().numpy().tolist()
             if new_cases_labels is not None:
                 new_cases_labels_np = new_cases_labels.detach().cpu().numpy()

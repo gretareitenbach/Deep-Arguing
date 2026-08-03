@@ -645,3 +645,242 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     `samples_flipped` count, saved alongside the CSV as a same-named `.png`.
     Styled per the dataviz skill's reference palette (single blue series,
     thin 2px line, recessive gridlines, no legend needed for one series).
+
+## 2026-07-22
+
+- **Added global optimization scripts** (`5b1013b`)
+  - New `src/deeparguing/contest/global_optimize.py` (still under
+    `counterfactuals/` at the time): wraps `batch_contest()` in a
+    two-mechanism loop that maximizes flips on the misclassified batch while
+    protecting real held-out accuracy. Mechanism 1 (soft): `_build_protect_set`
+    samples up to `protect_sample_size` currently-correctly-classified
+    `eval_split` examples once per run and rides them along in every
+    `batch_contest` call via its new `protect_samples`/`protect_lambda`
+    params (see below). Mechanism 2 (hard): every `eval_every` outer
+    iterations, `global_optimize` calls `evaluate_contested_model`
+    (`evals/global_contest_eval.py`) for a real full-split accuracy check,
+    and rolls `model.A` back to the last passing snapshot (`last_good_A`) if
+    the drop exceeds `max_acc_drop`, stopping immediately after.
+    `GlobalOptimizeResult` reports cumulative touched-edge bookkeeping
+    across every accepted round (not just the last one), plus
+    `stopped_reason` (`"converged"`/`"acc_drop"`/`"max_iters"`/
+    `"max_edits"`). CLI mirrors `contest_all.py`'s YAML-config-plus-CLI-
+    override convention (`tuning/contest/global_optimize.yaml`), and writes
+    the same kind of JSON run log plus an optional new checkpoint.
+  - `batch_contest.py`: added the `protect_samples`/`protect_target_classes`/
+    `protect_margin`/`protect_lambda` machinery `global_optimize.py` builds
+    on -- a second hinge term for a caller-supplied "protect" batch, folded
+    into the same shared loss/gradient/line search (`_joint_backtracking_step`)
+    as the flip batch, weighted by `protect_lambda`. Recomputed fresh every
+    chunk (never mini-batched itself) since `model.A` may have moved since
+    the last step; a chunk with no active flip sample still takes no step at
+    all, so protect violations are only ever corrected as a side effect of a
+    flip-driven step. New params default to off (`protect_lambda=0.0`), so
+    existing callers are unaffected. `BatchContestResult` gained
+    `final_protect_target_strengths`/`final_protect_cleared`, populated only
+    when a protect set was given.
+  - `gradual_aacbr.py`: `export_to_json` gained `batch_size`/`disable_tqdm`
+    params -- chunks the `new_cases` forward pass (with a `tqdm` progress
+    bar) instead of one unbatched call, accumulating `new_cases_base_scores`/
+    `new_cases_attacks_adjacency` across chunks since both are side effects
+    of `forward()`'s internal `__new_case_influence`. Needed so exporting a
+    large misclassified set doesn't OOM. Default (`batch_size=None`) is
+    unchanged (single unbatched pass).
+  - `cli/run.py`/`parse_command_line.py`: new `--max_misclassified`/`-mm`
+    flag caps how many misclassified test samples get exported to
+    `misclassified_qbaf.json` (previously hardcoded to 100); `run.py`'s
+    `export_to_json` call now passes through the new `batch_size`/
+    `disable_tqdm` params.
+  - Added `tests/global_optimize_test.py` (rollback restores `last_good_A`
+    when the accuracy budget is exceeded, early stop without using the full
+    `max_iters` on convergence, `eval_every` cadence, matches a single
+    `batch_contest` call when the guardrail never trips, cumulative edit
+    budget enforced across rounds, result/round schema, raises if the model
+    was never fit) and extended `batch_contest_test.py` (protect-lambda
+    validation errors, `protect_lambda=0` matches old behavior exactly,
+    protect fields populated only when a protect set is given, protect
+    margin preserved under the penalty) and `gradual-aacbr_test.py`
+    (chunked `export_to_json` matches the unbatched result).
+
+- **Tuned optimization params** (`5046982`)
+  - `tuning/contest/global_optimize.yaml`: the original defaults
+    (`eval_every=10`, `protect_lambda=1.0`) were re-run against the real
+    CIFAR-10 ReluSemantics checkpoint and produced zero net flips both
+    times -- the first 10 iterations of round 1 already cost -4.62 to -9.47
+    accuracy before the guardrail ever got to look, blowing straight past
+    `max_acc_drop=0.01` and rolling the whole round back. Dropped
+    `eval_every` to `1` (so the guardrail checks every iteration instead of
+    an all-or-nothing 10-iteration block) and raised `protect_lambda` from
+    `1.0` to `5.0` (lean harder on the soft penalty so fewer iterations need
+    the hard check to bail them out). Flagged in the config's own comment as
+    unvalidated pending a sweep over `protect_lambda in {5, 20, 50}` at
+    `eval_every=1`.
+
+- **Updated optimization logging** (`dcb3bce`)
+  - `global_optimize.py`: run summaries are now also appended as markdown to
+    `outputs/logs/global_optimize.md` by default (`write_markdown_log`, same
+    convention as `run_global_contest_eval.py`'s logging) -- config,
+    cleared/edges-changed counts, baseline/final/drop accuracy, rollback
+    status, and a new per-round table (`_rounds_table`: iterations, cleared,
+    global acc, acc drop, rolled back) so a run's whole trajectory survives,
+    not just its final state. New `--md-log-path` flag, empty string to skip.
+
+## 2026-07-27
+
+- **Added hyperparameter sweep for global optimization** (`3255ad0`)
+  - New `src/deeparguing/counterfactuals/sweep_global_optimize.py`:
+    grid-sweeps `global_optimize()`'s five hyperparameters (`protect_lambda`,
+    `eval_every`, `protect_margin`, `protect_sample_size`, `max_acc_drop`)
+    against a single fixed baseline checkpoint, resetting `model.A` to a
+    fresh clone of the baseline before each combo so results are independent,
+    not cumulative. Reports every combo's outcome (samples cleared, accuracy
+    drop, edges changed, guardrail behavior, elapsed time) in a markdown
+    report plus a CSV, with a marginal-effect table per hyperparameter (mean
+    outcome averaged across every other swept axis) to surface which knob
+    actually moves the needle without reading every row. `--max-combos`
+    randomly subsamples (seeded) instead of running the full grid, since
+    five 3-value lists is already 243 runs. Non-swept `batch_contest`
+    hyperparameters come from the same YAML config `global_optimize.py`
+    itself uses.
+
+## 2026-07-28
+
+- **Updated config based on hyperparameter sweep** (`3f2e852`)
+  - `tuning/contest/global_optimize.yaml`: the full 324-combo grid sweep
+    (`outputs/logs/global_optimize_sweep.md`) confirmed `protect_lambda=5`
+    was too weak -- at `eval_every=1` it only cleared 33/1637 samples
+    (2.0%). `protect_lambda=50` with `protect_sample_size=200` clears
+    64/1637 (3.9%) for essentially the same accuracy cost (drop 0.0018 vs.
+    0.002) -- nearly double the samples cleared, basically for free. At that
+    lambda the soft penalty is strong enough that `eval_every=5`/`10` reach
+    the identical result via a clean `"converged"` stop (not `"max_iters"`)
+    in ~2.7s instead of ~192s, so `eval_every` was raised from `1` to `10`.
+    `protect_lambda` raised `5.0` -> `50.0`. `protect_margin` showed zero
+    measurable effect across `0.005`/`0.01`/`0.05` in the sweep -- left
+    unchanged, flagged as worth checking whether it's actually wired in.
+
+- **Renamed `/counterfactuals` to `/contest`** (`4f084e9`)
+  - `src/deeparguing/counterfactuals/` -> `src/deeparguing/contest/`: every
+    operative name in the package (`contest()`, `batch_contest()`,
+    `contest_all.py`, `run_contest.py`, `global_optimize` built on
+    `batch_contest`) was already `contest`-branded -- "counterfactual" only
+    survived as the directory name. Updated every
+    `deeparguing.counterfactuals.*` import, docstring path header
+    (`src/deeparguing/counterfactuals/x.py` -> `src/deeparguing/contest/x.py`),
+    and the `tuning/contest/*.yaml` config comments across `src/`, `tests/`,
+    and `tuning/` accordingly. No packaging/entry-point config referenced the
+    old path. Historical entries in this changelog were left saying
+    "counterfactuals", since they're a dated record of what was true at the
+    time.
+
+- **Added edge pruning** (`35e4534`)
+  - New `src/deeparguing/contest/prune_edges.py`: hard-thresholds a fitted
+    model's casebase adjacency (`model.A`) by magnitude --
+    `prune_edges(A, threshold=0.1)` zeroes every entry with
+    `abs(weight) < threshold` (thresholding on magnitude, not raw value,
+    since sign encodes attack/support -- see `grae.py`) and returns a
+    `PruneResult` (pruned tensor plus before/after nonzero-entry counts). A
+    cheap, non-iterative alternative to `contest()`/`batch_contest()`'s
+    gradient-based edits, meant as a first pass before re-running inference
+    to rebuild the misclassified set and handing that to
+    `contest_all`/`global_optimize` to see how much of the accuracy lost to
+    pruning can be recovered. CLI operates directly on the checkpoint dict
+    (`torch.load`/`torch.save`) rather than reconstructing the live model,
+    since pruning only ever touches `A`; output is a drop-in checkpoint every
+    other `contest/` script's `--checkpoint` flag already accepts unchanged.
+    Added `tests/prune_edges_test.py` (thresholding on both signs, exclusive
+    `<` boundary, edge counts, no in-place mutation, default threshold,
+    zero-threshold no-op).
+
+- **Added pruning contestation** (`a7c6399`)
+  - New `src/deeparguing/contest/recompute_misclassified.py`: closes the gap
+    `prune_edges.py` opened -- `cli/run.py --misclassified_log`'s
+    `misclassified_qbaf.json` goes stale the moment `model.A` changes by any
+    means other than a full training run (e.g. pruning). Given any
+    checkpoint (pruned, contested, or fresh), rebuilds the live model + its
+    data split the same way `run_contest.py`/`run_global_contest_eval.py`
+    do, runs inference on `--split` to find which samples *that checkpoint*
+    gets wrong (`find_misclassified`: batched argmax-vs-argmax comparison,
+    same check `cli/run.py` uses), and exports exactly those as a QBAF file
+    in the `new_cases`/`new_cases_labels` shape `contest_all.py`/
+    `run_contest.py` already consume. GRAE attribution intentionally not
+    computed here, since neither `contest_all.py` nor `contest.py` reads it.
+  - New `tuning/contest/contest_pruned.yaml`: same winning `batch_contest`
+    hyperparameters as `contest.yaml` (k/margin/etc.), pointed at the pruned
+    checkpoint + its recomputed misclassified set instead, with its own
+    `log_dir` (`outputs/contestation_pruned`) so its `contested_checkpoint.pt`
+    doesn't overwrite the unpruned run's.
+
+- **Fixed target-arg edge error** (`f57d597`)
+  - `contest.py`/`batch_contest.py`/`bottleneck.py`: edge selection could
+    pick an edge whose *source* is one of `model.default_indexes` --
+    `fit()` already enforces that a default/topic argument never
+    legitimately originates an edge (`attackers_default_mask` in
+    `gradual_aacbr.py`'s `__prepare_default`), but nothing stopped a contest
+    step from handing one its first-ever outgoing edge. Since strength
+    propagation is recursive, that can corrupt every prediction routing
+    through that anchor, not just the sample(s) being contested -- found via
+    a real checkpoint: after pruning, `batch_contest` picked 3 such edges
+    out of a class's default argument, clearing 57/1661 targeted samples
+    while collapsing ~700 previously-correct same-class test predictions
+    into a rival class. New `_default_source_mask`/`_mask_default_sources`
+    in `contest.py`, wired into `contest()`'s per-sample gradient,
+    `batch_contest()`'s shared gradient, and `bottleneck.py`'s
+    `_bottleneck_leverage_vector`/`select_bottleneck_edges`/
+    `find_and_escape_bottleneck` (new `default_indexes` param, threaded
+    through from `model.default_indexes`). No-op when
+    `model.defaults_not_attack` is False, since such edges are then a
+    legitimate part of the fitted model to begin with. Extended
+    `tests/bottleneck_test.py` and `tests/contest_test.py` to cover the
+    masking.
+
+- **Reworked output folders** (`fee7a06`)
+  - `outputs/` was organized by category (`checkpoints/`, `contestation/`,
+    `contestation_pruned/`, `grae/`, `logs/`, `qbaf/`), each holding a
+    handful of fixed-name files -- reorganized to be date-based instead:
+    every run now writes flat into `outputs/<DDMonYYYY>/` (e.g.
+    `outputs/28Jul2026/`), no subfolders. New
+    `src/deeparguing/output_paths.py`: `output_path(filename)` always
+    resolves to today's date folder (creating it); `find_output(filename)`
+    looks a bare filename up in today's folder first, then walks backward
+    through earlier date folders and returns the newest one that has it, so
+    a pipeline stage (e.g. `contest_all.py` looking for
+    `model_checkpoint.pt`) finds an earlier day's output without the caller
+    re-specifying a full path; `resolve_read_path`/`resolve_write_path` wrap
+    both around a bare-filename-vs-explicit-path convention -- a path with a
+    directory component is always left untouched, so CLI/config overrides
+    still work.
+  - Rewired every script/config that reads or writes under `outputs/`
+    (`cli/run.py`, the `contest/` pipeline scripts, both sweep scripts,
+    `simple_trainer.py`/`curriculum_trainer.py`, the pretrain/verify/weights
+    scripts, and `tuning/contest/*.yaml`) onto the new module. Existing
+    files under `outputs/` (gitignored, not part of this commit) were moved
+    into date folders matching their actual mtimes.
+  - `contest_all.py` writes a `contested_checkpoint.pt`; the unpruned and
+    pruned configs previously kept theirs apart only by writing to
+    different subfolders (`outputs/contestation/` vs.
+    `outputs/contestation_pruned/`), which would now collide if both ran on
+    the same day. New `checkpoint_filename`/`log_prefix` config knobs
+    (`--checkpoint-filename`/`--log-prefix` CLI flags) let a variant
+    override its output filenames; `contest_pruned.yaml` now writes
+    `pruned_contested_checkpoint.pt`/`pruned_contestation_*.json`, extending
+    the `pruned_` convention `prune_edges.py`/`recompute_misclassified.py`
+    already used for checkpoint/qbaf filenames.
+
+## 2026-07-30
+
+- **Cleaned up comments** (`9402e8c`)
+  - `src/deeparguing/contest/*.py` (all 12 modules): the module docstrings and
+    inline comments had accumulated into multi-paragraph essays covering
+    design rationale, historical bug fixes, and diagnostic walkthroughs (e.g.
+    `batch_contest.py`'s docstring alone ran ~70 lines). Trimmed every module
+    docstring to a few lines describing what the file does plus CLI usage
+    where applicable, and every function docstring down to its
+    parameters/return value, dropping the "why"/"notes" prose (most of which
+    is still recoverable from this changelog and `git log`). Kept a small
+    number of short inline comments where a constant or invariant is genuinely
+    non-obvious (e.g. `run_contest.py`'s default-row-index invariant).
+  - `tuning/contest/*.yaml` (all 4 configs): removed every comment, including
+    the sweep-history notes in `global_optimize.yaml` documenting how
+    `protect_lambda=50`/`eval_every=5` were picked (also preserved above and
+    in `git log` for `global_optimize.yaml`).

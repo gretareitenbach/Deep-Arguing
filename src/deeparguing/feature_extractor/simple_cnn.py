@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from deeparguing.feature_extractor.feature_extractor import FeatureExtractor
+from deeparguing.output_paths import resolve_read_path
 
 
 class LargeCNN(FeatureExtractor):
@@ -53,7 +54,7 @@ class LargeCNN(FeatureExtractor):
         # Load & freeze
         # ----------------------
         if weights_path is not None:
-            self.load_state_dict(torch.load(weights_path))
+            self.load_state_dict(torch.load(resolve_read_path(weights_path)))
 
         self.freeze_weights = freeze_weights
 
@@ -147,7 +148,7 @@ class SimpleCNN(FeatureExtractor):
         self.fc_out = nn.Linear(64, output_features)
 
         if weights_path is not None:
-            self.load_state_dict(torch.load(weights_path))
+            self.load_state_dict(torch.load(resolve_read_path(weights_path)))
 
         self.freeze_weights = freeze_weights
 

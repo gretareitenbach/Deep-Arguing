@@ -1,37 +1,14 @@
 """Run a single joint optimization over every misclassified sample against a
-shared model.A, instead of contesting each sample sequentially.
-
-The old sequential loop (see git history) ran ``contest()`` once per sample
-against the same live ``model.A``, so edits accumulated one sample at a
-time and one sample's fix could partially undo another's. This script
-instead calls ``batch_contest()``, which optimizes one shared adjacency
-edit against every sample's hinge loss at once -- see
-``counterfactuals/batch_contest.py``'s module docstring for the full
-algorithm (shared gradient, shared top-k edge selection, shared step).
-
-All hyperparameters and dataset/checkpoint paths live in a YAML config file
-(default ``tuning/contest/contest.yaml``, which holds the winning config
-found by an earlier grid search -- see git history, the sweep script itself
-has since been removed) rather than being hardcoded here. Any CLI flag, if
-given, overrides the corresponding value from that file for a one-off run
-without editing it.
+shared ``model.A``, via ``batch_contest()``, instead of contesting each
+sample sequentially. Hyperparameters and dataset/checkpoint paths come from
+a YAML config file (default ``tuning/contest/contest.yaml``); any CLI flag
+overrides the corresponding config value.
 
 Usage::
 
-    python -m deeparguing.counterfactuals.contest_all
-    python -m deeparguing.counterfactuals.contest_all --config tuning/contest/contest.yaml
-    python -m deeparguing.counterfactuals.contest_all --k 10 --margin 0.005   # one-off override
-
-By default this writes two things to ``log_dir`` (``outputs/contestation``):
-a timestamped JSON log (run config, summary counts, and a per-sample
-cleared/failed breakdown) and a checkpoint holding the new, contested
-``model.A`` -- set ``save_checkpoint: ""`` (or ``--save-checkpoint ""``) to
-skip the latter.
-
-This runs one joint optimization over every misclassified sample (each
-outer iteration involves a batched forward pass, a batched backward pass,
-and a line search) -- run it on whatever machine has the compute for that,
-not necessarily this one.
+    python -m deeparguing.contest.contest_all
+    python -m deeparguing.contest.contest_all --config tuning/contest/contest.yaml
+    python -m deeparguing.contest.contest_all --k 10 --margin 0.005
 """
 
 import argparse
@@ -43,12 +20,13 @@ from typing import Any
 import torch
 import yaml
 
-from deeparguing.counterfactuals.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
-from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
+from deeparguing.contest.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
+from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS, TOL,
                                                          batch_contest)
-from deeparguing.counterfactuals.run_contest import load_all_samples, load_model
+from deeparguing.contest.run_contest import load_all_samples, load_model
+from deeparguing.output_paths import resolve_read_path, today_output_dir
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"
 
@@ -67,9 +45,8 @@ def _load_config(config_path: str) -> dict[str, Any]:
 
 def _resolved(cli_value: Any, config: dict[str, Any], key: str, fallback: Any) -> Any:
     """CLI flag (if given) overrides the config file's value, which
-    overrides ``fallback``. A ``null`` in the config file is treated the
-    same as the key being absent (falls through to ``fallback``), since
-    both mean "nothing was actually specified" for every setting here."""
+    overrides ``fallback``. A ``null``/absent key in the config file both
+    fall through to ``fallback``."""
     if cli_value is not None:
         return cli_value
     if config.get(key) is not None:
@@ -151,15 +128,30 @@ def main() -> None:
         "--save-checkpoint",
         default=None,
         help="Where to save the model (with its perturbed model.A) after the "
-        "run. Defaults to '<log-dir>/contested_checkpoint.pt'; pass an empty "
+        "run. Defaults to '<log-dir>/<checkpoint-filename>'; pass an empty "
         "string to skip saving a checkpoint entirely.",
+    )
+    parser.add_argument(
+        "--checkpoint-filename",
+        default=None,
+        help="Filename (under log-dir) for the saved checkpoint. Default: "
+        "'contested_checkpoint.pt'. Override this in a variant config (e.g. "
+        "'pruned_contested_checkpoint.pt') so it doesn't collide with "
+        "another variant's output landing in the same date folder.",
+    )
+    parser.add_argument(
+        "--log-prefix",
+        default=None,
+        help="Filename prefix (under log-dir) for the timestamped JSON log. "
+        "Default: 'contestation'. Same collision-avoidance purpose as "
+        "--checkpoint-filename.",
     )
     args = parser.parse_args()
 
     config = _load_config(args.config)
 
-    checkpoint = _required(args.checkpoint, config, "checkpoint", args.config)
-    qbaf = _required(args.qbaf, config, "qbaf", args.config)
+    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
     num_samples = _resolved(args.num_samples, config, "num_samples", None)
     k = _resolved(args.k, config, "k", DEFAULT_K)
     threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
@@ -172,11 +164,9 @@ def main() -> None:
     alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
     max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", "outputs/contestation")
-    # save_checkpoint's tri-state (unset -> default path, "" -> skip, path ->
-    # explicit) means an empty string from the config must NOT fall through
-    # to _resolved's "treat null/absent as unset" rule, so it's handled
-    # directly rather than via _resolved.
+    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    checkpoint_filename = _resolved(args.checkpoint_filename, config, "checkpoint_filename", "contested_checkpoint.pt")
+    log_prefix = _resolved(args.log_prefix, config, "log_prefix", "contestation")
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
 
     with open(qbaf, "r", encoding="utf-8") as f:
@@ -214,10 +204,6 @@ def main() -> None:
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Unravel each touched flat index into (source, target, dim) plus its
-    # before/after weight -- lets a later global-accuracy investigation
-    # correlate a specific edge with whatever samples depend on it, instead
-    # of only knowing how many edges moved in total.
     n1, n2, d = model.A.shape
     original_flat = original_A.reshape(-1)
     new_flat = model.A.reshape(-1)
@@ -234,7 +220,7 @@ def main() -> None:
     ]
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    log_path = log_dir / f"contestation_{timestamp}.json"
+    log_path = log_dir / f"{log_prefix}_{timestamp}.json"
     log = {
         "config": {
             "config_file": args.config,
@@ -277,7 +263,7 @@ def main() -> None:
     print(f"Saved run log to {log_path}")
 
     if save_checkpoint is None:
-        save_checkpoint = str(log_dir / "contested_checkpoint.pt")
+        save_checkpoint = str(log_dir / checkpoint_filename)
 
     if save_checkpoint:
         torch.save(

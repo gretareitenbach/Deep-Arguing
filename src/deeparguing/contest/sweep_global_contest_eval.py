@@ -2,25 +2,11 @@
 several N, and record each resulting ``model.A``'s global test-set impact --
 one CSV row per N.
 
-This is purely an orchestration script: it does not reimplement anything.
-Per N it reuses, in order:
-  - ``load_fitted_model_and_data``/``load_all_samples`` (``run_contest.py``)
-    to rebuild the model once and pull the first N misclassified samples
-    out of the QBAF export, exactly like ``contest_all.py --num-samples``.
-  - ``batch_contest`` (``batch_contest.py``) to jointly contest those N
-    samples against a fresh copy of the baseline ``model.A``.
-  - the touched-edge old/new-weight bookkeeping ``contest_all.py`` already
-    computes for its own JSON log, to get weight-delta and edge-reversal
-    stats.
-  - ``compute_baseline_metrics``/``evaluate_contested_model``
-    (``evals/global_contest_eval.py``) to score the resulting adjacency on
-    the full held-out split relative to the (once-computed) baseline.
-
 Usage::
 
-    python -m deeparguing.counterfactuals.sweep_global_contest_eval
-    python -m deeparguing.counterfactuals.sweep_global_contest_eval \\
-        --ns 0,1,10,100 --seed 0 --output outputs/contestation/global_eval_sweep.csv
+    python -m deeparguing.contest.sweep_global_contest_eval
+    python -m deeparguing.contest.sweep_global_contest_eval \\
+        --ns 0,1,10,100 --seed 0 --output global_eval_sweep.csv
 """
 
 import argparse
@@ -34,22 +20,23 @@ import pandas as pd
 import torch
 from torch import Tensor
 
-from deeparguing.counterfactuals.batch_contest import (ALPHA_INIT,
+from deeparguing.contest.batch_contest import (ALPHA_INIT,
                                                          DIVERGENCE_BOUND,
                                                          MAX_BACKTRACKS, TOL,
                                                          BatchContestResult,
                                                          batch_contest)
-from deeparguing.counterfactuals.contest import (DEFAULT_K, MARGIN,
+from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
                                                    MAX_ITERS, THRESHOLD)
-from deeparguing.counterfactuals.contest_all import (DEFAULT_CONFIG_PATH,
+from deeparguing.contest.contest_all import (DEFAULT_CONFIG_PATH,
                                                        _load_config)
-from deeparguing.counterfactuals.run_contest import (load_all_samples,
+from deeparguing.contest.run_contest import (load_all_samples,
                                                        load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
                                                      evaluate_contested_model)
+from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
 DEFAULT_NS = [0, 1, 5, 10, 25, 50, 100]
-DEFAULT_OUTPUT = "outputs/contestation/global_eval_sweep.csv"
+DEFAULT_OUTPUT = "global_eval_sweep.csv"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 3
 
@@ -65,7 +52,15 @@ _PLOT_SECONDARY_INK = "#52514e"
 
 def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
     """Line chart of accuracy drop vs. N, each point labeled with how many
-    of that N's contested samples flipped to correctly classified."""
+    of that N's contested samples flipped to correctly classified.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must have "N", "acc_drop", "samples_flipped" columns.
+    png_path : Path
+        Where to save the chart.
+    """
     df = df.sort_values("N")
 
     fig, ax = plt.subplots(figsize=(7, 4.5), facecolor=_PLOT_SURFACE)
@@ -105,9 +100,13 @@ def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
 def _touched_edge_old_new(
     original_A: Tensor, contested_A: Tensor, touched_edge_indices: list[int]
 ) -> tuple[list[float], list[float]]:
-    """Old/new weight for each edge ``batch_contest`` touched -- same lookup
-    ``contest_all.py`` does for its per-run JSON log, reused here for the
-    weight-delta/edge-reversal columns."""
+    """Old/new weight for each edge ``batch_contest`` touched.
+
+    Returns
+    -------
+    tuple[list[float], list[float]]
+        Parallel lists of old and new weights.
+    """
     original_flat = original_A.reshape(-1)
     contested_flat = contested_A.reshape(-1)
     olds = [original_flat[i].item() for i in touched_edge_indices]
@@ -120,9 +119,14 @@ def contest_n(
 ) -> tuple[BatchContestResult | None, Tensor]:
     """Reset ``model.A`` to a fresh copy of the baseline, then contest the
     given samples (already truncated to the first N misclassified ones by
-    the caller). N=0 (empty ``samples``) skips ``batch_contest`` entirely --
-    an empty batch has nothing to jointly optimize -- and just returns the
-    untouched baseline adjacency."""
+    the caller).
+
+    Returns
+    -------
+    tuple[BatchContestResult | None, Tensor]
+        The batch_contest result (``None`` if ``samples`` is empty) and the
+        resulting ``model.A``.
+    """
     model.A = original_A.clone()
     if samples.shape[0] == 0:
         return None, original_A.clone()
@@ -172,6 +176,8 @@ def main() -> None:
             "checkpoint/qbaf not given on the command line and not set in "
             f"{args.config} -- add them there or pass --checkpoint/--qbaf."
         )
+    checkpoint = resolve_read_path(checkpoint)
+    qbaf_path = resolve_read_path(qbaf_path)
 
     contest_kwargs = dict(
         k=config.get("k", DEFAULT_K),
@@ -258,12 +264,11 @@ def main() -> None:
 
     df = pd.DataFrame(rows)
 
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.round(CSV_DECIMALS).to_csv(output_path, index=False)
-    logging.info(f"Wrote {len(rows)} rows to {output_path}")
+    csv_path = Path(resolve_write_path(args.output))
+    df.round(CSV_DECIMALS).to_csv(csv_path, index=False)
+    logging.info(f"Wrote {len(rows)} rows to {csv_path}")
 
-    png_path = output_path.with_suffix(".png")
+    png_path = csv_path.with_suffix(".png")
     _plot_acc_drop_vs_n(df, png_path)
     logging.info(f"Wrote accuracy-drop plot to {png_path}")
 
