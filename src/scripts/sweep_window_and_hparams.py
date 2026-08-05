@@ -35,8 +35,15 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from tqdm import tqdm
 
 from deeparguing.output_paths import find_output, output_path
+
+_NUM = r"[+-]?(?:\d+\.\d+|\d+)(?:[eE][+-]?\d+)?"
+TRIAL_FINISHED_RE = re.compile(
+    rf"Trial \d+ finished with value: ({_NUM}).*?"
+    rf"Best is trial \d+ with value: ({_NUM})"
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_DATA_YAML = REPO_ROOT / "tuning/brainwear/data_brainwear.yaml"
@@ -59,6 +66,30 @@ def run_cmd(cmd: list[str]) -> str:
         print(result.stderr[-4000:])
         raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(cmd)}")
     return result.stdout + result.stderr
+
+
+def run_cmd_streaming(cmd: list[str], on_line) -> str:
+    """Like run_cmd, but reads the child process's combined stdout/stderr
+    line by line as it runs (instead of blocking until exit) and calls
+    on_line(line) for each -- used to drive a live progress bar off Optuna's
+    per-trial log lines without dumping the whole (noisy) subprocess output
+    to the console."""
+    print(f"$ {' '.join(cmd)}")
+    process = subprocess.Popen(
+        cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    lines = []
+    assert process.stdout is not None
+    for line in process.stdout:
+        lines.append(line)
+        on_line(line)
+    process.wait()
+    out = "".join(lines)
+    if process.returncode != 0:
+        print(out[-4000:])
+        raise RuntimeError(f"Command failed ({process.returncode}): {' '.join(cmd)}")
+    return out
 
 
 def parse_val_metrics(summary_text: str) -> tuple[float, float]:
@@ -115,7 +146,9 @@ def make_variant_configs(window_epochs: int, outdir: Path, checkpoint_name: str)
 
 def sweep_windows(windows: list[int], hidden_size: int, embedding_size: int) -> pd.DataFrame:
     rows = []
-    for w in windows:
+    pbar = tqdm(windows, desc="Window sweep")
+    for w in pbar:
+        pbar.set_postfix(window=f"{w}ep/{w * 0.5:.1f}min")
         print(f"\n{'=' * 80}\nWindow = {w} epochs ({w * 0.5:.1f} min)\n{'=' * 80}")
         outdir = SWEEP_DATA_DIR / f"w{w}"
 
@@ -141,6 +174,7 @@ def sweep_windows(windows: list[int], hidden_size: int, embedding_size: int) -> 
         ])
         val_f1, val_acc = parse_val_metrics(out)
         print(f"-> val_f1={val_f1:.4f} val_acc={val_acc:.4f}")
+        pbar.set_postfix(window=f"{w}ep", val_f1=f"{val_f1:.4f}")
         rows.append({"window_epochs": w, "window_minutes": w * 0.5, "val_f1": val_f1, "val_acc": val_acc})
 
     return pd.DataFrame(rows)
@@ -289,12 +323,24 @@ def write_tune_hyperparameters_yaml() -> Path:
 
 def tune_hyperparams(data_yaml: Path, model_yaml: Path, n_trials: int) -> tuple[float, dict[str, str]]:
     tune_yaml = write_tune_hyperparameters_yaml()
-    run_cmd([
+
+    pbar = tqdm(total=n_trials, desc="Hyperparameter trials")
+
+    def on_line(line: str) -> None:
+        match = TRIAL_FINISHED_RE.search(line)
+        if match:
+            trial_value, best_value = match.groups()
+            pbar.update(1)
+            pbar.set_postfix(trial=f"{float(trial_value):.4f}", best=f"{float(best_value):.4f}")
+
+    run_cmd_streaming([
         sys.executable, "src/deeparguing/cli/run.py",
         "--config", str(data_yaml), str(tune_yaml), str(model_yaml),
         "--seed", "0", "--log", "info", "--run_train", "-lv",
         "--tuning", "--ht-obj", "f1", "-nt", str(n_trials),
-    ])
+    ], on_line=on_line)
+    pbar.close()
+
     # "--- BEST TRIAL ---" is only ever written to summary.md (via
     # write_markdown_summary), never printed to stdout in that form.
     with open(find_output("summary.md")) as f:
