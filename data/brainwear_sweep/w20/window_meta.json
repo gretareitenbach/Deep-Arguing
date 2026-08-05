@@ -1,0 +1,45 @@
+{
+  "input": "data/brainwear/BW_AAB_mastertimeSeries.csv",
+  "window_epochs": 20,
+  "window_minutes": 10.0,
+  "stride_epochs": 20,
+  "max_gap_seconds": 30,
+  "max_imputed_frac": 0.2,
+  "min_purity": 0.0,
+  "test_frac": 0.2,
+  "n_epochs": 997465,
+  "n_runs": 7,
+  "n_windows_before_filter": 49870,
+  "n_windows_dropped_nan": 3269,
+  "n_windows_dropped_imputed": 6083,
+  "n_windows_dropped_purity": 0,
+  "n_windows_trainval": 32414,
+  "n_windows_test": 8104,
+  "label_cols_order": [
+    "moderate",
+    "sedentary",
+    "sleep",
+    "tasks-light",
+    "walking"
+  ],
+  "target_field_index": 20,
+  "continuous_cols_range": [
+    0,
+    20
+  ],
+  "trainval_class_counts": {
+    "moderate": 692,
+    "sedentary": 11568,
+    "sleep": 17104,
+    "tasks-light": 726,
+    "walking": 2324
+  },
+  "test_class_counts": {
+    "moderate": 197,
+    "sedentary": 2934,
+    "sleep": 4205,
+    "tasks-light": 186,
+    "walking": 582
+  },
+  "mean_purity": 0.9410903795843822
+}
