@@ -273,6 +273,7 @@ def contest(
     threshold: float = THRESHOLD,
     margin: float = MARGIN,
     max_iters: int = MAX_ITERS,
+    max_edits: int | None = None,
 ) -> ContestResult:
     """Contest a single sample's prediction towards ``target_class``.
 
@@ -287,6 +288,10 @@ def contest(
         strength towards.
     k, threshold, margin, max_iters
         See module-level defaults above.
+    max_edits : int | None
+        Stop once this many distinct edges (flattened indices into
+        ``model.A``) have been touched -- same semantics as
+        ``batch_contest``'s ``max_edits``. ``None`` (default) is unbounded.
 
     Returns
     -------
@@ -306,6 +311,7 @@ def contest(
 
     max_delta = 0.0
     trace: list[EdgeTraceStep] = []
+    touched_edges: set[int] = set()
     strengths = _forward_strengths(model, sample, model.A)
     target_strength, rival_class, rival_strength = _target_and_rival(
         strengths, target_class, threshold
@@ -361,6 +367,10 @@ def contest(
         target_strength, rival_class, rival_strength = (
             new_target_strength, new_rival_class, new_rival_strength,
         )
+
+        touched_edges.update(edge_indices.tolist())
+        if max_edits is not None and len(touched_edges) >= max_edits:
+            break  # edit budget hit -- stop even if the margin isn't met yet
 
     if target_strength - rival_strength >= margin:
         return ContestResult(

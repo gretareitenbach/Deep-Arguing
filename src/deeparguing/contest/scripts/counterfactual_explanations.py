@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import torch
 from torch import Tensor
+from tqdm import tqdm
 
 from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN, MAX_ITERS,
                                                THRESHOLD, contest)
@@ -100,10 +101,17 @@ def explain_sample(
     threshold: float = THRESHOLD,
     margin: float = MARGIN,
     max_iters: int = MAX_ITERS,
+    max_edits: int | None = None,
 ) -> CounterfactualExplanation:
     """Run ``contest()`` against one sample to discover its minimal edge
     edit, then undo it -- ``model.A`` is restored to exactly what it was
     before this call, regardless of whether a counterfactual was found.
+
+    ``max_edits`` (see ``contest()``) caps how many distinct edges the
+    search may touch, at the cost of possibly not finding a counterfactual
+    within that budget -- useful for keeping the explanation small enough
+    to read, since an unrestricted search can revisit/introduce dozens of
+    edges across iterations.
 
     Returns a ``CounterfactualExplanation`` describing which edges would
     need to change, and by how much, for ``model`` to predict
@@ -115,7 +123,7 @@ def explain_sample(
 
     result = contest(
         model, sample, target_class=target_class,
-        k=k, threshold=threshold, margin=margin, max_iters=max_iters,
+        k=k, threshold=threshold, margin=margin, max_iters=max_iters, max_edits=max_edits,
     )
 
     final_A = model.A
@@ -225,6 +233,15 @@ def main() -> None:
     parser.add_argument("--margin", type=float, default=MARGIN)
     parser.add_argument("--threshold", type=float, default=THRESHOLD)
     parser.add_argument("--max-iters", type=int, default=MAX_ITERS)
+    parser.add_argument(
+        "--max-edits", type=int, default=None,
+        help="Cap each sample's explanation to at most this many distinct "
+        "edges (default: unbounded). A search that hits the cap before "
+        "reaching the margin is reported as 'no counterfactual found' with "
+        "whatever partial edit it got to -- use this to keep explanations "
+        "small enough to read, at the cost of some samples no longer "
+        "finding a counterfactual at all.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
         "--output", default=DEFAULT_OUTPUT_FILENAME,
@@ -268,14 +285,16 @@ def main() -> None:
             f"Checkpoint: {checkpoint}",
             f"QBAF: {qbaf_path}",
             f"Config: k={args.k} margin={args.margin} threshold={args.threshold} "
-            f"max_iters={args.max_iters}",
+            f"max_iters={args.max_iters} max_edits={args.max_edits}",
             f"Samples: {total} of {samples.shape[0]} misclassified",
         ],
         output,
     )
 
     num_found = 0
-    for i in sample_indices:
+    processed = 0
+    progress = tqdm(sample_indices, desc="Explaining samples", unit="sample")
+    for i in progress:
         sample = samples[i : i + 1]
         true_class = true_classes[i]
         target_class = args.target_class if args.target_class is not None else true_class
@@ -283,17 +302,15 @@ def main() -> None:
         explanation = explain_sample(
             model, sample, i, true_class, target_class,
             k=args.k, threshold=args.threshold, margin=args.margin, max_iters=args.max_iters,
+            max_edits=args.max_edits,
         )
         num_found += explanation.success
+        processed += 1
+        progress.set_postfix(found=f"{num_found}/{processed}")
 
         write_markdown_log(
             render_sample(model, default_index_set, explanation, d, args.max_iters, args.margin),
             output,
-        )
-        print(
-            f"Sample {i}: "
-            f"{'counterfactual found' if explanation.success else 'no counterfactual found'} "
-            f"({len(explanation.edges)} edges touched)"
         )
 
     print(f"\n{num_found}/{total} samples had a counterfactual; appended to {output}")

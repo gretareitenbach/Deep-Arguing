@@ -113,3 +113,17 @@ def test_explain_sample_touches_only_unique_edges_despite_repeated_visits():
 
     edge_ids = [e.edge_id for e in explanation.edges]
     assert len(edge_ids) == len(set(edge_ids))
+
+
+def test_explain_sample_respects_max_edits_and_still_restores_model_A():
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+    original_A = model.A.detach().clone()
+
+    explanation = explain_sample(
+        model, new_case, sample_index=0, true_class=1, target_class=TARGET_INDEX,
+        k=1, max_iters=20, max_edits=2,
+    )
+
+    assert len(explanation.edges) <= 2
+    assert torch.equal(model.A, original_A)
