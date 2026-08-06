@@ -842,6 +842,68 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     the `pruned_` convention `prune_edges.py`/`recompute_misclassified.py`
     already used for checkpoint/qbaf filenames.
 
+## 2026-07-29
+
+- **Added config for pruned optimization** (`f85b786`)
+  - New `tuning/contest/global_optimize_pruned.yaml`: points `global_optimize.py`
+    at the pruned checkpoint + its recomputed misclassified set
+    (`pruned_model_checkpoint.pt`/`pruned_misclassified_qbaf.json`) with the
+    same hyperparameters `global_optimize.yaml` uses, mirroring
+    `contest_pruned.yaml`'s parallel-config convention for the pruned path.
+
+- **Fixed `weights_path` resolution and a stale config path** (`f6639bb`)
+  - `feature_extractor/lstm.py`/`resnet.py`/`simple_cnn.py`: `weights_path`
+    loads now go through `output_paths.resolve_read_path` instead of a raw
+    `torch.load(weights_path)`, so a bare pretrained-weights filename in a
+    tuning config resolves against the dated `outputs/` folders like every
+    other checkpoint path in the repo, instead of requiring a full literal
+    path that goes stale as soon as a new date folder is created.
+  - `tuning/cifar10/resnet/{quadraticenergy,relu}/model_cifar10_image.yaml`:
+    `weights_path` updated from the now-stale literal
+    `"outputs/16Jul2026/resnet_30.pt"` to the bare `"resnet_30.pt"`, relying
+    on the fix above.
+
+- **Fixed unseeded protect-set draw, resweep, updated optimization config**
+  (`8c75d9c`)
+  - Diagnosis: a live run of `global_optimize.py` against the real
+    checkpoint, using the exact config the 2026-07-27 324-combo sweep had
+    picked (`protect_lambda=50`, `eval_every=10`), collapsed instead of
+    reproducing the sweep's result: round 1 cost -9% accuracy in 5
+    iterations and the guardrail rolled back everything (0/1637 cleared).
+    Root cause: `global_optimize.py` never called `torch.manual_seed` before
+    `_build_protect_set`'s `torch.randperm` draw, so every live run pulled a
+    *different* random 200-sample protect set, unlike `sweep_global_optimize.py`,
+    which reseeds before every combo -- the sweep's numbers only ever held
+    for its particular seed's draw, and an unlucky unseeded draw could (and
+    did) fail to hold the line at all.
+  - `global_optimize.py`: added `--seed`/`seed` config (`DEFAULT_SEED = 0`),
+    with `torch.manual_seed(seed)` called immediately before the run so it
+    governs exactly `_build_protect_set`'s randomness and nothing earlier;
+    threaded into the run's JSON log and markdown summary.
+  - With the bug fixed, a same-day reseeded 120-combo resweep (run after the
+    default-source edge-masking fix from `f57d597`,
+    `outputs/29Jul2026/global_optimize_sweep_resweep.md`) found the picture
+    had shifted: overall clearance dropped (mean success ~1.5% vs. ~4%
+    pre-fix, since default-source edges, previously a source of cheap but
+    unsafe moves, are no longer available), and `eval_every=10` became the
+    *worst* value (mean success 1.0% vs. `eval_every=5`'s 1.6%), since
+    checking the guardrail less often lets more damage accumulate per round
+    before it's caught. New best combo: `eval_every=5`/`protect_margin=0.05`:
+    83/1637 cleared (5.1%), drop +0.0073, 15 edges changed.
+  - `tuning/contest/global_optimize.yaml`/`global_optimize_pruned.yaml`:
+    `seed: 0` added, `eval_every` 10 -> 5, `protect_margin` 0.01 -> 0.05 per
+    the resweep above.
+
+- **Fixed pruned-run checkpoint collision** (`a00d492`)
+  - `global_optimize.py`: `save_checkpoint` now also goes through
+    `resolve_write_path` (bare filename -> today's dated `outputs/` folder),
+    matching how `checkpoint`/`qbaf` are already resolved.
+  - `tuning/contest/global_optimize_pruned.yaml`: `save_checkpoint`
+    explicitly set to `pruned_global_optimize_checkpoint.pt`. Previously
+    left `null`, which defaulted to the same `global_optimize_checkpoint.pt`
+    name as the unpruned run in the same flat dated folder, so whichever run
+    finished second silently overwrote the other's checkpoint.
+
 ## 2026-07-30
 
 - **Cleaned up comments** (`9402e8c`)
@@ -859,3 +921,163 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     the sweep-history notes in `global_optimize.yaml` documenting how
     `protect_lambda=50`/`eval_every=5` were picked (also preserved above and
     in `git log` for `global_optimize.yaml`).
+
+## 2026-08-03
+
+- **Merged global-optimization work into `main`** (`54fe39e`)
+  - Merge PR #1 (`global_optimization` branch) into `main`: everything
+    documented above from 2026-07-02 through 2026-07-30 -- the fixed-bugs/
+    numpy-compat/misclassified-export groundwork, G-RAE, `contest`/
+    `batch_contest`/bottleneck-escape, the `/counterfactuals` -> `/contest`
+    rename, edge pruning, and the output-folder rework.
+
+## 2026-08-05
+
+- **Added brainwear configurations and scripts** (`50d1f5f`)
+  - New `experiments/brainwear.ipynb`: replicates the existing CIFAR-10
+    pretrain -> AACBR -> contest -> global-optimize pipeline on a wearable
+    accelerometer dataset (one mock patient's year-long 30-second-epoch
+    acceleration/activity-label series). Framing: a single epoch carries no
+    learnable structure, so cases are multi-epoch windows (the temporal
+    analogue of a CIFAR-10 image), each labeled by majority vote across its
+    epochs. Designed so a later multi-patient dataset only touches
+    preprocessing, not the model configs.
+  - New `src/scripts/preprocess_brainwear.py`: turns the raw master time
+    series into windowed, tabular train/val/test CSVs the existing `tabular`
+    data loader reads unmodified. `assign_runs` tags a new `run_id` whenever
+    the gap between epochs exceeds `--max-gap-seconds`, so `build_windows`
+    (vectorized per run via `sliding_window_view`) never slides a window
+    across a period the device was off. Drops windows with any NaN
+    acceleration reading (hard filter) or too much `imputed`/too-low
+    majority-class `purity` (tunable). Split is chronological, not random:
+    the earliest `1 - test_frac` of windows by time -> trainval, the latest
+    `test_frac` -> test, so test is a genuine held-out future period rather
+    than a random subsample that could leak adjacent-window autocorrelation
+    across the split. Writes `brainwear_{trainval,test}.csv`,
+    `brainwear_window_metadata.csv`, a `window_meta.json` manifest, and a
+    label-distribution bar chart.
+  - New `src/scripts/pretrain_lstm.py`: pretrains the frozen sequence
+    embedding used as brainwear's `feature_weights` extractor, mirroring
+    `pretrain_resnet.py`'s role. `LSTMFeatureExtractor` has no built-in
+    classification head, so this bolts on a throwaway `nn.Linear` head,
+    trains both jointly as a 5-way activity classifier with inverse-
+    frequency class weighting (sleep/sedentary dominate the label
+    distribution), then saves only the LSTM's `state_dict()`. Loads via the
+    same `load_tabular_data` + `train_test_split(test_size=0.2,
+    random_state=42)` calls the downstream AACBR run's data loader uses, so
+    the embedding is never pretrained on a different split/scaling than what
+    it sees frozen inside the AACBR model.
+  - New `src/scripts/sweep_window_and_hparams.py`: a documented one-off
+    diagnostic (explicitly not part of the maintained pipeline, per its own
+    docstring) answering two questions before the pipeline is "final" --
+    is the window length a good choice, and are the CIFAR-copied starting
+    hyperparameters reasonable for this dataset. Stage 1 re-runs
+    preprocessing + LSTM pretraining + a quick single-seed model fit per
+    candidate window length and compares validation F1 (stride fixed equal
+    to window length across every candidate, not swept, since overlapping
+    windows would bias the comparison via near-duplicate leakage). Stage 2
+    runs `cli/run.py --tuning` (Optuna) over the winning window size.
+    Scratch outputs written to `data/brainwear_sweep/`/`tuning/brainwear_sweep/`.
+  - New `tuning/brainwear/{data,hyperparameters,model}_brainwear.yaml`:
+    mirrors `tuning/cifar10/resnet/relu`'s structure. `feature_weights` is
+    `LSTMFeatureExtractor` (frozen, loading `lstm_brainwear.pt`) in place of
+    `ResNetCIFAR`; `feature_weights_1`/`feature_weights_2` are the same
+    `MLPExtractor` heads CIFAR uses with input size dropped to match the
+    LSTM's embedding width; `semantics` is `ReluSemantics`; `build_casebase`
+    is `kMeansCluster(cluster_size=5)`, matching CIFAR's flat per-class
+    count. Hyperparameters start as CIFAR's relu-config defaults, not yet
+    tuned for this dataset.
+
+- **Added brainwear data, then re-gitignored `data/`** (`e35fa3b`, `db98c14`)
+  - `.gitignore` had a blanket `data/` rule; `e35fa3b` temporarily removed it
+    to check in the raw master time series plus `preprocess_brainwear.py`'s
+    output (both the main `data/brainwear/` set and a `data/brainwear_sweep/`
+    set used by the window sweep above), then `db98c14` restored the `data/`
+    rule immediately after -- so the specific committed brainwear files stay
+    tracked (further edits show as modified, not untracked) while the rule
+    still blocks anything new under `data/` by default.
+
+- **Added progress bars to the sweep script** (`4892a10`)
+  - `sweep_window_and_hparams.py`: new `run_cmd_streaming` reads a child
+    process's combined stdout/stderr line by line as it runs (instead of
+    blocking until exit) and calls a per-line callback, instead of `run_cmd`
+    dumping the whole (noisy) subprocess output only after it finishes.
+    Wired into `sweep_windows` (a `tqdm` bar over the window candidates,
+    postfixed with each candidate's val F1 once known) and `tune_hyperparams`
+    (a `tqdm` bar over Optuna trials, advanced by matching each streamed
+    line against a new `TRIAL_FINISHED_RE` for "Trial N finished .../Best is
+    trial ..." and posting the trial/best values), so a run with a slow
+    Optuna sweep has live feedback instead of an opaque multi-minute block.
+
+## 2026-08-06
+
+- **Edited brainwear notebook: finalized window/hyperparameters, removed
+  sweep scaffolding, and found `ReluSemantics` is unusable for this
+  casebase's contest/global-optimize stage** (`0cac81b`)
+  - `tuning/brainwear/data_brainwear.yaml`/`hyperparameters_brainwear.yaml`:
+    the window-size sweep's winner (15 epochs = 7.5 minutes, not the
+    10-minute/20-epoch window the notebook started with) and the
+    hyperparameter sweep's winning Optuna trial values baked in as the new
+    defaults (`target_field`/`continuous_cols` 20 -> 15; `lr`, `gamma_dag`,
+    `gamma_cbr`, `gamma_sparsity`, `max_iters`, `temperature`,
+    `gradient_max_norm`, `weight_decay`, `label_smoothing`, and the casebase
+    MLP layer sizes all updated from the CIFAR-copied starting values).
+    Comments describing the pre-sweep, not-yet-tuned state removed from
+    both files and `model_brainwear.yaml`, matching the cleanup convention
+    `9402e8c` applied to `tuning/contest/*.yaml`.
+  - Deleted `src/scripts/sweep_window_and_hparams.py` and its scratch
+    artifacts (`data/brainwear_sweep/`, `tuning/brainwear_sweep/`) now that
+    its diagnostic questions are answered and its winning values are baked
+    into the permanent `tuning/brainwear/*.yaml` files -- exactly the
+    cleanup its own docstring had prescribed ("run once ... then delete this
+    script and its scratch artifacts").
+  - `cli/run.py`: the unconditional post-training checkpoint save (added
+    2026-07-02, assumes `model.A`/`X_train`/`y_train`/`default_indexes`
+    exist) is now gated behind a `hasattr` check across all five expected
+    attributes, so `run.py` no longer crashes when `instances["model"]` is
+    something other than a fitted `GradualAACBR` (the model class is
+    config-driven, not hardcoded -- see the existing `hasattr(model_instance,
+    "to")` fallback a few lines above this change).
+  - `experiments/brainwear.ipynb` rewritten to walk the finalized pipeline
+    end to end and record what a real run found:
+    - Preprocessing/pretraining/AACBR-fit cells re-run at `--window-epochs 15`.
+      A single-seed smoke test of the AACBR fit found the model never
+      predicts `tasks-light` at all (0 predictions across every split,
+      despite hundreds of true examples per split) -- 74.4% test accuracy,
+      0.43 macro F1 -- flagged as a real gap (the main training loss has no
+      class-weighting hook in the current YAML plumbing, unlike
+      `pretrain_lstm.py`'s loss) rather than silently patched in the
+      notebook.
+    - `contest_all.py` on the resulting misclassified set: cleared 197/2077
+      samples (9.5%) touching only 3 edges -- but global test accuracy
+      collapsed 74.4% -> 9.0% (worse than random guessing on 5 classes).
+      Diagnosed as the same unbounded-strength-propagation failure mode
+      CIFAR hit under `ReluSemantics` on 2026-07-14 (see above), evidently
+      worse here because this casebase has only 25 nodes vs. CIFAR's 50, so
+      the same handful of edited edges are a much larger fraction of the
+      graph's structure.
+    - `global_optimize.py` on the same checkpoint: 0/2077 cleared, 0 edges
+      changed, accuracy held exactly at baseline, `rolled_back=True`,
+      `stopped_reason=acc_drop` -- the guardrail caught the instability and
+      reverted before any damage landed, but under
+      `tuning/contest/global_optimize.yaml`'s current hyperparameters
+      (tuned for CIFAR's bounded-strength `QuadraticEnergySemantics`
+      checkpoint, not this `ReluSemantics` one) no net benefit is achievable
+      at all.
+    - `sweep_global_optimize.py` re-run against this checkpoint (mirroring
+      CIFAR's own hyperparameter sweep after hitting the same wall): 0/32
+      combos cleared a single sample, 100% rollback rate, and the marginal-
+      effect table showed none of the five swept guardrail knobs move the
+      outcome -- including `eval_every=1` (checking after every single
+      iteration), which still rolled back every time.
+    - A direct follow-up isolated step size from check frequency: an as-
+      conservative-as-possible single edit (`alpha_init=0.001`, `k=1`,
+      `divergence_bound=2.0`, `max_iters=1`) still cleared 59/2077 samples by
+      moving exactly 1 edge, and global test accuracy still collapsed 74.4%
+      -> 28.8%. Conclusion: this isn't a `contest`/`global_optimize`
+      hyperparameter problem at all -- with only 25 casebase nodes, a single
+      edited edge carries enough structural weight in `ReluSemantics`'s
+      unbounded fixed-point iteration to corrupt predictions for samples
+      that never touched that edge. No hyperparameter combination can fix
+      it; the semantics/casebase-size combination itself would need to
+      change (e.g. the same `QuadraticEnergySemantics` switch CIFAR made).
