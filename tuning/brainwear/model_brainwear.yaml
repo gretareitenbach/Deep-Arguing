@@ -54,12 +54,6 @@ regularisers:
               value: gamma_sparsity
 
 # ====================== LOSSES ======================
-# NOTE: plain (unweighted) cross-entropy -- unlike pretrain_lstm.py's loss,
-# this one has no class-weighting hook available in the current YAML/
-# TorchLoss plumbing (CrossEntropyLoss's `weight` param would need a Tensor,
-# and there's no config mechanism to build one). The same sleep/sedentary-
-# dominant imbalance from preprocessing applies here too -- worth watching
-# per-class results, not just overall accuracy.
 cross_entropy:
   type: class
   class_name: TorchLoss
@@ -141,10 +135,6 @@ build_new_cases:
   value: use_train
 
 # ================ FEATURE EXTRACTORS ================
-# LSTM plays ResNetCIFAR's role: a frozen, pretrained sequence embedding
-# (10-minute acceleration window -> 32-dim vector). Must match
-# pretrain_lstm.py's --hidden-size/--embedding-size/--num-layers exactly,
-# since weights_path loads a state_dict into this exact architecture.
 feature_weights:
   type: class
   class_name: "LSTMFeatureExtractor"

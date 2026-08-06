@@ -407,31 +407,6 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     reversals") -- a direct measure of the conflict this was built to
     reduce.
 
-- **Switched CIFAR-10 model to `QuadraticEnergySemantics`** (`ffb9be5`)
-  - Diagnosis: running `contest_all.py`'s baseline pass on the real
-    checkpoint showed target-class strengths exploding across samples (22
-    -> 66 -> 432 -> ... -> 386796), even without conflict-aware selection.
-    Root cause: the checkpoint's `ReluSemantics.influence_func`
-    (`relu(relu(base_scores) + aggregations)`) has no upper bound, and
-    `forward_till_convergence` iterates it `max_iters` times per forward
-    pass -- structurally a power iteration against a nonnegative gain
-    matrix (`model.A`'s support entries) that amplifies geometrically once
-    support edges accumulate. Since every `contest()` call commits new
-    support edges into the same shared `model.A`, each sample's fix primes
-    the graph to amplify further for the next one.
-  - `tuning/cifar10/resnet/model_cifar10_image.yaml`: `semantics.class_name`
-    changed from `ReluSemantics` to `QuadraticEnergySemantics`
-    (`damping=1.0`, `conservativeness=1.0`, untuned defaults). QE's
-    `influence_func` squashes every update into `base_scores +
-    h*(1-base_scores)` with `h = x^2/(1+x^2)` bounded in `[0, 1)`, so
-    strengths stay within `[0, 1]` regardless of `model.A`'s magnitude.
-    Valid without further changes since `base_score`'s `LearnedBaseScore`
-    activation is already `sigmoid` (bounded `(0, 1)`), matching QE's
-    assumption. Requires retraining from scratch -- the base-score/
-    edge-weight networks were optimized under `ReluSemantics` specifically
-    -- which invalidates the existing `outputs/model_checkpoint.pt`/
-    `misclassified_qbaf.json` and everything computed from them so far.
-
 ## 2026-07-16
 
 - **Finished CLI for batch contesting** (`f3445c5`)

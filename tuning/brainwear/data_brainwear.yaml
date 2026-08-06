@@ -4,7 +4,7 @@ data:
   params:
     target_field:
       type: value
-      value: 20
+      value: 15
     path:
       type: value
       value: "./data/brainwear/brainwear_trainval.csv"
@@ -18,7 +18,7 @@ data:
       type: range
       value:
         - { type: value, value: 0 }
-        - { type: value, value: 20 }
+        - { type: value, value: 15 }
 
 data_pre_process:
   type: dict

@@ -1,22 +1,18 @@
-# Starting defaults mirrored from tuning/cifar10/resnet/relu -- not yet
-# tuned for brainwear (no tune_hyperparameters_brainwear.yaml/optuna sweep
-# has been run). Revisit once the pipeline is validated end to end.
-
 epochs:
   type: value
   value: 5
 
 lr:
   type: value
-  value: 0.001
+  value: 0.0012840956888642333
 
 gamma_dag:
   type: value
-  value: 0.0001
+  value: 0
 
 gamma_cbr:
   type: value
-  value: 0.0001
+  value: 0.00001
 
 gamma_batch_entropy:
   type: value
@@ -28,15 +24,15 @@ gamma_cp:
 
 gamma_sparsity:
   type: value
-  value: 0.001
+  value: 0.01
 
 max_iters:
   type: value
-  value: 10
+  value: 6
 
 temperature:
   type: value
-  value: 1000.0
+  value: 1915.697248844653
 
 dag_alpha:
   type: value
@@ -52,15 +48,15 @@ batch_size:
 
 gradient_max_norm:
   type: value
-  value: 0.5
+  value: 0.30000000000000004
 
 weight_decay:
   type: value
-  value: 0.0001
+  value: 0.002648908350327691
 
 label_smoothing:
   type: value
-  value: 0.1
+  value: 0.05
 
 batch_norm:
   type: value
@@ -76,15 +72,15 @@ t_norm_str:
 
 first_layer:
   type: value
-  value: 32
+  value: 16
 
 second_layer:
   type: value
-  value: 24
+  value: 32
 
 third_layer:
   type: value
-  value: 16
+  value: 8
 
 rand_weight:
   type: value

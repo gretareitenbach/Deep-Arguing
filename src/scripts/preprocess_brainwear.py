@@ -41,7 +41,7 @@ EPOCH_SECONDS = 30
 
 DEFAULT_INPUT = "data/brainwear/BW_AAB_mastertimeSeries.csv"
 DEFAULT_OUTDIR = "data/brainwear"
-DEFAULT_WINDOW_EPOCHS = 20  # 20 * 30s = 10 minutes
+DEFAULT_WINDOW_EPOCHS = 15  # 15 * 30s = 7.5 minutes -- winner of the window-size sweep, see tuning/brainwear/hyperparameters_brainwear.yaml
 DEFAULT_MAX_GAP_SECONDS = 30
 DEFAULT_MAX_IMPUTED_FRAC = 0.2
 DEFAULT_MIN_PURITY = 0.0

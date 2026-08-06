@@ -41,7 +41,7 @@ from deeparguing.md_log import write_markdown_log
 from deeparguing.output_paths import output_path, today_output_dir
 
 DEFAULT_TRAINVAL_PATH = "data/brainwear/brainwear_trainval.csv"
-DEFAULT_WINDOW_EPOCHS = 20
+DEFAULT_WINDOW_EPOCHS = 15  # winner of the window-size sweep, see tuning/brainwear/hyperparameters_brainwear.yaml
 DEFAULT_CHECKPOINT_NAME = "lstm_brainwear.pt"
 
 # Categorical palette, slot 1 -- see dataviz skill's reference palette.
