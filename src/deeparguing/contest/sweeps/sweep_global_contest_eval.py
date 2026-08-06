@@ -4,8 +4,8 @@ one CSV row per N.
 
 Usage::
 
-    python -m deeparguing.contest.sweep_global_contest_eval
-    python -m deeparguing.contest.sweep_global_contest_eval \\
+    python -m deeparguing.contest.sweeps.sweep_global_contest_eval
+    python -m deeparguing.contest.sweeps.sweep_global_contest_eval \\
         --ns 0,1,10,100 --seed 0 --output global_eval_sweep.csv
 """
 
@@ -20,17 +20,17 @@ import pandas as pd
 import torch
 from torch import Tensor
 
-from deeparguing.contest.batch_contest import (ALPHA_INIT,
-                                                         DIVERGENCE_BOUND,
-                                                         MAX_BACKTRACKS, TOL,
-                                                         BatchContestResult,
-                                                         batch_contest)
-from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
-                                                   MAX_ITERS, THRESHOLD)
-from deeparguing.contest.contest_all import (DEFAULT_CONFIG_PATH,
-                                                       _load_config)
-from deeparguing.contest.run_contest import (load_all_samples,
-                                                       load_fitted_model_and_data)
+from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
+                                                     DIVERGENCE_BOUND,
+                                                     MAX_BACKTRACKS, TOL,
+                                                     BatchContestResult,
+                                                     batch_contest)
+from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
+                                               MAX_ITERS, THRESHOLD)
+from deeparguing.contest.scripts.contest_all import (DEFAULT_CONFIG_PATH,
+                                                      _load_config)
+from deeparguing.contest.scripts.run_contest import (load_all_samples,
+                                                      load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
                                                      evaluate_contested_model)
 from deeparguing.output_paths import resolve_read_path, resolve_write_path

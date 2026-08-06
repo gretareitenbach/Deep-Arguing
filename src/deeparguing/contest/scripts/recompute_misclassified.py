@@ -6,7 +6,7 @@ shape ``contest_all.py``/``run_contest.py`` consume.
 
 Usage::
 
-    python -m deeparguing.contest.recompute_misclassified \\
+    python -m deeparguing.contest.scripts.recompute_misclassified \\
         --checkpoint pruned_model_checkpoint.pt \\
         --output pruned_misclassified_qbaf.json
 """
@@ -17,7 +17,7 @@ import logging
 import numpy as np
 import torch
 
-from deeparguing.contest.run_contest import load_fitted_model_and_data
+from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
 DEFAULT_CHECKPOINT = "pruned_model_checkpoint.pt"

@@ -4,7 +4,7 @@
 
 Usage::
 
-    python -m deeparguing.contest.run_contest \\
+    python -m deeparguing.contest.scripts.run_contest \\
         --checkpoint model_checkpoint.pt \\
         --qbaf misclassified_qbaf.json \\
         --sample-index 0
@@ -20,9 +20,9 @@ from pathlib import Path
 import torch
 
 from deeparguing.cli.parse_yaml import parse_model_config, read_config_files
-from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
-                                                  MAX_ITERS, THRESHOLD,
-                                                  contest)
+from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
+                                               MAX_ITERS, THRESHOLD,
+                                               contest)
 from deeparguing.gradual_aacbr import GradualAACBR
 from deeparguing.output_paths import resolve_read_path, today_output_dir
 

@@ -1,5 +1,5 @@
 """
-src/deeparguing/contest/contest.py
+src/deeparguing/contest/core/contest.py
 
 Single-sample contestability search: iteratively perturbs the top-k edges of
 ``model.A`` along the G-RAE gradient direction, using a bracket-and-bisect

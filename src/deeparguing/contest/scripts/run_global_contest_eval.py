@@ -5,8 +5,8 @@ baseline checkpoint, evaluates it, swaps in the contested checkpoint's
 
 Usage::
 
-    python -m deeparguing.contest.run_global_contest_eval
-    python -m deeparguing.contest.run_global_contest_eval \\
+    python -m deeparguing.contest.scripts.run_global_contest_eval
+    python -m deeparguing.contest.scripts.run_global_contest_eval \\
         --checkpoint model_checkpoint.pt \\
         --contested-checkpoint contested_checkpoint.pt \\
         --split test
@@ -20,7 +20,7 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.contest.run_contest import load_fitted_model_and_data
+from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.evals.global_contest_eval import (GlobalContestEvalResult,
                                                      GlobalEvalMetrics,
                                                      compute_baseline_metrics,
@@ -78,6 +78,55 @@ def _confusion_matrix_block(title: str, cm: NDArray) -> str:
     return f"{title} confusion matrix:\n```\n{df.to_string()}\n```"
 
 
+def _confusion_matrix_delta_block(baseline_cm: NDArray, contested_cm: NDArray) -> str:
+    """Contested-minus-baseline confusion matrix, cell by cell."""
+    delta = contested_cm - baseline_cm
+    df = pd.DataFrame(
+        delta,
+        index=[f"Actual {i}" for i in range(delta.shape[0])],
+        columns=[f"Pred {i}" for i in range(delta.shape[1])],
+    ).map(lambda v: f"{v:+d}")
+    return f"Contested confusion matrix (delta from baseline):\n```\n{df.to_string()}\n```"
+
+
+def _touched_edges(original_A: torch.Tensor, contested_A: torch.Tensor) -> list[dict]:
+    """Every ``model.A`` entry that differs between baseline and contested,
+    with its source/target/dim and old/new weight -- same edge addressing
+    ``contest_all.py`` uses for its own touched-edges log."""
+    n1, n2, d = original_A.shape
+    original_flat = original_A.reshape(-1)
+    contested_flat = contested_A.reshape(-1)
+    diff_indices = (original_flat != contested_flat).nonzero(as_tuple=True)[0].tolist()
+    return [
+        {
+            "edge_id": idx,
+            "source": (idx // d) // n2,
+            "target": (idx // d) % n2,
+            "dim": idx % d,
+            "old_weight": original_flat[idx].item(),
+            "new_weight": contested_flat[idx].item(),
+        }
+        for idx in diff_indices
+    ]
+
+
+def _touched_edges_block(touched_edges: list[dict]) -> str:
+    if not touched_edges:
+        return "Touched edges: none (contested A is identical to baseline)."
+    lines = [
+        "Touched edges:",
+        "| Source | Target | Dim | Old weight | New weight | Delta |",
+        "|---|---|---|---|---|---|",
+    ]
+    for e in touched_edges:
+        delta = e["new_weight"] - e["old_weight"]
+        lines.append(
+            f"| {e['source']} | {e['target']} | {e['dim']} | "
+            f"{e['old_weight']:.6f} | {e['new_weight']:.6f} | {delta:+.6f} |"
+        )
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -131,10 +180,12 @@ def main() -> None:
     logging.info(f"Loading contested adjacency from {args.contested_checkpoint} ...")
     contested_checkpoint = torch.load(args.contested_checkpoint, map_location=args.device)
     contested_A = contested_checkpoint["A"].to(args.device)
+    original_A = model.A.detach().clone()
 
     result = evaluate_contested_model(
         model, contested_A, X, y, baseline, batch_size=args.batch_size
     )
+    touched_edges = _touched_edges(original_A, contested_A)
 
     def _signed(value: float) -> str:
         return f"{value:+.4f}"
@@ -151,6 +202,7 @@ def main() -> None:
         f"Delta:     accuracy={_signed(result.delta_accuracy)} precision={_signed(result.delta_precision)} "
         f"recall={_signed(result.delta_recall)} f1={_signed(result.delta_f1)}"
     )
+    logging.info(f"Touched edges: {len(touched_edges)}")
 
     if args.log_path:
         log_path = resolve_write_path(args.log_path)
@@ -162,8 +214,9 @@ def main() -> None:
                 f"Contested checkpoint: {args.contested_checkpoint}",
                 f"Split: {args.split} ({X.shape[0]} samples)",
                 _metrics_table(baseline, result),
+                _touched_edges_block(touched_edges),
                 _confusion_matrix_block("Baseline", baseline.confusion_matrix),
-                _confusion_matrix_block("Contested", result.metrics.confusion_matrix),
+                _confusion_matrix_delta_block(baseline.confusion_matrix, result.metrics.confusion_matrix),
             ],
             log_path,
         )

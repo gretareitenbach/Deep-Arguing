@@ -21,18 +21,18 @@ from typing import Any, Sequence
 import torch
 from torch import Tensor
 
-from deeparguing.contest.batch_contest import (ALPHA_INIT,
-                                                         DIVERGENCE_BOUND,
-                                                         MAX_BACKTRACKS,
-                                                         PROTECT_MARGIN, TOL,
-                                                         BatchContestResult,
-                                                         batch_contest)
-from deeparguing.contest.contest import (DEFAULT_K, MARGIN,
-                                                   MAX_ITERS, THRESHOLD)
-from deeparguing.contest.contest_all import (_load_config, _required,
-                                                       _resolved)
-from deeparguing.contest.run_contest import (load_all_samples,
-                                                       load_fitted_model_and_data)
+from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
+                                                     DIVERGENCE_BOUND,
+                                                     MAX_BACKTRACKS,
+                                                     PROTECT_MARGIN, TOL,
+                                                     BatchContestResult,
+                                                     batch_contest)
+from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
+                                               MAX_ITERS, THRESHOLD)
+from deeparguing.contest.scripts.contest_all import (_load_config, _required,
+                                                      _resolved)
+from deeparguing.contest.scripts.run_contest import (load_all_samples,
+                                                      load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
                                                      compute_baseline_metrics,
                                                      evaluate_contested_model)

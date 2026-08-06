@@ -1,5 +1,5 @@
 """
-src/deeparguing/contest/batch_contest.py
+src/deeparguing/contest/core/batch_contest.py
 
 Joint contestability algorithm: optimizes one shared adjacency edit
 (``model.A``) against every sample's hinge loss at once, instead of

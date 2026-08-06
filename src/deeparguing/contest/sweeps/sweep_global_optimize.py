@@ -5,8 +5,8 @@ checkpoint, and report each combo's outcome in a markdown report.
 
 Usage::
 
-    python -m deeparguing.contest.sweep_global_optimize
-    python -m deeparguing.contest.sweep_global_optimize \\
+    python -m deeparguing.contest.sweeps.sweep_global_optimize
+    python -m deeparguing.contest.sweeps.sweep_global_optimize \\
         --protect-lambdas 1,5,20,50 --eval-everys 1,5,10 \\
         --max-combos 40 --output global_optimize_sweep.md
 """
@@ -25,14 +25,14 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from deeparguing.contest.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
-from deeparguing.contest.batch_contest import ALPHA_INIT, DIVERGENCE_BOUND, MAX_BACKTRACKS, TOL
-from deeparguing.contest.contest_all import _load_config, _required, _resolved
+from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
+from deeparguing.contest.core.batch_contest import ALPHA_INIT, DIVERGENCE_BOUND, MAX_BACKTRACKS, TOL
+from deeparguing.contest.scripts.contest_all import _load_config, _required, _resolved
 from deeparguing.contest.global_optimize import (DEFAULT_CONFIG_PATH,
-                                                           DEFAULT_EVAL_SPLIT,
-                                                           global_optimize)
-from deeparguing.contest.run_contest import (load_all_samples,
-                                                       load_fitted_model_and_data)
+                                                  DEFAULT_EVAL_SPLIT,
+                                                  global_optimize)
+from deeparguing.contest.scripts.run_contest import (load_all_samples,
+                                                      load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import compute_baseline_metrics
 from deeparguing.output_paths import resolve_read_path, resolve_write_path
 

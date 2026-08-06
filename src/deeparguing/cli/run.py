@@ -26,7 +26,7 @@ from deeparguing.cli import (parse_command_line, parse_model_config, plots,
 from deeparguing.cli.loggers import DummyLogger, ExperimentLogger, WandbLogger
 from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
-from deeparguing.contest.grae import compute_grae
+from deeparguing.contest.core.grae import compute_grae
 from deeparguing.criterion import *
 from deeparguing.evals import (evaluate_model, print_results,
                                visualize_overlayed_loss_landscapes)

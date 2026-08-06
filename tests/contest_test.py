@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.contest.contest import (
+from deeparguing.contest.core.contest import (
     MARGIN,
     THRESHOLD,
     ContestResult,
@@ -14,7 +14,7 @@ from deeparguing.contest.contest import (
     contest,
     select_top_k,
 )
-from deeparguing.contest.grae import compute_grae
+from deeparguing.contest.core.grae import compute_grae
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import (
     TARGET_INDEX,

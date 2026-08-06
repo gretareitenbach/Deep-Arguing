@@ -6,9 +6,9 @@ overrides the corresponding config value.
 
 Usage::
 
-    python -m deeparguing.contest.contest_all
-    python -m deeparguing.contest.contest_all --config tuning/contest/contest.yaml
-    python -m deeparguing.contest.contest_all --k 10 --margin 0.005
+    python -m deeparguing.contest.scripts.contest_all
+    python -m deeparguing.contest.scripts.contest_all --config tuning/contest/contest.yaml
+    python -m deeparguing.contest.scripts.contest_all --k 10 --margin 0.005
 """
 
 import argparse
@@ -20,12 +20,12 @@ from typing import Any
 import torch
 import yaml
 
-from deeparguing.contest.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
-from deeparguing.contest.batch_contest import (ALPHA_INIT,
-                                                         DIVERGENCE_BOUND,
-                                                         MAX_BACKTRACKS, TOL,
-                                                         batch_contest)
-from deeparguing.contest.run_contest import load_all_samples, load_model
+from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
+from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
+                                                     DIVERGENCE_BOUND,
+                                                     MAX_BACKTRACKS, TOL,
+                                                     batch_contest)
+from deeparguing.contest.scripts.run_contest import load_all_samples, load_model
 from deeparguing.output_paths import resolve_read_path, today_output_dir
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"

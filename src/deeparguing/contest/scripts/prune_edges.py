@@ -5,7 +5,7 @@ checkpoint any other ``contest/`` script's ``--checkpoint`` flag accepts.
 
 Usage::
 
-    python -m deeparguing.contest.prune_edges \\
+    python -m deeparguing.contest.scripts.prune_edges \\
         --checkpoint model_checkpoint.pt \\
         --threshold 0.1 \\
         --output pruned_model_checkpoint.pt

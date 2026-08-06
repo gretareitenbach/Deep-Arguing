@@ -1,5 +1,5 @@
 """
-src/deeparguing/contest/bottleneck.py
+src/deeparguing/contest/core/bottleneck.py
 
 Escape logic for the dead-gradient case ``contest()`` hits when a hard-ReLU
 node upstream of ``target_class`` has saturated (its strength pinned at

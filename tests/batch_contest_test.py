@@ -2,9 +2,9 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.contest.grae import compute_grae
-from deeparguing.contest.batch_contest import (_leaky_relu_surrogate,
-                                                         batch_contest)
+from deeparguing.contest.core.grae import compute_grae
+from deeparguing.contest.core.batch_contest import (_leaky_relu_surrogate,
+                                                     batch_contest)
 from deeparguing.semantics.relu_semantics import ReluSemantics
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import (
