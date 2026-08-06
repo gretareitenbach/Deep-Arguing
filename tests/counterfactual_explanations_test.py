@@ -1,10 +1,12 @@
 import pytest
 import torch
 
+from deeparguing.contest.core.contest import MARGIN
 from deeparguing.contest.scripts.counterfactual_explanations import (
     _case_label,
     _decode_edge,
     explain_sample,
+    render_sample,
 )
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import TARGET_INDEX, make_fitted_model as _make_qbaf_model
@@ -127,3 +129,47 @@ def test_explain_sample_respects_max_edits_and_still_restores_model_A():
 
     assert len(explanation.edges) <= 2
     assert torch.equal(model.A, original_A)
+
+
+# ---------------------------------------------------------------------------
+# render_sample
+# ---------------------------------------------------------------------------
+
+
+def test_render_sample_omits_edges_table_on_failure():
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+
+    explanation = explain_sample(
+        model, new_case, sample_index=0, true_class=1, target_class=TARGET_INDEX,
+        k=2, threshold=0.999, margin=0.0, max_iters=3,
+    )
+    assert not explanation.success
+    assert explanation.edges  # sanity: this failure case did try some edges
+
+    lines = render_sample(
+        model, default_index_set=set(model.default_indexes.tolist()),
+        explanation=explanation, d=model.A.shape[-1], max_iters=3, margin=0.0,
+    )
+
+    assert not any("|" in line for line in lines)  # no markdown table rows
+    assert any("edge(s) were tried" in line for line in lines)  # summary line kept
+
+
+def test_render_sample_includes_edges_table_on_success():
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+
+    explanation = explain_sample(
+        model, new_case, sample_index=0, true_class=1, target_class=TARGET_INDEX,
+        k=2, max_iters=10,
+    )
+    assert explanation.success
+    assert explanation.edges
+
+    lines = render_sample(
+        model, default_index_set=set(model.default_indexes.tolist()),
+        explanation=explanation, d=model.A.shape[-1], max_iters=10, margin=MARGIN,
+    )
+
+    assert any("|" in line for line in lines)  # markdown table present

@@ -195,6 +195,15 @@ def render_sample(
             f"{_rival_label(explanation.final_rival_class)} "
             f"{explanation.final_rival_strength:.4f}."
         )
+        if explanation.edges:
+            # Leading "\n" (on top of write_markdown_log's own join separator)
+            # leaves a blank line before the table -- without it, the table
+            # sits directly under the bullet above and gets parsed as that
+            # bullet's continuation text instead of its own table block, so
+            # the pipes/dashes render as literal text instead of a table.
+            lines.append("\n" + _edges_table(model, default_index_set, explanation.edges, d))
+        else:
+            lines.append("No edges were touched.")
     else:
         gap = explanation.final_target_strength - explanation.final_rival_strength
         lines.append(
@@ -202,11 +211,6 @@ def render_sample(
             f"(need >= {margin:.4f} margin, still {gap:+.4f}). "
             f"{len(explanation.edges)} edge(s) were tried."
         )
-
-    if explanation.edges:
-        lines.append(_edges_table(model, default_index_set, explanation.edges, d))
-    else:
-        lines.append("No edges were touched.")
 
     return lines
 
