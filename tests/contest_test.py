@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.contest.contest import (
+from deeparguing.contest.core.contest import (
     MARGIN,
     THRESHOLD,
     ContestResult,
@@ -14,7 +14,7 @@ from deeparguing.contest.contest import (
     contest,
     select_top_k,
 )
-from deeparguing.contest.grae import compute_grae
+from deeparguing.contest.core.grae import compute_grae
 from deeparguing.semantics.sigmoid_semantics import SigmoidSemantics
 from qbaf_fixtures import (
     TARGET_INDEX,
@@ -270,3 +270,50 @@ def test_contest_raises_on_batch_size_other_than_one():
     new_cases = torch.tensor([[6.0], [7.0]])
     with pytest.raises(ValueError, match="batch"):
         contest(model, new_cases, TARGET_INDEX)
+
+
+# ---------------------------------------------------------------------------
+# contest -- max_edits
+# ---------------------------------------------------------------------------
+
+
+def test_contest_respects_max_edits_budget_with_k_one():
+    """With k=1, at most one new edge is introduced per iteration, so
+    max_edits is an exact (not just soft) cap on the touched-edge count."""
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+
+    result = contest(model, new_case, TARGET_INDEX, k=1, max_iters=20, max_edits=2)
+
+    touched = {eid for step in result.edge_trace for eid in step.edge_ids}
+    assert len(touched) <= 2
+
+
+def test_contest_can_overshoot_max_edits_within_one_iterations_k():
+    """max_edits is only checked after a step is accepted, so one
+    iteration's top-k selection can still push the touched count past the
+    cap before the next check -- same soft-cap semantics as
+    batch_contest's max_edits."""
+    model = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+
+    result = contest(model, new_case, TARGET_INDEX, k=3, max_iters=20, max_edits=1)
+
+    assert len(result.edge_trace) == 1  # stopped right after the first accepted step
+    touched = {eid for step in result.edge_trace for eid in step.edge_ids}
+    assert len(touched) == 3  # all k edges from that one step -- past the cap of 1
+
+
+def test_contest_max_edits_none_matches_unbounded_default():
+    """Sanity: omitting max_edits (or passing None explicitly) must behave
+    identically to the pre-max_edits code path."""
+    model_a = _make_fitted_model(max_iters=5)
+    model_b = _make_fitted_model(max_iters=5)
+    new_case = torch.tensor([[6]], dtype=torch.float32)
+
+    result_a = contest(model_a, new_case, TARGET_INDEX, k=2, max_iters=10)
+    result_b = contest(model_b, new_case, TARGET_INDEX, k=2, max_iters=10, max_edits=None)
+
+    assert result_a.success == result_b.success
+    assert result_a.iterations == result_b.iterations
+    assert result_a.final_target_strength == pytest.approx(result_b.final_target_strength)

@@ -26,7 +26,7 @@ from deeparguing.cli import (parse_command_line, parse_model_config, plots,
 from deeparguing.cli.loggers import DummyLogger, ExperimentLogger, WandbLogger
 from deeparguing.cli.parse_command_line import LOG_LEVELS
 from deeparguing.clustering import *
-from deeparguing.contest.grae import compute_grae
+from deeparguing.contest.core.grae import compute_grae
 from deeparguing.criterion import *
 from deeparguing.evals import (evaluate_model, print_results,
                                visualize_overlayed_loss_landscapes)
@@ -215,27 +215,25 @@ def run(project: str = "gradual-aa-cbr"):
 
             model.eval()
 
-            # Persist the trained model + fitted casebase so a separate
-            # process can reload it and run e.g. contest/contest.py
-            # against a real sample -- state_dict() alone misses
-            # model.A/X_train/default_indexes, since fit() sets those as
-            # plain attributes, not buffers. Saved unconditionally (not just
-            # under --misclassified_log) so a checkpoint is always available.
-            checkpoint_path = output_path("model_checkpoint.pt")
-            torch.save(
-                {
-                    "config_paths": args.config,
-                    "state_dict": model.state_dict(),
-                    "A": model.A.detach().cpu(),
-                    "X_train": model.X_train.detach().cpu(),
-                    "y_train": model.y_train.detach().cpu(),
-                    "default_indexes": model.default_indexes.detach().cpu(),
-                },
-                checkpoint_path,
-            )
-            logging.info(
-                f"Saved model checkpoint (weights + fitted casebase) to {checkpoint_path}"
-            )
+            if all(
+                hasattr(model, attr)
+                for attr in ("state_dict", "A", "X_train", "y_train", "default_indexes")
+            ):
+                checkpoint_path = output_path("model_checkpoint.pt")
+                torch.save(
+                    {
+                        "config_paths": args.config,
+                        "state_dict": model.state_dict(),
+                        "A": model.A.detach().cpu(),
+                        "X_train": model.X_train.detach().cpu(),
+                        "y_train": model.y_train.detach().cpu(),
+                        "default_indexes": model.default_indexes.detach().cpu(),
+                    },
+                    checkpoint_path,
+                )
+                logging.info(
+                    f"Saved model checkpoint (weights + fitted casebase) to {checkpoint_path}"
+                )
 
             acc, prec, rec, f1, cm = evaluate_model(
                 model,

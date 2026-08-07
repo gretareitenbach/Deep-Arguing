@@ -1,6 +1,6 @@
 import torch
 
-from deeparguing.contest.prune_edges import DEFAULT_THRESHOLD, prune_edges
+from deeparguing.contest.scripts.prune_edges import DEFAULT_THRESHOLD, prune_edges
 
 
 def _sample_A() -> torch.Tensor:

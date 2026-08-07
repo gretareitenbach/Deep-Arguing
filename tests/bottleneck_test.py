@@ -1,13 +1,13 @@
 import torch
 
 from deeparguing import GradualAACBR
-from deeparguing.contest.bottleneck import (
+from deeparguing.contest.core.bottleneck import (
     find_and_escape_bottleneck,
     find_bottleneck,
     select_bottleneck_edges,
 )
-from deeparguing.contest.contest import MARGIN, THRESHOLD, ContestResult, contest
-from deeparguing.contest.grae import compute_grae
+from deeparguing.contest.core.contest import MARGIN, THRESHOLD, ContestResult, contest
+from deeparguing.contest.core.grae import compute_grae
 from deeparguing.semantics.relu_semantics import ReluSemantics
 
 # ---------------------------------------------------------------------------
