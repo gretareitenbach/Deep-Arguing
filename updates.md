@@ -1081,3 +1081,30 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
       that never touched that edge. No hyperparameter combination can fix
       it; the semantics/casebase-size combination itself would need to
       change (e.g. the same `QuadraticEnergySemantics` switch CIFAR made).
+
+## 2026-08-07
+
+- **Swapped brainwear's global-optimization stage for counterfactual
+  explanations** (`bf2e385`)
+  - `experiments/brainwear.ipynb`: the "Globally Optimize" section (running
+    `deeparguing.contest.global_optimize` and rendering `global_optimize.md`)
+    replaced with a "Counterfactual Explanations" section running
+    `deeparguing.contest.scripts.counterfactual_explanations` and rendering
+    `counterfactual_explanations.md` instead, off the same
+    `model_checkpoint.pt`/`misclassified_qbaf.json` the "Deep Arguing Model"
+    cell already produces -- no new upstream cell needed. Intro markdown
+    updated (`... contest -> global-optimize pipeline ...` ->
+    `... contest -> counterfactual-explanations pipeline ...`).
+    `global_contest_eval.md` is still displayed alongside it, unchanged.
+  - Motivation: 2026-08-06 found `global_optimize`/`batch_contest` structurally
+    unusable on this checkpoint -- with only 25 casebase nodes,
+    `ReluSemantics`'s unbounded fixed-point iteration means even a single
+    committed edge edit corrupts predictions for unrelated samples (global
+    test accuracy 74.4% -> 28.8% off one edge), and no swept hyperparameter
+    combination avoided it. `counterfactual_explanations.py` sidesteps this
+    rather than fixing it: it runs the same single-sample `contest()` search
+    per misclassified sample but always undoes the edit afterward
+    (`explain_sample`'s `model.A = original_A`), so it never commits a change
+    to the shared, global `model.A` that other samples' predictions depend
+    on -- the instability only bites on *persisted* edits, not on read-only
+    probes.
