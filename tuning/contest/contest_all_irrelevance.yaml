@@ -1,0 +1,14 @@
+checkpoint: model_checkpoint.pt
+qbaf: misclassified_qbaf.json
+num_samples: null
+
+k: 3
+threshold: 0.5
+margin: 0.01
+max_iters: 50
+max_edits: null
+
+device: null
+log_dir: null
+output_filename: contest_all_irrelevance.json
+save_every: 25
