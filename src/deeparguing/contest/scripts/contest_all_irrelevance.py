@@ -6,6 +6,12 @@ each sample's ``E`` is independent, so this is a plain per-sample loop, with
 incremental saving and resume support since a full run over every
 misclassified sample can take a while.
 
+For every sample, logs each touched ``(casebase_item, dim, old_E,
+corrected_E)`` entry (``old_E``/``corrected_E`` read off ``result.initial_E``/
+``result.final_E`` at every index where the search actually changed a value)
+-- this is the ``(sample, casebase_item, old_E, corrected_E)`` triple dataset
+the irrelevance-channel fine-tuning step regresses against.
+
 Hyperparameters and dataset/checkpoint paths come from a YAML config file
 (default ``tuning/contest/contest_all_irrelevance.yaml``); any CLI flag
 overrides the corresponding config value.
@@ -20,12 +26,12 @@ Usage::
 
 import argparse
 import json
-import time
 from pathlib import Path
 from typing import Any
 
 import torch
 import yaml
+from tqdm import tqdm
 
 from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
 from deeparguing.contest.core.new_case_contest import new_case_contest
@@ -67,6 +73,35 @@ def _required(cli_value: Any, config: dict[str, Any], key: str, config_path: str
             f"{config_path} -- add it there or pass --{key.replace('_', '-')}."
         )
     return value
+
+
+def _touched_edge_triples(
+    initial_E: torch.Tensor | None, final_E: torch.Tensor | None
+) -> list[dict[str, Any]]:
+    """Every ``(casebase_item, dim, old_E, corrected_E)`` entry where
+    ``new_case_contest`` actually changed the sample's own irrelevance row
+    (``E``, shape (n, d)) between ``initial_E`` and ``final_E``.
+
+    Diffs the two tensors directly (rather than re-deriving touched indices
+    from ``edge_trace``) so this reflects the net change even if a later
+    accepted step ever revisited an index -- the trace-based count already
+    matches this in practice, since ``_perturb_new_case_edges`` never
+    reverts an edit back to its original value, but comparing the actual
+    before/after tensors is the more direct source of truth for a dataset
+    that gets regressed against downstream.
+    """
+    if initial_E is None or final_E is None:
+        return []
+    changed = torch.nonzero(final_E != initial_E, as_tuple=False)
+    return [
+        {
+            "casebase_item": int(casebase_item),
+            "dim": int(dim),
+            "old_E": initial_E[casebase_item, dim].item(),
+            "corrected_E": final_E[casebase_item, dim].item(),
+        }
+        for casebase_item, dim in changed.tolist()
+    ]
 
 
 def _save(output_path: Path, config: dict[str, Any], n: int, results: list[dict | None]) -> None:
@@ -166,6 +201,11 @@ def main() -> None:
         "max_iters": max_iters,
         "max_edits": max_edits,
         "device": device,
+        # Bump this if the per-sample result schema changes, so --resume
+        # against an older-schema output file is detected as a mismatch
+        # (config compares unequal) instead of silently reusing entries that
+        # are missing newly-added fields (e.g. "touched_edges").
+        "schema_version": 2,
     }
 
     log_dir = Path(log_dir_str)
@@ -200,13 +240,16 @@ def main() -> None:
     )
 
     results: list[dict | None] = [done.get(i) for i in range(n)]
-    start = time.time()
     num_processed_this_run = 0
+    num_flipped_so_far = sum(1 for r in results if r is not None and r.get("flipped"))
+    num_completed_so_far = sum(1 for r in results if r is not None)
 
-    for i in range(n):
-        if results[i] is not None:
-            continue
+    pending = [i for i in range(n) if results[i] is None]
+    progress = tqdm(pending, desc="Contesting irrelevance edges", unit="sample", initial=0, total=len(pending))
+    if num_completed_so_far:
+        progress.set_postfix(flip_rate=f"{num_flipped_so_far}/{num_completed_so_far}")
 
+    for i in progress:
         sample = samples[i : i + 1]
         target_class = true_classes[i]
         try:
@@ -215,7 +258,7 @@ def main() -> None:
                 k=k, threshold=threshold, margin=margin,
                 max_iters=max_iters, max_edits=max_edits,
             )
-            touched = len({e for step in result.edge_trace for e in step.edge_ids})
+            touched_edges = _touched_edge_triples(result.initial_E, result.final_E)
             results[i] = {
                 "index": i,
                 "true_class": target_class,
@@ -225,10 +268,11 @@ def main() -> None:
                 "final_rival_class": result.final_rival_class,
                 "final_rival_strength": result.final_rival_strength,
                 "max_E_delta": result.max_weight_delta,
-                "num_edges_touched": touched,
+                "num_edges_touched": len(touched_edges),
+                "touched_edges": touched_edges,
             }
         except Exception as e:
-            print(f"  sample {i}: ERROR {e!r}")
+            progress.write(f"  sample {i}: ERROR {e!r}")
             results[i] = {
                 "index": i,
                 "true_class": target_class,
@@ -237,16 +281,9 @@ def main() -> None:
             }
 
         num_processed_this_run += 1
-        elapsed = time.time() - start
-        rate = num_processed_this_run / elapsed if elapsed > 0 else 0.0
-        remaining = n - (i + 1)
-        eta_min = (remaining / rate) / 60 if rate > 0 else float("inf")
-        flipped_so_far = sum(1 for r in results if r is not None and r.get("flipped"))
-        print(
-            f"[{i + 1}/{n}] flipped={results[i].get('flipped')} "
-            f"running_flip_rate={flipped_so_far / (i + 1):.1%} "
-            f"({rate:.2f} samples/s, ETA {eta_min:.1f} min)"
-        )
+        num_completed_so_far += 1
+        num_flipped_so_far += bool(results[i].get("flipped"))
+        progress.set_postfix(flip_rate=f"{num_flipped_so_far}/{num_completed_so_far}")
 
         if num_processed_this_run % save_every == 0:
             _save(output_path, run_config, n, results)
