@@ -28,6 +28,7 @@ from typing import Any
 
 import torch
 import yaml
+from tqdm import tqdm
 
 from deeparguing.casebase_edge_weights.finetune import (
     IrrelevanceFinetuneLosses, assert_shares_partial_order, compute_losses,
@@ -217,7 +218,8 @@ def main() -> None:
             )
 
     history = []
-    for step in range(1, steps + 1):
+    progress = tqdm(range(1, steps + 1), desc="Fine-tuning irrelevance channel", unit="step")
+    for step in progress:
         batch = _sample_batch(train_tensors, batch_size)
         train_losses = compute_losses(
             model, batch["new_cases"], batch["casebase_items"], batch["targets"],
@@ -228,6 +230,13 @@ def main() -> None:
         optimizer.zero_grad()
         train_losses.combined.backward()
         optimizer.step()
+
+        progress.set_postfix(
+            correction=f"{train_losses.correction.item():.4f}",
+            preservation=f"{train_losses.preservation.item():.4f}",
+            protect=f"{train_losses.protect.item():.4f}",
+            combined=f"{train_losses.combined.item():.4f}",
+        )
 
         if step % log_every == 0 or step == steps:
             val_losses = _eval(val_tensors)
@@ -244,7 +253,7 @@ def main() -> None:
                     f"protect={val_losses.protect.item():.6f} "
                     f"combined={val_losses.combined.item():.6f}"
                 )
-            print(line)
+            progress.write(line)
             history.append(line)
             write_markdown_log([line], md_path, mode="a")
 
