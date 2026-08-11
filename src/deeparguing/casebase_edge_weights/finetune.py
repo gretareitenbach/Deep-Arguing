@@ -26,12 +26,14 @@ sharing its ``compute_partial_order`` with ``casebase_edge_weights`` (true for
 guards this precondition.
 """
 
-from dataclasses import dataclass
-from typing import Iterator, Sequence
+import copy
+from dataclasses import dataclass, field
+from typing import Callable, Iterator, Sequence
 
 import torch
 from torch import Tensor
 from torch.nn import Parameter
+from tqdm import tqdm
 
 from deeparguing.casebase_edge_weights.learned_partial_order import \
     LearnedPartialOrder
@@ -313,3 +315,175 @@ def compute_losses(
     protect = protect_loss(model, protect_samples, protect_target_classes, protect_margin)
     combined = correction + lam * preservation + protect_lambda * protect
     return IrrelevanceFinetuneLosses(correction, preservation, protect, combined)
+
+
+def _sample_batch(tensors: dict[str, Tensor], batch_size: int | None) -> dict[str, Tensor]:
+    n = tensors["targets"].shape[0]
+    if batch_size is None or batch_size >= n:
+        return tensors
+    idx = torch.randperm(n)[:batch_size]
+    return {k: v[idx] for k, v in tensors.items()}
+
+
+@dataclass
+class FinetuneRunResult:
+    """Everything a caller (the CLI script, a hyperparameter sweep, ...)
+    needs after ``run_finetune`` returns. ``best_*`` tracks the lowest
+    val-``combined``-loss point seen across every eval (not just the final
+    step) -- see ``run_finetune``'s docstring for why. ``history`` has one
+    entry per eval (every ``log_every`` steps, plus the final step).
+    """
+    best_step: int | None
+    best_val_losses: IrrelevanceFinetuneLosses | None
+    best_extractor_state: dict[str, Tensor] | None
+    final_extractor_state: dict[str, Tensor]
+    final_train_losses: IrrelevanceFinetuneLosses
+    final_val_losses: IrrelevanceFinetuneLosses | None
+    history: list[dict[str, float]] = field(default_factory=list)
+
+
+def run_finetune(
+    model: GradualAACBR,
+    train_tensors: dict[str, Tensor],
+    val_tensors: dict[str, Tensor],
+    X_train: Tensor,
+    frozen_raw_po: Tensor,
+    lr: float,
+    lam: float,
+    steps: int,
+    batch_size: int | None,
+    chunk_size: int,
+    protect_samples: Tensor,
+    protect_target_classes: Sequence[int],
+    protect_margin: float,
+    protect_lambda: float,
+    log_every: int = 10,
+    on_eval: Callable[[int, IrrelevanceFinetuneLosses, IrrelevanceFinetuneLosses | None], None] | None = None,
+    show_progress: bool = True,
+    progress_desc: str = "Fine-tuning irrelevance channel",
+) -> FinetuneRunResult:
+    """Train ``feature_weights_1`` for ``steps`` Adam updates against
+    ``train_tensors``, tracking both the final-step weights and the
+    best-val-``combined``-loss weights seen along the way (2026-08-11's
+    200-step run plateaued/overfit on val well before its final step -- see
+    ``finetune_irrelevance.py``'s module docstring -- so callers should
+    normally prefer ``best_extractor_state`` over ``final_extractor_state``).
+
+    Assumes ``freeze_all_except_trainable(model)`` has already been called
+    and the trainable extractor already holds whatever weights this run
+    should start from -- this function trains in place and never resets
+    them itself, so a caller running several fine-tunes back to back (e.g.
+    one per hyperparameter combo in a sweep) must reset the extractor's
+    weights (``load_state_dict`` on a saved pre-finetune snapshot) between
+    calls.
+
+    Parameters
+    ----------
+    model, X_train, frozen_raw_po, protect_samples, protect_target_classes :
+        See ``compute_losses``.
+    train_tensors, val_tensors : dict[str, Tensor]
+        ``{"new_cases", "casebase_items", "targets"}``, as produced by
+        ``build_irrelevance_finetune_dataset.py``. ``val_tensors`` may have
+        0 pairs (no val split), in which case ``best_*`` falls back to the
+        final step and ``on_eval``'s second argument is always ``None``.
+    lr, lam, steps, batch_size, chunk_size, protect_margin, protect_lambda :
+        See ``finetune_irrelevance.py``'s CLI flags of the same name.
+    log_every : int
+        Eval (and ``on_eval`` callback) frequency, in steps.
+    on_eval : callable, optional
+        Called with ``(step, train_losses, val_losses)`` at every eval point,
+        for callers that want their own logging (markdown log, sweep
+        summary, ...) without this function taking an opinion on format.
+    show_progress : bool
+        Whether to wrap the step loop in a ``tqdm`` bar (off for sweeps,
+        which drive their own outer progress bar over combos).
+    progress_desc : str
+        ``tqdm`` bar description, when ``show_progress`` is true.
+
+    Returns
+    -------
+    FinetuneRunResult
+    """
+    trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
+    optimizer = torch.optim.Adam(trainable_parameters(model), lr=lr)
+
+    def _eval(tensors: dict[str, Tensor]) -> IrrelevanceFinetuneLosses | None:
+        if tensors["targets"].shape[0] == 0:
+            return None
+        with torch.no_grad():
+            return compute_losses(
+                model, tensors["new_cases"], tensors["casebase_items"], tensors["targets"],
+                X_train, frozen_raw_po, lam,
+                protect_samples, protect_target_classes, protect_margin, protect_lambda,
+                chunk_size,
+            )
+
+    best_step: int | None = None
+    best_val_losses: IrrelevanceFinetuneLosses | None = None
+    best_extractor_state: dict[str, Tensor] | None = None
+    history: list[dict[str, float]] = []
+
+    step_iterable: Iterator[int] = range(1, steps + 1)
+    progress = tqdm(step_iterable, desc=progress_desc, unit="step") if show_progress else step_iterable
+    train_losses: IrrelevanceFinetuneLosses | None = None
+    val_losses: IrrelevanceFinetuneLosses | None = None
+    for step in progress:
+        batch = _sample_batch(train_tensors, batch_size)
+        train_losses = compute_losses(
+            model, batch["new_cases"], batch["casebase_items"], batch["targets"],
+            X_train, frozen_raw_po, lam,
+            protect_samples, protect_target_classes, protect_margin, protect_lambda,
+            chunk_size,
+        )
+        optimizer.zero_grad()
+        train_losses.combined.backward()
+        optimizer.step()
+
+        if show_progress:
+            progress.set_postfix(  # type: ignore[union-attr]
+                correction=f"{train_losses.correction.item():.4f}",
+                preservation=f"{train_losses.preservation.item():.4f}",
+                protect=f"{train_losses.protect.item():.4f}",
+                combined=f"{train_losses.combined.item():.4f}",
+            )
+
+        if step % log_every == 0 or step == steps:
+            val_losses = _eval(val_tensors)
+            history.append(
+                {
+                    "step": step,
+                    "train_correction": train_losses.correction.item(),
+                    "train_preservation": train_losses.preservation.item(),
+                    "train_protect": train_losses.protect.item(),
+                    "train_combined": train_losses.combined.item(),
+                    **(
+                        {
+                            "val_correction": val_losses.correction.item(),
+                            "val_preservation": val_losses.preservation.item(),
+                            "val_protect": val_losses.protect.item(),
+                            "val_combined": val_losses.combined.item(),
+                        }
+                        if val_losses is not None
+                        else {}
+                    ),
+                }
+            )
+            if val_losses is not None and (
+                best_val_losses is None or val_losses.combined.item() < best_val_losses.combined.item()
+            ):
+                best_step = step
+                best_val_losses = val_losses
+                best_extractor_state = copy.deepcopy(trainable_extractor.state_dict())
+            if on_eval is not None:
+                on_eval(step, train_losses, val_losses)
+
+    assert train_losses is not None  # steps >= 1 is the only supported case
+    return FinetuneRunResult(
+        best_step=best_step,
+        best_val_losses=best_val_losses,
+        best_extractor_state=best_extractor_state,
+        final_extractor_state=copy.deepcopy(trainable_extractor.state_dict()),
+        final_train_losses=train_losses,
+        final_val_losses=val_losses,
+        history=history,
+    )

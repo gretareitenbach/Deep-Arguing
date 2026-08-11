@@ -15,6 +15,17 @@ Hyperparameters and paths come from a YAML config file (default
 corresponding config value -- same pattern as ``contest_all.py``/
 ``contest_all_irrelevance.py``.
 
+Checkpoint selection: val ``combined`` loss is tracked at every eval
+(``log_every`` steps); ``output_checkpoint_filename`` (default
+``finetuned_checkpoint.pt`` -- what downstream pipeline stages read) always
+holds the lowest-val-combined-loss snapshot of ``feature_weights_1``, not
+whatever the last step happened to land on, since 2026-08-11's 200-step run
+plateaued/overfit on val well before the final step (see updates.md). The
+actual final-step weights are saved separately under
+``final_checkpoint_filename`` (default ``finetuned_checkpoint_final.pt``)
+for comparison. If no val eval ever ran (empty val split), the best
+checkpoint falls back to the final one, with a warning.
+
 Usage::
 
     python -m deeparguing.contest.scripts.finetune_irrelevance
@@ -22,17 +33,16 @@ Usage::
 """
 
 import argparse
-import json
+import copy
 from pathlib import Path
 from typing import Any
 
 import torch
 import yaml
-from tqdm import tqdm
 
 from deeparguing.casebase_edge_weights.finetune import (
-    IrrelevanceFinetuneLosses, assert_shares_partial_order, compute_losses,
-    freeze_all_except_trainable, trainable_parameters)
+    TRAINABLE_FEATURE_EXTRACTOR_INDEX, assert_shares_partial_order,
+    freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.core.contest import MARGIN
 from deeparguing.contest.global_optimize import _build_protect_set
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
@@ -52,6 +62,7 @@ DEFAULT_PROTECT_MARGIN = MARGIN
 DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 0
+DEFAULT_FINAL_CHECKPOINT_FILENAME = "finetuned_checkpoint_final.pt"
 
 
 def _load_config(config_path: str) -> dict[str, Any]:
@@ -81,14 +92,6 @@ def _required(cli_value: Any, config: dict[str, Any], key: str, config_path: str
     return value
 
 
-def _sample_batch(tensors: dict[str, torch.Tensor], batch_size: int | None) -> dict[str, torch.Tensor]:
-    n = tensors["targets"].shape[0]
-    if batch_size is None or batch_size >= n:
-        return tensors
-    idx = torch.randperm(n)[:batch_size]
-    return {k: v[idx] for k, v in tensors.items()}
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
@@ -113,7 +116,15 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="Seed for protect-set sampling.")
     parser.add_argument("--device", default=None)
     parser.add_argument("--log-dir", default=None)
-    parser.add_argument("--output-checkpoint-filename", default=None)
+    parser.add_argument(
+        "--output-checkpoint-filename", default=None,
+        help="Where the best-val-combined-loss checkpoint is saved (default: finetuned_checkpoint.pt).",
+    )
+    parser.add_argument(
+        "--final-checkpoint-filename", default=None,
+        help="Where the final-step checkpoint is saved, for comparison against the best one "
+        f"(default: {DEFAULT_FINAL_CHECKPOINT_FILENAME}).",
+    )
     parser.add_argument("--log-filename", default=None)
     args = parser.parse_args()
 
@@ -140,6 +151,9 @@ def main() -> None:
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     output_checkpoint_filename = _resolved(
         args.output_checkpoint_filename, config, "output_checkpoint_filename", "finetuned_checkpoint.pt"
+    )
+    final_checkpoint_filename = _resolved(
+        args.final_checkpoint_filename, config, "final_checkpoint_filename", DEFAULT_FINAL_CHECKPOINT_FILENAME
     )
     log_filename = _resolved(args.log_filename, config, "log_filename", "finetune_irrelevance.md")
 
@@ -189,7 +203,6 @@ def main() -> None:
         frozen_raw_po = model.casebase_edge_weights(model.X_train, model.X_train).detach().clone()
 
     freeze_all_except_trainable(model)
-    optimizer = torch.optim.Adam(trainable_parameters(model), lr=lr)
 
     write_markdown_log(
         [
@@ -206,71 +219,78 @@ def main() -> None:
         mode="w",
     )
 
-    def _eval(tensors: dict[str, torch.Tensor]) -> IrrelevanceFinetuneLosses | None:
-        if tensors["targets"].shape[0] == 0:
-            return None
-        with torch.no_grad():
-            return compute_losses(
-                model, tensors["new_cases"], tensors["casebase_items"], tensors["targets"],
-                model.X_train, frozen_raw_po, lam,
-                protect_samples, protect_target_classes, protect_margin, protect_lambda,
-                chunk_size,
-            )
-
-    history = []
-    progress = tqdm(range(1, steps + 1), desc="Fine-tuning irrelevance channel", unit="step")
-    for step in progress:
-        batch = _sample_batch(train_tensors, batch_size)
-        train_losses = compute_losses(
-            model, batch["new_cases"], batch["casebase_items"], batch["targets"],
-            model.X_train, frozen_raw_po, lam,
-            protect_samples, protect_target_classes, protect_margin, protect_lambda,
-            chunk_size,
+    def _log_eval(step: int, train_losses, val_losses) -> None:
+        line = (
+            f"step {step}/{steps}: train correction={train_losses.correction.item():.6f} "
+            f"preservation={train_losses.preservation.item():.6f} "
+            f"protect={train_losses.protect.item():.6f} "
+            f"combined={train_losses.combined.item():.6f}"
         )
-        optimizer.zero_grad()
-        train_losses.combined.backward()
-        optimizer.step()
+        if val_losses is not None:
+            line += (
+                f" | val correction={val_losses.correction.item():.6f} "
+                f"preservation={val_losses.preservation.item():.6f} "
+                f"protect={val_losses.protect.item():.6f} "
+                f"combined={val_losses.combined.item():.6f}"
+            )
+        write_markdown_log([line], md_path, mode="a")
 
-        progress.set_postfix(
-            correction=f"{train_losses.correction.item():.4f}",
-            preservation=f"{train_losses.preservation.item():.4f}",
-            protect=f"{train_losses.protect.item():.4f}",
-            combined=f"{train_losses.combined.item():.4f}",
+    result = run_finetune(
+        model, train_tensors, val_tensors, model.X_train, frozen_raw_po,
+        lr, lam, steps, batch_size, chunk_size,
+        protect_samples, protect_target_classes, protect_margin, protect_lambda,
+        log_every=log_every, on_eval=_log_eval,
+    )
+
+    trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
+    config_paths = torch.load(checkpoint, map_location=device, weights_only=False)["config_paths"]
+
+    def _save(state_dict: dict[str, Any], path: Path) -> None:
+        torch.save(
+            {
+                "state_dict": state_dict,
+                "config_paths": config_paths,
+                "A": model.A,
+                "X_train": model.X_train,
+                "y_train": model.y_train,
+                "default_indexes": model.default_indexes,
+            },
+            path,
         )
 
-        if step % log_every == 0 or step == steps:
-            val_losses = _eval(val_tensors)
-            line = (
-                f"step {step}/{steps}: train correction={train_losses.correction.item():.6f} "
-                f"preservation={train_losses.preservation.item():.6f} "
-                f"protect={train_losses.protect.item():.6f} "
-                f"combined={train_losses.combined.item():.6f}"
-            )
-            if val_losses is not None:
-                line += (
-                    f" | val correction={val_losses.correction.item():.6f} "
-                    f"preservation={val_losses.preservation.item():.6f} "
-                    f"protect={val_losses.protect.item():.6f} "
-                    f"combined={val_losses.combined.item():.6f}"
-                )
-            progress.write(line)
-            history.append(line)
-            write_markdown_log([line], md_path, mode="a")
+    # model's live weights are already the final-step ones -- run_finetune trains in place.
+    final_state_dict = copy.deepcopy(model.state_dict())
+    final_checkpoint_path = log_dir / final_checkpoint_filename
+    _save(final_state_dict, final_checkpoint_path)
+    print(f"Saved final-step checkpoint to {final_checkpoint_path}")
 
     output_checkpoint_path = log_dir / output_checkpoint_filename
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "config_paths": torch.load(checkpoint, map_location=device, weights_only=False)["config_paths"],
-            "A": model.A,
-            "X_train": model.X_train,
-            "y_train": model.y_train,
-            "default_indexes": model.default_indexes,
-        },
-        output_checkpoint_path,
+    if result.best_extractor_state is not None:
+        trainable_extractor.load_state_dict(result.best_extractor_state)
+        best_state_dict = model.state_dict()
+        selection_line = (
+            f"Best checkpoint: step {result.best_step}/{steps} "
+            f"(val combined={result.best_val_losses.combined.item():.6f}), "
+            f"selected over the final step's val combined loss."
+        )
+    else:
+        best_state_dict = final_state_dict
+        selection_line = (
+            "WARNING: no val eval ever ran (empty val split) -- best checkpoint falls back "
+            "to the final-step weights."
+        )
+    _save(best_state_dict, output_checkpoint_path)
+    print(selection_line)
+    print(f"Saved best-val checkpoint (used by downstream pipeline stages) to {output_checkpoint_path}")
+    write_markdown_log(
+        [
+            selection_line,
+            f"Saved best-val checkpoint to {output_checkpoint_path}",
+            f"Saved final-step checkpoint to {final_checkpoint_path}",
+        ],
+        md_path,
+        mode="a",
     )
-    print(f"Saved fine-tuned checkpoint (unchanged A, updated feature_weights_1) to {output_checkpoint_path}")
-    write_markdown_log([f"Saved fine-tuned checkpoint to {output_checkpoint_path}"], md_path, mode="a")
 
 
 if __name__ == "__main__":
