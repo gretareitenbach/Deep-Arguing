@@ -1,7 +1,7 @@
 checkpoint: model_checkpoint.pt
 dataset: irrelevance_finetune_dataset.pt
 
-lr: 0.0003
+lr: 0.0001
 steps: 200
 batch_size: 128
 chunk_size: 128
