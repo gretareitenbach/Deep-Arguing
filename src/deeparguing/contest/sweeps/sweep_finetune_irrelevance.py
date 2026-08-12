@@ -1,26 +1,29 @@
-"""Grid-sweep ``finetune_irrelevance.py``'s hyperparameters -- ``lr``, ``lam``,
+"""Grid-sweep ``finetune_irrelevance.py``'s hyperparameters -- ``lr``,
 ``batch_size``, ``protect_margin``, ``protect_lambda``, ``protect_sample_size``
 -- against a single fixed baseline checkpoint/dataset, and report each combo's
 outcome in a markdown report. ``chunk_size`` (a memory/compute chunking knob,
 not a modeling choice -- see ``correction_loss``'s docstring) and ``steps``
 (superseded by this sweep's own best-checkpoint tracking, same as
-``finetune_irrelevance.py``'s -- see below) are fixed, not swept.
+``finetune_irrelevance.py``'s -- see below) are fixed, not swept. (A ``lam``
+axis, for the now-removed ``preservation_loss`` term, was swept here through
+2026-08-11 -- see updates.md and ``deeparguing.casebase_edge_weights.finetune``'s
+module docstring for why it's gone.)
 
 Motivation (2026-08-11, see updates.md): the first real fine-tune run showed
 val ``combined`` loss plateauing/overfitting well before its final step, at
-fixed ``lr=0.001, lam=1.0``. Before trusting any hyperparameter comparison,
-each combo here is trained for a fixed, generous ``--steps`` budget and
-ranked by the *best* val ``combined`` loss it reached along the way (via
-``run_finetune``'s built-in tracking -- the same mechanism
-``finetune_irrelevance.py`` uses to pick its saved checkpoint), not by
-whatever the final step happened to land on. That keeps the comparison fair
-across combos that converge at different rates.
+fixed ``lr=0.001``. Before trusting any hyperparameter comparison, each combo
+here is trained for a fixed, generous ``--steps`` budget and ranked by the
+*best* val ``combined`` loss it reached along the way (via ``run_finetune``'s
+built-in tracking -- the same mechanism ``finetune_irrelevance.py`` uses to
+pick its saved checkpoint), not by whatever the final step happened to land
+on. That keeps the comparison fair across combos that converge at different
+rates.
 
 Usage::
 
     python -m deeparguing.contest.sweeps.sweep_finetune_irrelevance
     python -m deeparguing.contest.sweeps.sweep_finetune_irrelevance \\
-        --lrs 0.0003,0.001,0.003 --lams 0.1,1,5 --max-combos 40 \\
+        --lrs 0.0001,0.0003,0.001 --protect-lambdas 0,1,5 --max-combos 40 \\
         --output finetune_irrelevance_sweep.md
 """
 
@@ -53,25 +56,22 @@ DEFAULT_OUTPUT = "finetune_irrelevance_sweep.md"
 CSV_DECIMALS = 6
 LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
 
-# Candidate values for each swept hyperparameter. lr/lam get 3 points since
-# they're the two most consequential axes (lam explicitly flagged as the
-# planned sweep variable in finetune.py's module docstring); the rest get 2.
+# Candidate values for each swept hyperparameter. lr gets 3 points since
+# it's the most consequential axis (see updates.md); the rest get 2.
 DEFAULT_LRS = [3e-4, 1e-3, 3e-3]
-DEFAULT_LAMS = [0.1, 1.0, 5.0]
 DEFAULT_BATCH_SIZES = [64, 128]  # 0 means full-batch, see _parse_batch_sizes
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
 DEFAULT_PROTECT_LAMBDAS = [0.0, 1.0]
 DEFAULT_PROTECT_SAMPLE_SIZES = [100, 200]
 
 SWEEP_COLUMNS = [
-    "lr", "lam", "batch_size", "protect_margin", "protect_lambda", "protect_sample_size",
+    "lr", "batch_size", "protect_margin", "protect_lambda", "protect_sample_size",
 ]
 
 
 @dataclass(frozen=True)
 class Combo:
     lr: float
-    lam: float
     batch_size: int | None
     protect_margin: float
     protect_lambda: float
@@ -94,7 +94,6 @@ def _parse_ints(raw: str) -> list[int]:
 def _run_combo(
     model, trainable_extractor, original_extractor_state: dict[str, Any],
     train_tensors: dict[str, torch.Tensor], val_tensors: dict[str, torch.Tensor],
-    X_train: torch.Tensor, frozen_raw_po: torch.Tensor,
     X_eval: torch.Tensor, y_eval: torch.Tensor,
     combo: Combo, steps: int, chunk_size: int, log_every: int, seed: int,
 ) -> tuple[Any, int, float]:
@@ -117,8 +116,8 @@ def _run_combo(
     )
     start = time.perf_counter()
     result = run_finetune(
-        model, train_tensors, val_tensors, X_train, frozen_raw_po,
-        combo.lr, combo.lam, steps, combo.batch_size, chunk_size,
+        model, train_tensors, val_tensors,
+        combo.lr, steps, combo.batch_size, chunk_size,
         protect_samples, protect_target_classes, combo.protect_margin, combo.protect_lambda,
         log_every=log_every, show_progress=False,
     )
@@ -130,7 +129,6 @@ def _row_from_result(combo: Combo, result, num_protect_samples: int, elapsed: fl
     has_val = result.best_val_losses is not None
     return {
         "lr": combo.lr,
-        "lam": combo.lam,
         "batch_size": combo.batch_size if combo.batch_size is not None else 0,
         "protect_margin": combo.protect_margin,
         "protect_lambda": combo.protect_lambda,
@@ -139,7 +137,6 @@ def _row_from_result(combo: Combo, result, num_protect_samples: int, elapsed: fl
         "best_step": result.best_step if result.best_step is not None else steps,
         "best_val_combined": result.best_val_losses.combined.item() if has_val else float("nan"),
         "best_val_correction": result.best_val_losses.correction.item() if has_val else float("nan"),
-        "best_val_preservation": result.best_val_losses.preservation.item() if has_val else float("nan"),
         "best_val_protect": result.best_val_losses.protect.item() if has_val else float("nan"),
         "final_val_combined": (
             result.final_val_losses.combined.item() if result.final_val_losses is not None else float("nan")
@@ -155,15 +152,15 @@ def _row_from_result(combo: Combo, result, num_protect_samples: int, elapsed: fl
 
 def _full_results_table(df: pd.DataFrame) -> str:
     header = (
-        "| lr | lam | batch_size | protect_margin | protect_lambda | protect_sample_size | "
+        "| lr | batch_size | protect_margin | protect_lambda | protect_sample_size | "
         "best_step | best_val_combined | final_val_combined | final_train_combined | "
         "overfit_gap | elapsed (s) |"
     )
-    sep = "|---|---|---|---|---|---|---|---|---|---|---|---|"
+    sep = "|---|---|---|---|---|---|---|---|---|---|---|"
     lines = [header, sep]
     for _, r in df.iterrows():
         lines.append(
-            f"| {r['lr']:g} | {r['lam']:g} | {'full' if r['batch_size'] == 0 else int(r['batch_size'])} | "
+            f"| {r['lr']:g} | {'full' if r['batch_size'] == 0 else int(r['batch_size'])} | "
             f"{r['protect_margin']:g} | {r['protect_lambda']:g} | {r['protect_sample_size']:g} | "
             f"{r['best_step']:g} | {r['best_val_combined']:.6f} | {r['final_val_combined']:.6f} | "
             f"{r['final_train_combined']:.6f} | {r['overfit_gap']:+.6f} | {r['elapsed_sec']:.1f} |"
@@ -224,13 +221,12 @@ def _write_report(
         "Ranked by best val combined loss reached during training (lower is better; "
         "each combo picks its own best step, not just its final one -- see module docstring).",
         "",
-        f"- lr={best['lr']:g}, lam={best['lam']:g}, "
+        f"- lr={best['lr']:g}, "
         f"batch_size={'full' if best['batch_size'] == 0 else int(best['batch_size'])}, "
         f"protect_margin={best['protect_margin']:g}, protect_lambda={best['protect_lambda']:g}, "
         f"protect_sample_size={best['protect_sample_size']:g}",
         f"- Best at step {best['best_step']:g}/{steps}: val combined={best['best_val_combined']:.6f} "
-        f"(correction={best['best_val_correction']:.6f}, preservation={best['best_val_preservation']:.6f}, "
-        f"protect={best['best_val_protect']:.6f})",
+        f"(correction={best['best_val_correction']:.6f}, protect={best['best_val_protect']:.6f})",
         f"- Final step ({steps}): val combined={best['final_val_combined']:.6f}, "
         f"train combined={best['final_train_combined']:.6f}, overfit gap={best['overfit_gap']:+.6f}",
         "",
@@ -273,10 +269,6 @@ def main() -> None:
         help=f"Comma-separated lr values. Default: {DEFAULT_LRS}.",
     )
     parser.add_argument(
-        "--lams", default=",".join(str(x) for x in DEFAULT_LAMS),
-        help=f"Comma-separated lam (preservation weight) values. Default: {DEFAULT_LAMS}.",
-    )
-    parser.add_argument(
         "--batch-sizes", default=",".join(str(x) for x in DEFAULT_BATCH_SIZES),
         help=f"Comma-separated batch_size values; 0 means full-batch. Default: {DEFAULT_BATCH_SIZES}.",
     )
@@ -315,7 +307,6 @@ def main() -> None:
     seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
 
     lrs = _parse_floats(args.lrs)
-    lams = _parse_floats(args.lams)
     batch_sizes = _parse_batch_sizes(args.batch_sizes)
     protect_margins = _parse_floats(args.protect_margins)
     protect_lambdas = _parse_floats(args.protect_lambdas)
@@ -323,7 +314,7 @@ def main() -> None:
 
     combos = [
         Combo(*c) for c in itertools.product(
-            lrs, lams, batch_sizes, protect_margins, protect_lambdas, protect_sample_sizes,
+            lrs, batch_sizes, protect_margins, protect_lambdas, protect_sample_sizes,
         )
     ]
     total_grid = len(combos)
@@ -356,11 +347,9 @@ def main() -> None:
     if train_tensors["targets"].shape[0] == 0:
         raise ValueError(f"{dataset_path} has 0 training pairs -- nothing to fine-tune against.")
 
-    # Anchor for the preservation penalty, and the pre-finetune snapshot every
-    # combo resets to before it starts -- both fixed across the whole sweep,
-    # computed once from the freshly loaded (untouched) checkpoint.
-    with torch.no_grad():
-        frozen_raw_po = model.casebase_edge_weights(model.X_train, model.X_train).detach().clone()
+    # Pre-finetune snapshot every combo resets to before it starts -- fixed
+    # across the whole sweep, computed once from the freshly loaded
+    # (untouched) checkpoint.
     freeze_all_except_trainable(model)
     trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     original_extractor_state = copy.deepcopy(trainable_extractor.state_dict())
@@ -372,7 +361,7 @@ def main() -> None:
     for combo in pbar:
         result, num_protect_samples, elapsed = _run_combo(
             model, trainable_extractor, original_extractor_state,
-            train_tensors, val_tensors, model.X_train, frozen_raw_po, X_eval, y_eval,
+            train_tensors, val_tensors, X_eval, y_eval,
             combo, steps, chunk_size, log_every, seed,
         )
         row = _row_from_result(combo, result, num_protect_samples, elapsed, steps)

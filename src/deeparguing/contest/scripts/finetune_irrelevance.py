@@ -3,12 +3,13 @@ against the touched-pairs dataset ``build_irrelevance_finetune_dataset.py``
 produces, per ``week7_checklist.md``'s Wednesday plan. Everything except
 ``feature_weights_1`` (frozen ResNet, comparison function, base score,
 ``model.A`` itself) stays untouched this week -- see
-``deeparguing.casebase_edge_weights.finetune`` for the three-term loss
-(correction + lambda * preservation + protect_lambda * protect) and why the
-fine-tuned parameter is scoped that narrowly. ``protect`` is a margin hinge
-over a held-out ``eval_split`` sample of currently-correct predictions
-(``global_optimize.py``'s ``_build_protect_set``), an output-level backstop
-for pairs ``preservation`` doesn't cover -- see ``protect_loss``'s docstring.
+``deeparguing.casebase_edge_weights.finetune`` for the two-term loss
+(correction + protect_lambda * protect) and why the fine-tuned parameter is
+scoped that narrowly. ``protect`` is a margin hinge over a held-out
+``eval_split`` sample of currently-correct predictions (``global_optimize.py``'s
+``_build_protect_set``) -- see ``protect_loss``'s docstring. (A third term,
+``preservation``, was removed 2026-08-12 -- see updates.md and
+``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
 
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/finetune_irrelevance.yaml``); any CLI flag overrides the
@@ -29,7 +30,7 @@ checkpoint falls back to the final one, with a warning.
 Usage::
 
     python -m deeparguing.contest.scripts.finetune_irrelevance
-    python -m deeparguing.contest.scripts.finetune_irrelevance --lr 1e-3 --lam 0.1 --steps 200
+    python -m deeparguing.contest.scripts.finetune_irrelevance --lr 1e-3 --protect-lambda 1 --steps 200
 """
 
 import argparse
@@ -52,7 +53,6 @@ from deeparguing.md_log import write_markdown_log
 
 DEFAULT_CONFIG_PATH = "tuning/contest/finetune_irrelevance.yaml"
 DEFAULT_LR = 1e-3
-DEFAULT_LAM = 1.0
 DEFAULT_STEPS = 200
 DEFAULT_BATCH_SIZE = 128
 DEFAULT_CHUNK_SIZE = 128
@@ -98,7 +98,6 @@ def main() -> None:
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dataset", default=None)
     parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--lam", type=float, default=None, help="Preservation-penalty weight.")
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None, help="Train pairs per step (default: full-batch).")
     parser.add_argument("--chunk-size", type=int, default=None, help="See correction_loss's chunk_size.")
@@ -133,7 +132,6 @@ def main() -> None:
     checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
     dataset_path = resolve_read_path(_required(args.dataset, config, "dataset", args.config))
     lr = _resolved(args.lr, config, "lr", DEFAULT_LR)
-    lam = _resolved(args.lam, config, "lam", DEFAULT_LAM)
     steps = _resolved(args.steps, config, "steps", DEFAULT_STEPS)
     batch_size = _resolved(args.batch_size, config, "batch_size", DEFAULT_BATCH_SIZE)
     chunk_size = _resolved(args.chunk_size, config, "chunk_size", DEFAULT_CHUNK_SIZE)
@@ -195,20 +193,13 @@ def main() -> None:
             "Check contest_all_irrelevance.py's flip rate / touched_edges."
         )
 
-    # Anchor for the preservation penalty: partial_order's raw output over
-    # every casebase-internal pair, at the model's CURRENT (pre-finetune)
-    # weights. Captured before freeze_all_except_trainable/training changes
-    # anything.
-    with torch.no_grad():
-        frozen_raw_po = model.casebase_edge_weights(model.X_train, model.X_train).detach().clone()
-
     freeze_all_except_trainable(model)
 
     write_markdown_log(
         [
             "--- IRRELEVANCE FINE-TUNE RUN ---",
             f"checkpoint={checkpoint}, dataset={dataset_path}",
-            f"lr={lr}, lam={lam}, steps={steps}, batch_size={batch_size}, "
+            f"lr={lr}, steps={steps}, batch_size={batch_size}, "
             f"chunk_size={chunk_size}, device={device}",
             f"eval_split={eval_split}, protect_margin={protect_margin}, "
             f"protect_lambda={protect_lambda}, protect_sample_size={protect_sample_size}, "
@@ -222,22 +213,20 @@ def main() -> None:
     def _log_eval(step: int, train_losses, val_losses) -> None:
         line = (
             f"step {step}/{steps}: train correction={train_losses.correction.item():.6f} "
-            f"preservation={train_losses.preservation.item():.6f} "
             f"protect={train_losses.protect.item():.6f} "
             f"combined={train_losses.combined.item():.6f}"
         )
         if val_losses is not None:
             line += (
                 f" | val correction={val_losses.correction.item():.6f} "
-                f"preservation={val_losses.preservation.item():.6f} "
                 f"protect={val_losses.protect.item():.6f} "
                 f"combined={val_losses.combined.item():.6f}"
             )
         write_markdown_log([line], md_path, mode="a")
 
     result = run_finetune(
-        model, train_tensors, val_tensors, model.X_train, frozen_raw_po,
-        lr, lam, steps, batch_size, chunk_size,
+        model, train_tensors, val_tensors,
+        lr, steps, batch_size, chunk_size,
         protect_samples, protect_target_classes, protect_margin, protect_lambda,
         log_every=log_every, on_eval=_log_eval,
     )

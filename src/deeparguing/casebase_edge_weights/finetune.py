@@ -1,13 +1,21 @@
 """
 src/deeparguing/casebase_edge_weights/finetune.py
 
-Three-term loss for distilling ``new_case_contest``'s E-only corrections into
+Two-term loss for distilling ``new_case_contest``'s E-only corrections into
 ``LearnedPartialOrder``'s trainable ``feature_weights_1`` extractor, per
 ``week7_checklist.md``'s Tuesday plan: ``correction_loss`` (fit the touched
-pairs), ``preservation_loss`` (MSE anchor on ``partial_order``'s raw output,
-weighted by ``|model.A|``), and ``protect_loss`` (output-level margin hinge
-on currently-correct held-out samples -- a backstop for pairs
-``preservation_loss`` doesn't cover; see ``protect_loss``'s docstring).
+pairs) and ``protect_loss`` (output-level margin hinge on currently-correct
+held-out samples -- see ``protect_loss``'s docstring).
+
+An earlier third term, ``preservation_loss`` (an MSE anchor pulling
+``partial_order``'s raw output back toward its pre-finetune values, weighted
+by ``|model.A|``), was removed 2026-08-12 -- see updates.md. The rationale:
+it anchored the network's internal representation for its own sake, but what
+actually matters is whether currently-correct *predictions* stay correct,
+which is exactly what ``protect_loss`` already checks directly. A same-day
+ablation (``lam=0``, sweeping ``protect_lambda``) confirmed ``protect_loss``
+alone catches real margin violations that occur when nothing anchors the
+raw output -- it isn't just redundant with the removed term.
 
 Target-space note (decided/verified 2026-08-10, see updates.md): the
 ``corrected_E`` values logged by ``contest_all_irrelevance.py`` are
@@ -52,7 +60,6 @@ from deeparguing.irrelevance_edge_weights.regular_irrelevance import \
 TRAINABLE_FEATURE_EXTRACTOR_INDEX = 1
 
 DEFAULT_CHUNK_SIZE = 128  # bounds the quadratic cost of the diagonal trick below
-EPS = 1e-12
 
 
 def corrected_E_to_partial_order_target(corrected_E: Tensor) -> Tensor:
@@ -188,68 +195,30 @@ def correction_loss(
     return torch.cat(squared_errors).mean()
 
 
-def preservation_loss(
-    model: GradualAACBR,
-    X_train: Tensor,
-    frozen_raw_partial_order: Tensor,
-) -> Tensor:
-    """Weighted MSE between the current (live-weights) raw ``partial_order``
-    output over every casebase-internal pair and a frozen pre-finetune
-    snapshot of the same, weighted by ``|model.A|`` -- near-zero for pairs
-    ``fit()`` already masked out (same label, blocked, non-minimal), since
-    there's nothing there worth protecting.
-
-    Normalized by total weight (a weighted *mean*, not a weighted sum), so
-    ``lambda`` in ``combine_losses`` means the same thing regardless of
-    casebase size -- important since Wednesday's sweep varies it.
-
-    Parameters
-    ----------
-    model : GradualAACBR
-    X_train : Tensor
-        Shape (n, ...), same casebase ``frozen_raw_partial_order`` was
-        computed from (``model.X_train``).
-    frozen_raw_partial_order : Tensor
-        ``model.casebase_edge_weights(X_train, X_train)``, captured once
-        before fine-tuning starts (detached).
-
-    Returns
-    -------
-    Tensor
-        Scalar weighted MSE.
-    """
-    assert model.A is not None
-    partial_order = _partial_order_module(model)
-    current = partial_order(X_train, X_train)  # (n, n, d), same shape as model.A
-    weight = model.A.detach().abs()
-    squared_error = (current - frozen_raw_partial_order) ** 2
-    return (weight * squared_error).sum() / weight.sum().clamp_min(EPS)
-
-
 def protect_loss(
     model: GradualAACBR,
     protect_samples: Tensor,
     protect_target_classes: Sequence[int],
     protect_margin: float = MARGIN,
 ) -> Tensor:
-    """Output-level backstop for ``preservation_loss``: a margin hinge over
-    samples that are currently (pre-finetune) correctly classified, rather
-    than a proxy over ``partial_order``'s raw value.
+    """Margin hinge over samples that are currently (pre-finetune) correctly
+    classified: penalizes the thing we actually care about directly, not a
+    proxy over ``partial_order``'s raw value. For each sample in
+    ``protect_samples``, does its target class still beat the best rival by
+    ``protect_margin``, evaluated through the model's *current* (training)
+    ``feature_weights_1`` but the *frozen* ``model.A`` -- the exact forward
+    path ``new_case_contest``/``grae.py`` already use, never
+    ``model.forward()`` (which doesn't detach ``model.A``). Same hinge
+    formula as ``batch_contest.py``'s existing ``protect_lambda`` mechanism
+    (``clamp(protect_margin - margin, min=0)``), just evaluated in
+    weight-space instead of A-space.
 
-    ``preservation_loss`` only ever protects pairs already live in
-    ``model.A`` (weighted by ``|model.A|``); it puts zero cost on
-    ``partial_order`` drifting at pairs ``fit()`` currently masks out
-    (``__minimal_attacks``'s continuous blocking product), which could in
-    principle become live if ``model.A`` were ever recomputed from this
-    fine-tuned network. This term instead penalizes the thing we actually
-    care about directly: for each sample in ``protect_samples``, does its
-    target class still beat the best rival by ``protect_margin``, evaluated
-    through the model's *current* (training) ``feature_weights_1`` but the
-    *frozen* ``model.A`` -- the exact forward path ``new_case_contest``/
-    ``grae.py`` already use, never ``model.forward()`` (which doesn't detach
-    ``model.A``). Same hinge formula as ``batch_contest.py``'s existing
-    ``protect_lambda`` mechanism (``clamp(protect_margin - margin, min=0)``),
-    just evaluated in weight-space instead of A-space.
+    The only regularizer against ``correction_loss`` since ``preservation_loss``
+    (an MSE anchor on ``partial_order``'s raw output) was removed -- see this
+    module's docstring. Unlike that removed term, this one is a hinge: it's
+    exactly 0, with no gradient, whenever every protected sample's margin is
+    already comfortably above ``protect_margin``, so it only pushes back once
+    something concrete is actually at risk.
 
     Parameters
     ----------
@@ -286,7 +255,6 @@ def protect_loss(
 @dataclass
 class IrrelevanceFinetuneLosses:
     correction: Tensor
-    preservation: Tensor
     protect: Tensor
     combined: Tensor
 
@@ -296,9 +264,6 @@ def compute_losses(
     new_cases: Tensor,
     casebase_items: Tensor,
     targets: Tensor,
-    X_train: Tensor,
-    frozen_raw_partial_order: Tensor,
-    lam: float,
     protect_samples: Tensor,
     protect_target_classes: Sequence[int],
     protect_margin: float,
@@ -306,15 +271,13 @@ def compute_losses(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> IrrelevanceFinetuneLosses:
     """One call per training step: correction loss over the given batch of
-    touched pairs, preservation loss over the full (frozen-vs-current)
-    casebase, protect loss over currently-correct held-out samples, and
-    their ``lambda``-weighted combination.
+    touched pairs, protect loss over currently-correct held-out samples, and
+    their ``protect_lambda``-weighted combination.
     """
     correction = correction_loss(model, new_cases, casebase_items, targets, chunk_size)
-    preservation = preservation_loss(model, X_train, frozen_raw_partial_order)
     protect = protect_loss(model, protect_samples, protect_target_classes, protect_margin)
-    combined = correction + lam * preservation + protect_lambda * protect
-    return IrrelevanceFinetuneLosses(correction, preservation, protect, combined)
+    combined = correction + protect_lambda * protect
+    return IrrelevanceFinetuneLosses(correction, protect, combined)
 
 
 def _sample_batch(tensors: dict[str, Tensor], batch_size: int | None) -> dict[str, Tensor]:
@@ -346,10 +309,7 @@ def run_finetune(
     model: GradualAACBR,
     train_tensors: dict[str, Tensor],
     val_tensors: dict[str, Tensor],
-    X_train: Tensor,
-    frozen_raw_po: Tensor,
     lr: float,
-    lam: float,
     steps: int,
     batch_size: int | None,
     chunk_size: int,
@@ -379,14 +339,14 @@ def run_finetune(
 
     Parameters
     ----------
-    model, X_train, frozen_raw_po, protect_samples, protect_target_classes :
+    model, protect_samples, protect_target_classes :
         See ``compute_losses``.
     train_tensors, val_tensors : dict[str, Tensor]
         ``{"new_cases", "casebase_items", "targets"}``, as produced by
         ``build_irrelevance_finetune_dataset.py``. ``val_tensors`` may have
         0 pairs (no val split), in which case ``best_*`` falls back to the
         final step and ``on_eval``'s second argument is always ``None``.
-    lr, lam, steps, batch_size, chunk_size, protect_margin, protect_lambda :
+    lr, steps, batch_size, chunk_size, protect_margin, protect_lambda :
         See ``finetune_irrelevance.py``'s CLI flags of the same name.
     log_every : int
         Eval (and ``on_eval`` callback) frequency, in steps.
@@ -413,7 +373,6 @@ def run_finetune(
         with torch.no_grad():
             return compute_losses(
                 model, tensors["new_cases"], tensors["casebase_items"], tensors["targets"],
-                X_train, frozen_raw_po, lam,
                 protect_samples, protect_target_classes, protect_margin, protect_lambda,
                 chunk_size,
             )
@@ -431,7 +390,6 @@ def run_finetune(
         batch = _sample_batch(train_tensors, batch_size)
         train_losses = compute_losses(
             model, batch["new_cases"], batch["casebase_items"], batch["targets"],
-            X_train, frozen_raw_po, lam,
             protect_samples, protect_target_classes, protect_margin, protect_lambda,
             chunk_size,
         )
@@ -442,7 +400,6 @@ def run_finetune(
         if show_progress:
             progress.set_postfix(  # type: ignore[union-attr]
                 correction=f"{train_losses.correction.item():.4f}",
-                preservation=f"{train_losses.preservation.item():.4f}",
                 protect=f"{train_losses.protect.item():.4f}",
                 combined=f"{train_losses.combined.item():.4f}",
             )
@@ -453,13 +410,11 @@ def run_finetune(
                 {
                     "step": step,
                     "train_correction": train_losses.correction.item(),
-                    "train_preservation": train_losses.preservation.item(),
                     "train_protect": train_losses.protect.item(),
                     "train_combined": train_losses.combined.item(),
                     **(
                         {
                             "val_correction": val_losses.correction.item(),
-                            "val_preservation": val_losses.preservation.item(),
                             "val_protect": val_losses.protect.item(),
                             "val_combined": val_losses.combined.item(),
                         }
