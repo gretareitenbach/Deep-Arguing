@@ -1,0 +1,9 @@
+baseline_checkpoint: outputs/30Jul2026/model_checkpoint.pt
+finetuned_checkpoint: finetuned_checkpoint.pt
+
+eval_split: test
+batch_size: null
+
+device: null
+log_dir: null
+output_filename: evaluate_irrelevance_finetune.md
