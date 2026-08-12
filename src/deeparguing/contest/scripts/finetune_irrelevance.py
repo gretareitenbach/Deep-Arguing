@@ -1,8 +1,8 @@
 """Fine-tune ``LearnedPartialOrder``'s ``feature_weights_1`` extractor
 against the touched-pairs dataset ``build_irrelevance_finetune_dataset.py``
-produces, per ``week7_checklist.md``'s Wednesday plan. Everything except
-``feature_weights_1`` (frozen ResNet, comparison function, base score,
-``model.A`` itself) stays untouched this week -- see
+produces, per ``week7_checklist.md``'s Wednesday plan. During training, only
+``feature_weights_1`` moves -- the frozen ResNet, comparison function, base
+score, and ``model.A`` are all untouched step-to-step -- see
 ``deeparguing.casebase_edge_weights.finetune`` for the two-term loss
 (correction + protect_lambda * protect) and why the fine-tuned parameter is
 scoped that narrowly. ``protect`` is a margin hinge over a held-out
@@ -10,6 +10,19 @@ scoped that narrowly. ``protect`` is a margin hinge over a held-out
 ``_build_protect_set``) -- see ``protect_loss``'s docstring. (A third term,
 ``preservation``, was removed 2026-08-12 -- see updates.md and
 ``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
+
+Before each checkpoint is saved, ``model.A`` IS recomputed (via
+``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
+from whatever ``feature_weights_1`` weights are being saved -- new-case edges
+already go through the live, fine-tuned network at prediction time (they're
+computed fresh per call, see ``finetune.py``'s module docstring), so leaving
+``model.A`` at its pre-finetune value would mean two different versions of
+the relevance function coexist in the same argumentation graph.
+2026-08-12's evaluation (see updates.md) found recomputing ``A`` this way is
+accuracy-neutral on the full CIFAR10 test set relative to leaving it frozen,
+while removing that inconsistency -- see
+``deeparguing.contest.scripts.diff_finetune_edge_sparsity`` for how much the
+recompute actually changed the graph's topology (not just edge weights).
 
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/finetune_irrelevance.yaml``); any CLI flag overrides the
@@ -19,10 +32,11 @@ corresponding config value -- same pattern as ``contest_all.py``/
 Checkpoint selection: val ``combined`` loss is tracked at every eval
 (``log_every`` steps); ``output_checkpoint_filename`` (default
 ``finetuned_checkpoint.pt`` -- what downstream pipeline stages read) always
-holds the lowest-val-combined-loss snapshot of ``feature_weights_1``, not
-whatever the last step happened to land on, since 2026-08-11's 200-step run
-plateaued/overfit on val well before the final step (see updates.md). The
-actual final-step weights are saved separately under
+holds the lowest-val-combined-loss snapshot of ``feature_weights_1`` (with
+``A`` recomputed from those weights), not whatever the last step happened to
+land on, since 2026-08-11's 200-step run plateaued/overfit on val well
+before the final step (see updates.md). The actual final-step weights (also
+with ``A`` recomputed from them) are saved separately under
 ``final_checkpoint_filename`` (default ``finetuned_checkpoint_final.pt``)
 for comparison. If no val eval ever ran (empty val split), the best
 checkpoint falls back to the final one, with a warning.
@@ -234,6 +248,12 @@ def main() -> None:
     trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     config_paths = torch.load(checkpoint, map_location=device, weights_only=False)["config_paths"]
 
+    def _recompute_A() -> None:
+        """Re-fit model.A from the casebase using model.casebase_edge_weights's
+        CURRENT (live) feature_weights_1 -- see this module's docstring for why."""
+        X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
+        model.fit(X_casebase, y_casebase, X_default, y_default)
+
     def _save(state_dict: dict[str, Any], path: Path) -> None:
         torch.save(
             {
@@ -248,25 +268,27 @@ def main() -> None:
         )
 
     # model's live weights are already the final-step ones -- run_finetune trains in place.
+    _recompute_A()
     final_state_dict = copy.deepcopy(model.state_dict())
     final_checkpoint_path = log_dir / final_checkpoint_filename
     _save(final_state_dict, final_checkpoint_path)
-    print(f"Saved final-step checkpoint to {final_checkpoint_path}")
+    print(f"Saved final-step checkpoint (A recomputed from final weights) to {final_checkpoint_path}")
 
     output_checkpoint_path = log_dir / output_checkpoint_filename
     if result.best_extractor_state is not None:
         trainable_extractor.load_state_dict(result.best_extractor_state)
+        _recompute_A()
         best_state_dict = model.state_dict()
         selection_line = (
             f"Best checkpoint: step {result.best_step}/{steps} "
             f"(val combined={result.best_val_losses.combined.item():.6f}), "
-            f"selected over the final step's val combined loss."
+            f"selected over the final step's val combined loss. A recomputed from these weights."
         )
     else:
         best_state_dict = final_state_dict
         selection_line = (
             "WARNING: no val eval ever ran (empty val split) -- best checkpoint falls back "
-            "to the final-step weights."
+            "to the final-step weights (A already recomputed above)."
         )
     _save(best_state_dict, output_checkpoint_path)
     print(selection_line)

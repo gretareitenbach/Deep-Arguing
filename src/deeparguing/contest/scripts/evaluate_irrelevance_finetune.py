@@ -5,21 +5,24 @@ during training (correction/protect losses) only ever measures
 is the first point in the pipeline that checks what fine-tuning actually did
 to real classification accuracy, on the full eval split.
 
-Compares three variants:
+Compares two checkpoints, each evaluated by loading it exactly as saved and
+running ``model(X_eval)`` -- i.e. what would actually happen if a new image
+went through the model, no extra fitting or adjustment at eval time:
 
-- ``baseline``: the pre-finetune checkpoint, exactly as loaded.
-- ``finetuned, frozen A``: the checkpoint ``finetune_irrelevance.py`` saves
-  as-is -- ``feature_weights_1`` updated, ``model.A`` left exactly as it was
-  before fine-tuning (``fit()`` is never re-run there -- see that script's
-  module docstring). New-case predictions go through the updated network
-  (``irrelevance_edge_weights`` is computed fresh per call); casebase-internal
-  edges (``model.A``) don't, since they were only ever computed once at the
-  original ``fit()`` time.
-- ``finetuned, recomputed A``: same finetuned ``feature_weights_1``, but
-  ``model.A`` rebuilt from scratch via ``model.fit()`` using the finetuned
-  network, so casebase-internal edges reflect the fine-tuning too, not just
-  new-case ones. This is the variant that answers "what if we actually used
-  the fine-tuned network everywhere, not just for new cases."
+- ``baseline``: the pre-finetune checkpoint.
+- ``finetuned``: ``finetune_irrelevance.py``'s output. Since 2026-08-12 (see
+  updates.md) that script recomputes ``model.A`` from the fine-tuned
+  ``feature_weights_1`` before saving, so this checkpoint's ``A`` is already
+  consistent with its own network -- no refit needed here. (Older
+  checkpoints saved before that change still load and evaluate fine here,
+  just with whatever ``A`` they were saved with -- this script always
+  evaluates the checkpoint exactly as loaded, honestly reflecting what
+  deploying that specific file would do.)
+
+To see whether fine-tuning changed the argumentation graph's *topology*
+(which edges exist / are blocked), not just accuracy, see
+``diff_finetune_edge_sparsity.py`` instead -- that's a direct tensor diff of
+the two checkpoints' ``A``, not something this evaluation measures.
 
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/evaluate_irrelevance_finetune.yaml``); any CLI flag
@@ -55,64 +58,21 @@ DEFAULT_EVAL_SPLIT = "test"
 DEFAULT_OUTPUT_FILENAME = "evaluate_irrelevance_finetune.md"
 
 
-def _casebase_and_defaults(
-    model: GradualAACBR,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Invert ``fit()``'s ``_add_default_cases``: split a fitted model's
-    merged ``X_train``/``y_train`` back into the casebase-only rows and the
-    default rows appended at the end, using ``model.default_indexes`` (a
-    contiguous block by construction -- see ``_add_default_cases``).
-    Re-calling ``model.fit(*this)`` reproduces the exact same
-    ``X_train``/``y_train``/``default_indexes``, but recomputes ``model.A``
-    from ``model.casebase_edge_weights``'s CURRENT weights.
-
-    Returns
-    -------
-    tuple[Tensor, Tensor, Tensor, Tensor]
-        ``(X_casebase, y_casebase, X_default, y_default)``.
-    """
-    n_default = model.default_indexes.numel()
-    expected = torch.arange(
-        model.X_train.shape[0] - n_default, model.X_train.shape[0],
-        device=model.default_indexes.device,
-    )
-    assert torch.equal(model.default_indexes, expected), (
-        "model.default_indexes isn't the trailing contiguous block "
-        "_add_default_cases always produces -- can't safely split X_train "
-        "back into casebase/default rows."
-    )
-    X_casebase = model.X_train[:-n_default]
-    y_casebase = model.y_train[:-n_default]
-    X_default = model.X_train[-n_default:]
-    y_default = model.y_train[-n_default:]
-    return X_casebase, y_casebase, X_default, y_default
-
-
 def _evaluate(
     label: str,
     model: GradualAACBR,
     X_eval: torch.Tensor,
     y_eval: torch.Tensor,
     batch_size: int | None,
-    refit_from: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | None,
 ) -> dict[str, Any]:
-    """One row of the report: evaluate ``model`` on ``X_eval``/``y_eval``,
-    optionally re-fitting ``model.A`` from ``refit_from`` (a
-    ``(X_casebase, y_casebase, X_default, y_default)`` tuple, see
-    ``_casebase_and_defaults``) first. ``refit_from=None`` evaluates
-    ``model`` exactly as loaded, no ``fit()`` call.
+    """One row of the report: evaluate ``model`` exactly as loaded (no
+    ``fit()`` call -- ``model.A`` is whatever the checkpoint saved) on
+    ``X_eval``/``y_eval``, the same forward path a real prediction takes.
     """
-    if refit_from is not None:
-        X_casebase, y_casebase, X_default, y_default = refit_from
-        accuracy, precision, recall, f1, cm = evaluate_model(
-            model, X_casebase, y_casebase, X_default, y_default,
-            X_eval, y_eval, batch_size=batch_size, refit=True,
-        )
-    else:
-        accuracy, precision, recall, f1, cm = evaluate_model(
-            model, None, None, None, None,
-            X_eval, y_eval, batch_size=batch_size, refit=False,
-        )
+    accuracy, precision, recall, f1, cm = evaluate_model(
+        model, None, None, None, None,
+        X_eval, y_eval, batch_size=batch_size, refit=False,
+    )
     return {
         "label": label,
         "accuracy": accuracy,
@@ -196,25 +156,17 @@ def main() -> None:
     baseline_model, baseline_data = load_fitted_model_and_data(baseline_checkpoint, device)
     X_eval, y_eval = baseline_data[f"X_{eval_split}"], baseline_data[f"y_{eval_split}"]
     print(f"Evaluating baseline on {X_eval.shape[0]} {eval_split} samples ...")
-    baseline_row = _evaluate("baseline", baseline_model, X_eval, y_eval, batch_size, refit_from=None)
+    baseline_row = _evaluate("baseline", baseline_model, X_eval, y_eval, batch_size)
     print(f"  accuracy={baseline_row['accuracy']:.4f} f1={baseline_row['f1']:.4f}")
 
     print(f"Loading finetuned checkpoint from {finetuned_checkpoint} ...")
     ft_model, ft_data = load_fitted_model_and_data(finetuned_checkpoint, device)
     X_eval_ft, y_eval_ft = ft_data[f"X_{eval_split}"], ft_data[f"y_{eval_split}"]
+    print(f"Evaluating finetuned checkpoint on {X_eval_ft.shape[0]} {eval_split} samples ...")
+    finetuned_row = _evaluate("finetuned", ft_model, X_eval_ft, y_eval_ft, batch_size)
+    print(f"  accuracy={finetuned_row['accuracy']:.4f} f1={finetuned_row['f1']:.4f}")
 
-    print("Evaluating finetuned checkpoint with its saved (frozen) A ...")
-    frozen_row = _evaluate("finetuned, frozen A", ft_model, X_eval_ft, y_eval_ft, batch_size, refit_from=None)
-    print(f"  accuracy={frozen_row['accuracy']:.4f} f1={frozen_row['f1']:.4f}")
-
-    print("Recomputing A from the finetuned feature_weights_1 and re-evaluating ...")
-    refit_from = _casebase_and_defaults(ft_model)
-    recomputed_row = _evaluate(
-        "finetuned, recomputed A", ft_model, X_eval_ft, y_eval_ft, batch_size, refit_from=refit_from
-    )
-    print(f"  accuracy={recomputed_row['accuracy']:.4f} f1={recomputed_row['f1']:.4f}")
-
-    rows = [baseline_row, frozen_row, recomputed_row]
+    rows = [baseline_row, finetuned_row]
 
     write_markdown_log(
         [
