@@ -1,11 +1,26 @@
 """
 src/deeparguing/casebase_edge_weights/finetune.py
 
-Two-term loss for distilling ``new_case_contest``'s E-only corrections into
-``LearnedPartialOrder``'s trainable ``feature_weights_1`` extractor, per
-``week7_checklist.md``'s Tuesday plan: ``correction_loss`` (fit the touched
-pairs) and ``protect_loss`` (output-level margin hinge on currently-correct
-held-out samples -- see ``protect_loss``'s docstring).
+Loss terms for distilling ``new_case_contest``'s and ``batch_contest``'s
+corrections into ``LearnedPartialOrder``'s trainable ``feature_weights_1``
+extractor, per ``week7_checklist.md``'s Tuesday plan: ``correction_loss``
+(fit the new-case-to-casebase touched pairs), ``casebase_correction_loss``
+(fit the casebase-internal touched pairs -- i.e. ``model.A`` entries
+``contest_all.py``/``batch_contest`` edited, see its docstring), and
+``protect_loss`` (output-level margin hinge on currently-correct held-out
+samples -- see its docstring).
+
+``casebase_correction_loss`` added 2026-08-12 (see updates.md): unlike
+``correction_loss``, there's no clean pointwise target-space formula for
+``model.A`` -- ``fit()``'s construction of ``A`` (label-based masking, a
+continuous minimality/blocking product over the whole casebase, an optional
+symmetric-attacks combination, then negation and the supports term ``B``)
+depends on the whole casebase, not just the one edited pair. So instead of
+inverting a formula, this loss differentiably re-runs ``model.fit()`` each
+call and compares the resulting ``model.A`` entries directly -- verified
+(see ``tests/finetune_test.py``) that gradients really do flow back to
+``feature_weights_1`` through the minimality product, since it's a
+continuous t-norm product, not a hard argmin/threshold.
 
 An earlier third term, ``preservation_loss`` (an MSE anchor pulling
 ``partial_order``'s raw output back toward its pre-finetune values, weighted
@@ -15,7 +30,11 @@ actually matters is whether currently-correct *predictions* stay correct,
 which is exactly what ``protect_loss`` already checks directly. A same-day
 ablation (``lam=0``, sweeping ``protect_lambda``) confirmed ``protect_loss``
 alone catches real margin violations that occur when nothing anchors the
-raw output -- it isn't just redundant with the removed term.
+raw output -- it isn't just redundant with the removed term. With
+``casebase_correction_loss`` now able to move ``model.A`` every training
+step (not just once at save time), ``protect_loss`` is the thing standing
+between that and collateral damage to currently-correct predictions -- see
+its docstring.
 
 Target-space note (decided/verified 2026-08-10, see updates.md): the
 ``corrected_E`` values logged by ``contest_all_irrelevance.py`` are
@@ -195,6 +214,70 @@ def correction_loss(
     return torch.cat(squared_errors).mean()
 
 
+@dataclass(frozen=True)
+class CasebaseCorrectionBatch:
+    """Inputs ``casebase_correction_loss`` needs for one call.
+    ``X_casebase``/``y_casebase``/``X_default``/``y_default`` are the fixed
+    casebase/defaults split (``model.casebase_and_defaults()``) needed to
+    differentiably re-fit ``model.A`` through -- the same for every call in
+    a run, since the casebase itself never changes, only
+    ``feature_weights_1``'s live weights. ``source_idx``/``target_idx``/
+    ``dim_idx``/``targets`` are the touched-edge indices (into ``model.A``)
+    and their ``contest_all.py``-corrected values for *this* batch (the
+    full val set, or the full train set -- see ``casebase_correction_loss``'s
+    docstring for why there's no benefit to sub-batching these).
+    """
+    X_casebase: Tensor
+    y_casebase: Tensor
+    X_default: Tensor
+    y_default: Tensor
+    source_idx: Tensor
+    target_idx: Tensor
+    dim_idx: Tensor
+    targets: Tensor
+
+
+def casebase_correction_loss(model: GradualAACBR, batch: CasebaseCorrectionBatch) -> Tensor:
+    """MSE between ``model.A``'s touched entries and their
+    ``contest_all.py``-corrected values, after differentiably re-fitting
+    ``model.A`` from the current (training) ``feature_weights_1``.
+
+    Unlike ``correction_loss``, there's no cheap way to isolate just the
+    touched pairs -- ``model.A``'s construction (label masking, the
+    minimality/blocking product, symmetric attacks, negation, ``B``) mixes
+    every casebase pair together, so getting the right gradient means
+    re-running the whole ``fit()`` (see module docstring). This is the same
+    cost class as the removed ``preservation_loss`` (a full casebase pass
+    every call) -- fine for a small casebase, wouldn't scale to a large one
+    without rethinking.
+
+    A side effect worth knowing about: this call leaves ``model.A`` mutated
+    to the freshly-refit value (``fit()`` always reassigns ``self.A``) --
+    intentional, since ``protect_loss`` reads ``model.A`` directly and
+    should see the same, current graph this loss just fit, not a stale one
+    from before this call. ``compute_losses`` relies on this by calling
+    ``casebase_correction_loss`` before ``protect_loss``.
+
+    Parameters
+    ----------
+    model : GradualAACBR
+    batch : CasebaseCorrectionBatch
+        Empty ``targets`` (0 touched edges in this batch) is a no-op --
+        note it still skips the ``fit()`` call entirely in that case, so an
+        empty val split doesn't pay the refit cost for nothing.
+
+    Returns
+    -------
+    Tensor
+        Scalar MSE, 0 if ``batch.targets`` is empty.
+    """
+    if batch.targets.shape[0] == 0:
+        return torch.zeros((), device=batch.targets.device, dtype=batch.targets.dtype)
+    model.fit(batch.X_casebase, batch.y_casebase, batch.X_default, batch.y_default)
+    predicted = model.A[batch.source_idx, batch.target_idx, batch.dim_idx]
+    return ((predicted - batch.targets) ** 2).mean()
+
+
 def protect_loss(
     model: GradualAACBR,
     protect_samples: Tensor,
@@ -253,9 +336,10 @@ def protect_loss(
 
 
 @dataclass
-class IrrelevanceFinetuneLosses:
+class FinetuneLosses:
     correction: Tensor
     protect: Tensor
+    casebase_correction: Tensor
     combined: Tensor
 
 
@@ -268,16 +352,30 @@ def compute_losses(
     protect_target_classes: Sequence[int],
     protect_margin: float,
     protect_lambda: float,
+    casebase_batch: CasebaseCorrectionBatch | None = None,
+    casebase_lambda: float = 0.0,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-) -> IrrelevanceFinetuneLosses:
+) -> FinetuneLosses:
     """One call per training step: correction loss over the given batch of
-    touched pairs, protect loss over currently-correct held-out samples, and
-    their ``protect_lambda``-weighted combination.
+    new-case-to-casebase touched pairs, casebase-internal correction loss
+    (if ``casebase_batch`` is given -- optional, off by default), protect
+    loss over currently-correct held-out samples, and their
+    ``protect_lambda``/``casebase_lambda``-weighted combination.
+
+    Order matters: ``casebase_correction_loss`` (if it runs) mutates
+    ``model.A`` via its internal ``fit()`` call, and ``protect_loss`` reads
+    ``model.A`` directly -- so ``casebase_correction_loss`` must run first,
+    or ``protect_loss`` would see a stale ``A`` from before this call.
     """
     correction = correction_loss(model, new_cases, casebase_items, targets, chunk_size)
+    casebase_correction = (
+        casebase_correction_loss(model, casebase_batch)
+        if casebase_batch is not None
+        else torch.zeros((), device=targets.device, dtype=targets.dtype)
+    )
     protect = protect_loss(model, protect_samples, protect_target_classes, protect_margin)
-    combined = correction + protect_lambda * protect
-    return IrrelevanceFinetuneLosses(correction, protect, combined)
+    combined = correction + protect_lambda * protect + casebase_lambda * casebase_correction
+    return FinetuneLosses(correction, protect, casebase_correction, combined)
 
 
 def _sample_batch(tensors: dict[str, Tensor], batch_size: int | None) -> dict[str, Tensor]:
@@ -286,6 +384,43 @@ def _sample_batch(tensors: dict[str, Tensor], batch_size: int | None) -> dict[st
         return tensors
     idx = torch.randperm(n)[:batch_size]
     return {k: v[idx] for k, v in tensors.items()}
+
+
+@dataclass(frozen=True)
+class CasebaseFinetuneConfig:
+    """Optional casebase-internal-edge correction, alongside the
+    always-on new-case correction. ``X_casebase``/``y_casebase``/
+    ``X_default``/``y_default`` (e.g. ``model.casebase_and_defaults()``,
+    captured once by the caller before training starts) and
+    ``train_edges``/``val_edges`` (``{"source_idx", "target_idx", "dim_idx",
+    "targets"}`` dicts, as produced by ``build_casebase_finetune_dataset.py``)
+    are combined into a ``CasebaseCorrectionBatch`` fresh each call --
+    ``train_edges`` is used in full every training step (no sub-batching:
+    ``casebase_correction_loss``'s cost is dominated by the casebase-wide
+    ``fit()`` call, not by how many touched edges are compared afterward,
+    so subsampling wouldn't save anything).
+    """
+    X_casebase: Tensor
+    y_casebase: Tensor
+    X_default: Tensor
+    y_default: Tensor
+    train_edges: dict[str, Tensor]
+    val_edges: dict[str, Tensor]
+    casebase_lambda: float = 1.0
+
+    def _batch(self, edges: dict[str, Tensor]) -> CasebaseCorrectionBatch:
+        return CasebaseCorrectionBatch(
+            X_casebase=self.X_casebase, y_casebase=self.y_casebase,
+            X_default=self.X_default, y_default=self.y_default,
+            source_idx=edges["source_idx"], target_idx=edges["target_idx"],
+            dim_idx=edges["dim_idx"], targets=edges["targets"],
+        )
+
+    def train_batch(self) -> CasebaseCorrectionBatch:
+        return self._batch(self.train_edges)
+
+    def val_batch(self) -> CasebaseCorrectionBatch:
+        return self._batch(self.val_edges)
 
 
 @dataclass
@@ -297,11 +432,11 @@ class FinetuneRunResult:
     entry per eval (every ``log_every`` steps, plus the final step).
     """
     best_step: int | None
-    best_val_losses: IrrelevanceFinetuneLosses | None
+    best_val_losses: FinetuneLosses | None
     best_extractor_state: dict[str, Tensor] | None
     final_extractor_state: dict[str, Tensor]
-    final_train_losses: IrrelevanceFinetuneLosses
-    final_val_losses: IrrelevanceFinetuneLosses | None
+    final_train_losses: FinetuneLosses
+    final_val_losses: FinetuneLosses | None
     history: list[dict[str, float]] = field(default_factory=list)
 
 
@@ -317,8 +452,9 @@ def run_finetune(
     protect_target_classes: Sequence[int],
     protect_margin: float,
     protect_lambda: float,
+    casebase_config: CasebaseFinetuneConfig | None = None,
     log_every: int = 10,
-    on_eval: Callable[[int, IrrelevanceFinetuneLosses, IrrelevanceFinetuneLosses | None], None] | None = None,
+    on_eval: Callable[[int, FinetuneLosses, FinetuneLosses | None], None] | None = None,
     show_progress: bool = True,
     progress_desc: str = "Fine-tuning irrelevance channel",
 ) -> FinetuneRunResult:
@@ -348,6 +484,9 @@ def run_finetune(
         final step and ``on_eval``'s second argument is always ``None``.
     lr, steps, batch_size, chunk_size, protect_margin, protect_lambda :
         See ``finetune_irrelevance.py``'s CLI flags of the same name.
+    casebase_config : CasebaseFinetuneConfig, optional
+        Enables ``casebase_correction_loss`` (off, at zero extra cost, when
+        ``None``). See ``CasebaseFinetuneConfig``.
     log_every : int
         Eval (and ``on_eval`` callback) frequency, in steps.
     on_eval : callable, optional
@@ -367,30 +506,34 @@ def run_finetune(
     trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     optimizer = torch.optim.Adam(trainable_parameters(model), lr=lr)
 
-    def _eval(tensors: dict[str, Tensor]) -> IrrelevanceFinetuneLosses | None:
+    casebase_lambda = casebase_config.casebase_lambda if casebase_config is not None else 0.0
+
+    def _eval(tensors: dict[str, Tensor]) -> FinetuneLosses | None:
         if tensors["targets"].shape[0] == 0:
             return None
         with torch.no_grad():
             return compute_losses(
                 model, tensors["new_cases"], tensors["casebase_items"], tensors["targets"],
                 protect_samples, protect_target_classes, protect_margin, protect_lambda,
+                casebase_config.val_batch() if casebase_config is not None else None, casebase_lambda,
                 chunk_size,
             )
 
     best_step: int | None = None
-    best_val_losses: IrrelevanceFinetuneLosses | None = None
+    best_val_losses: FinetuneLosses | None = None
     best_extractor_state: dict[str, Tensor] | None = None
     history: list[dict[str, float]] = []
 
     step_iterable: Iterator[int] = range(1, steps + 1)
     progress = tqdm(step_iterable, desc=progress_desc, unit="step") if show_progress else step_iterable
-    train_losses: IrrelevanceFinetuneLosses | None = None
-    val_losses: IrrelevanceFinetuneLosses | None = None
+    train_losses: FinetuneLosses | None = None
+    val_losses: FinetuneLosses | None = None
     for step in progress:
         batch = _sample_batch(train_tensors, batch_size)
         train_losses = compute_losses(
             model, batch["new_cases"], batch["casebase_items"], batch["targets"],
             protect_samples, protect_target_classes, protect_margin, protect_lambda,
+            casebase_config.train_batch() if casebase_config is not None else None, casebase_lambda,
             chunk_size,
         )
         optimizer.zero_grad()
@@ -401,6 +544,7 @@ def run_finetune(
             progress.set_postfix(  # type: ignore[union-attr]
                 correction=f"{train_losses.correction.item():.4f}",
                 protect=f"{train_losses.protect.item():.4f}",
+                casebase=f"{train_losses.casebase_correction.item():.4f}",
                 combined=f"{train_losses.combined.item():.4f}",
             )
 
@@ -411,11 +555,13 @@ def run_finetune(
                     "step": step,
                     "train_correction": train_losses.correction.item(),
                     "train_protect": train_losses.protect.item(),
+                    "train_casebase_correction": train_losses.casebase_correction.item(),
                     "train_combined": train_losses.combined.item(),
                     **(
                         {
                             "val_correction": val_losses.correction.item(),
                             "val_protect": val_losses.protect.item(),
+                            "val_casebase_correction": val_losses.casebase_correction.item(),
                             "val_combined": val_losses.combined.item(),
                         }
                         if val_losses is not None

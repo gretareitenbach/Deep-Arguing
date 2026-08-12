@@ -2,14 +2,25 @@
 against the touched-pairs dataset ``build_irrelevance_finetune_dataset.py``
 produces, per ``week7_checklist.md``'s Wednesday plan. During training, only
 ``feature_weights_1`` moves -- the frozen ResNet, comparison function, base
-score, and ``model.A`` are all untouched step-to-step -- see
-``deeparguing.casebase_edge_weights.finetune`` for the two-term loss
-(correction + protect_lambda * protect) and why the fine-tuned parameter is
-scoped that narrowly. ``protect`` is a margin hinge over a held-out
-``eval_split`` sample of currently-correct predictions (``global_optimize.py``'s
+score, and ``model.A`` are all untouched step-to-step (``model.A`` is
+recomputed once, at save time -- see below) -- see
+``deeparguing.casebase_edge_weights.finetune`` for the loss terms
+(correction + protect_lambda * protect [+ casebase_lambda *
+casebase_correction]) and why the fine-tuned parameter is scoped that
+narrowly. ``protect`` is a margin hinge over a held-out ``eval_split``
+sample of currently-correct predictions (``global_optimize.py``'s
 ``_build_protect_set``) -- see ``protect_loss``'s docstring. (A third term,
 ``preservation``, was removed 2026-08-12 -- see updates.md and
 ``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
+
+Optional ``--casebase-dataset`` (added 2026-08-12, see updates.md): also
+regresses ``model.A`` toward ``contest_all.py``'s casebase-internal
+(``source``-item-to-``target``-item) corrections, via
+``casebase_correction_loss`` -- see that function's and
+``build_casebase_finetune_dataset.py``'s docstrings. Off by default
+(``casebase_lambda=0.0``); when on, every training step differentiably
+re-fits ``model.A`` (the same cost class as the removed ``preservation_loss``
+-- fine for a small casebase, not for a large one).
 
 Before each checkpoint is saved, ``model.A`` IS recomputed (via
 ``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
@@ -56,8 +67,8 @@ import torch
 import yaml
 
 from deeparguing.casebase_edge_weights.finetune import (
-    TRAINABLE_FEATURE_EXTRACTOR_INDEX, assert_shares_partial_order,
-    freeze_all_except_trainable, run_finetune)
+    TRAINABLE_FEATURE_EXTRACTOR_INDEX, CasebaseFinetuneConfig,
+    assert_shares_partial_order, freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.core.contest import MARGIN
 from deeparguing.contest.global_optimize import _build_protect_set
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
@@ -77,6 +88,7 @@ DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 0
 DEFAULT_FINAL_CHECKPOINT_FILENAME = "finetuned_checkpoint_final.pt"
+DEFAULT_CASEBASE_LAMBDA = 0.0
 
 
 def _load_config(config_path: str) -> dict[str, Any]:
@@ -127,6 +139,16 @@ def main() -> None:
         help="Max number of currently-correct eval-split samples to protect.",
     )
     parser.add_argument("--seed", type=int, default=None, help="Seed for protect-set sampling.")
+    parser.add_argument(
+        "--casebase-dataset", default=None,
+        help="Optional build_casebase_finetune_dataset.py output. Enables casebase_correction_loss "
+        "(model.A regression against contest_all.py's touched edges) if given. Off by default.",
+    )
+    parser.add_argument(
+        "--casebase-lambda", type=float, default=None,
+        help=f"casebase_correction_loss weight (default: {DEFAULT_CASEBASE_LAMBDA}, i.e. off). "
+        "No effect unless --casebase-dataset is also given.",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument("--log-dir", default=None)
     parser.add_argument(
@@ -159,6 +181,9 @@ def main() -> None:
         args.protect_sample_size, config, "protect_sample_size", DEFAULT_PROTECT_SAMPLE_SIZE
     )
     seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
+    casebase_dataset_arg = _resolved(args.casebase_dataset, config, "casebase_dataset", None)
+    casebase_dataset_path = resolve_read_path(casebase_dataset_arg) if casebase_dataset_arg else None
+    casebase_lambda = _resolved(args.casebase_lambda, config, "casebase_lambda", DEFAULT_CASEBASE_LAMBDA)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     output_checkpoint_filename = _resolved(
@@ -207,6 +232,30 @@ def main() -> None:
             "Check contest_all_irrelevance.py's flip rate / touched_edges."
         )
 
+    casebase_config = None
+    if casebase_dataset_path:
+        print(f"Loading casebase dataset from {casebase_dataset_path} ...")
+        casebase_dataset = torch.load(casebase_dataset_path, map_location=device, weights_only=False)
+        casebase_train_edges = casebase_dataset["train"]
+        casebase_val_edges = casebase_dataset["val"]
+        casebase_manifest = casebase_dataset["manifest"]
+        print(
+            f"casebase-internal edges: {casebase_manifest['num_train_edges']} train, "
+            f"{casebase_manifest['num_val_edges']} val "
+            f"({casebase_manifest['num_unreachable_dropped']} dropped as structurally unreachable)"
+        )
+        X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
+        casebase_config = CasebaseFinetuneConfig(
+            X_casebase=X_casebase, y_casebase=y_casebase, X_default=X_default, y_default=y_default,
+            train_edges=casebase_train_edges, val_edges=casebase_val_edges,
+            casebase_lambda=casebase_lambda,
+        )
+    elif casebase_lambda != DEFAULT_CASEBASE_LAMBDA:
+        print(
+            "WARNING: --casebase-lambda given but --casebase-dataset wasn't -- "
+            "casebase_correction_loss has no effect without a dataset to regress against."
+        )
+
     freeze_all_except_trainable(model)
 
     write_markdown_log(
@@ -219,6 +268,9 @@ def main() -> None:
             f"protect_lambda={protect_lambda}, protect_sample_size={protect_sample_size}, "
             f"seed={seed}, num_protect_samples={protect_samples.shape[0]}",
             f"train pairs={manifest['num_train_pairs']}, val pairs={manifest['num_val_pairs']}",
+            f"casebase_dataset={casebase_dataset_path}, casebase_lambda={casebase_lambda}"
+            if casebase_config is not None
+            else "casebase_dataset=none (casebase_correction_loss off)",
         ],
         md_path,
         mode="w",
@@ -228,12 +280,14 @@ def main() -> None:
         line = (
             f"step {step}/{steps}: train correction={train_losses.correction.item():.6f} "
             f"protect={train_losses.protect.item():.6f} "
+            f"casebase_correction={train_losses.casebase_correction.item():.6f} "
             f"combined={train_losses.combined.item():.6f}"
         )
         if val_losses is not None:
             line += (
                 f" | val correction={val_losses.correction.item():.6f} "
                 f"protect={val_losses.protect.item():.6f} "
+                f"casebase_correction={val_losses.casebase_correction.item():.6f} "
                 f"combined={val_losses.combined.item():.6f}"
             )
         write_markdown_log([line], md_path, mode="a")
@@ -242,6 +296,7 @@ def main() -> None:
         model, train_tensors, val_tensors,
         lr, steps, batch_size, chunk_size,
         protect_samples, protect_target_classes, protect_margin, protect_lambda,
+        casebase_config=casebase_config,
         log_every=log_every, on_eval=_log_eval,
     )
 
@@ -250,9 +305,14 @@ def main() -> None:
 
     def _recompute_A() -> None:
         """Re-fit model.A from the casebase using model.casebase_edge_weights's
-        CURRENT (live) feature_weights_1 -- see this module's docstring for why."""
+        CURRENT (live) feature_weights_1 -- see this module's docstring for why.
+        no_grad since this is a save-time recompute, not a training step --
+        without it, model.A keeps an autograd graph back to feature_weights_1's
+        (still requires_grad=True) parameters, which torch.save then persists
+        into the checkpoint for no reason."""
         X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
-        model.fit(X_casebase, y_casebase, X_default, y_default)
+        with torch.no_grad():
+            model.fit(X_casebase, y_casebase, X_default, y_default)
 
     def _save(state_dict: dict[str, Any], path: Path) -> None:
         torch.save(
