@@ -7,7 +7,7 @@
 #   5. Contest casebase-internal edges (batch_contest -- edits shared model.A)
 #   6. Build the casebase fine-tune dataset
 #   7. Fine-tune feature_weights_1 against both correction sources
-#   8. Evaluate the result + diff the argumentation graph's edge sparsity
+#   8. Evaluate the result (baseline vs. finetuned accuracy)
 #
 # Uses tuning/cifar10/resnet/relu/ (ReluSemantics) -- the config everything
 # this session has been built and tuned against. Known risk (see updates.md):
@@ -34,6 +34,14 @@ CONFIG_DIR="tuning/cifar10/resnet/relu"
 # Avoids an interactive wandb login prompt blocking an unattended run.
 # Unset this (or export WANDB_MODE=online) first if you want real tracking.
 export WANDB_MODE="${WANDB_MODE:-offline}"
+
+# Without this, Python block-buffers stdout once it's not attached to a real
+# terminal (i.e. as soon as it's piped into `tee`) -- plain print() status
+# lines would then sit in a buffer and only show up in delayed bursts
+# instead of as they happen. tqdm progress bars mostly self-flush already,
+# but this makes everything (including the stage-by-stage prints in the
+# Python scripts themselves) show up live, not just the bar.
+export PYTHONUNBUFFERED=1
 
 echo "################################################################"
 echo "# Stage 1/8: Pretrain ResNet-32 backbone (seed=$SEED)"
