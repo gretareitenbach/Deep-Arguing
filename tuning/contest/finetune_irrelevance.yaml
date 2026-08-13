@@ -13,8 +13,8 @@ protect_lambda: 1.0
 protect_sample_size: 200
 seed: 0
 
-casebase_dataset: null
-casebase_lambda: 0.0
+casebase_dataset: casebase_finetune_dataset.pt
+casebase_lambda: 1.0
 
 device: null
 log_dir: null

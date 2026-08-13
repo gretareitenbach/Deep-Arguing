@@ -13,14 +13,14 @@ sample of currently-correct predictions (``global_optimize.py``'s
 ``preservation``, was removed 2026-08-12 -- see updates.md and
 ``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
 
-Optional ``--casebase-dataset`` (added 2026-08-12, see updates.md): also
-regresses ``model.A`` toward ``contest_all.py``'s casebase-internal
-(``source``-item-to-``target``-item) corrections, via
+``--casebase-dataset`` (added 2026-08-12, see updates.md; on by default since
+2026-08-13): also regresses ``model.A`` toward ``contest_all.py``'s
+casebase-internal (``source``-item-to-``target``-item) corrections, via
 ``casebase_correction_loss`` -- see that function's and
-``build_casebase_finetune_dataset.py``'s docstrings. Off by default
-(``casebase_lambda=0.0``); when on, every training step differentiably
-re-fits ``model.A`` (the same cost class as the removed ``preservation_loss``
--- fine for a small casebase, not for a large one).
+``build_casebase_finetune_dataset.py``'s docstrings. Required, like
+``--checkpoint``/``--dataset`` -- every training step differentiably re-fits
+``model.A`` (the same cost class as the removed ``preservation_loss`` -- fine
+for a small casebase, not for a large one).
 
 Before each checkpoint is saved, ``model.A`` IS recomputed (via
 ``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
@@ -88,7 +88,7 @@ DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 0
 DEFAULT_FINAL_CHECKPOINT_FILENAME = "finetuned_checkpoint_final.pt"
-DEFAULT_CASEBASE_LAMBDA = 0.0
+DEFAULT_CASEBASE_LAMBDA = 1.0
 
 
 def _load_config(config_path: str) -> dict[str, Any]:
@@ -141,13 +141,14 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="Seed for protect-set sampling.")
     parser.add_argument(
         "--casebase-dataset", default=None,
-        help="Optional build_casebase_finetune_dataset.py output. Enables casebase_correction_loss "
-        "(model.A regression against contest_all.py's touched edges) if given. Off by default.",
+        help="build_casebase_finetune_dataset.py output. Required (like --checkpoint/--dataset) -- "
+        "always drives casebase_correction_loss (model.A regression against contest_all.py's "
+        "touched edges).",
     )
     parser.add_argument(
         "--casebase-lambda", type=float, default=None,
-        help=f"casebase_correction_loss weight (default: {DEFAULT_CASEBASE_LAMBDA}, i.e. off). "
-        "No effect unless --casebase-dataset is also given.",
+        help=f"casebase_correction_loss weight (default: {DEFAULT_CASEBASE_LAMBDA}). Pass 0 to "
+        "disable it for a single run without editing the config.",
     )
     parser.add_argument("--device", default=None)
     parser.add_argument("--log-dir", default=None)
@@ -181,8 +182,9 @@ def main() -> None:
         args.protect_sample_size, config, "protect_sample_size", DEFAULT_PROTECT_SAMPLE_SIZE
     )
     seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
-    casebase_dataset_arg = _resolved(args.casebase_dataset, config, "casebase_dataset", None)
-    casebase_dataset_path = resolve_read_path(casebase_dataset_arg) if casebase_dataset_arg else None
+    casebase_dataset_path = resolve_read_path(
+        _required(args.casebase_dataset, config, "casebase_dataset", args.config)
+    )
     casebase_lambda = _resolved(args.casebase_lambda, config, "casebase_lambda", DEFAULT_CASEBASE_LAMBDA)
     device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
     log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
@@ -232,29 +234,24 @@ def main() -> None:
             "Check contest_all_irrelevance.py's flip rate / touched_edges."
         )
 
-    casebase_config = None
-    if casebase_dataset_path:
-        print(f"Loading casebase dataset from {casebase_dataset_path} ...")
-        casebase_dataset = torch.load(casebase_dataset_path, map_location=device, weights_only=False)
-        casebase_train_edges = casebase_dataset["train"]
-        casebase_val_edges = casebase_dataset["val"]
-        casebase_manifest = casebase_dataset["manifest"]
-        print(
-            f"casebase-internal edges: {casebase_manifest['num_train_edges']} train, "
-            f"{casebase_manifest['num_val_edges']} val "
-            f"({casebase_manifest['num_unreachable_dropped']} dropped as structurally unreachable)"
-        )
-        X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
-        casebase_config = CasebaseFinetuneConfig(
-            X_casebase=X_casebase, y_casebase=y_casebase, X_default=X_default, y_default=y_default,
-            train_edges=casebase_train_edges, val_edges=casebase_val_edges,
-            casebase_lambda=casebase_lambda,
-        )
-    elif casebase_lambda != DEFAULT_CASEBASE_LAMBDA:
-        print(
-            "WARNING: --casebase-lambda given but --casebase-dataset wasn't -- "
-            "casebase_correction_loss has no effect without a dataset to regress against."
-        )
+    print(f"Loading casebase dataset from {casebase_dataset_path} ...")
+    casebase_dataset = torch.load(casebase_dataset_path, map_location=device, weights_only=False)
+    casebase_train_edges = casebase_dataset["train"]
+    casebase_val_edges = casebase_dataset["val"]
+    casebase_manifest = casebase_dataset["manifest"]
+    print(
+        f"casebase-internal edges: {casebase_manifest['num_train_edges']} train, "
+        f"{casebase_manifest['num_val_edges']} val "
+        f"({casebase_manifest['num_unreachable_dropped']} dropped as structurally unreachable)"
+    )
+    if casebase_lambda == 0.0:
+        print("casebase_lambda=0 -- casebase_correction_loss is loaded but inert for this run.")
+    X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
+    casebase_config = CasebaseFinetuneConfig(
+        X_casebase=X_casebase, y_casebase=y_casebase, X_default=X_default, y_default=y_default,
+        train_edges=casebase_train_edges, val_edges=casebase_val_edges,
+        casebase_lambda=casebase_lambda,
+    )
 
     freeze_all_except_trainable(model)
 
@@ -268,9 +265,7 @@ def main() -> None:
             f"protect_lambda={protect_lambda}, protect_sample_size={protect_sample_size}, "
             f"seed={seed}, num_protect_samples={protect_samples.shape[0]}",
             f"train pairs={manifest['num_train_pairs']}, val pairs={manifest['num_val_pairs']}",
-            f"casebase_dataset={casebase_dataset_path}, casebase_lambda={casebase_lambda}"
-            if casebase_config is not None
-            else "casebase_dataset=none (casebase_correction_loss off)",
+            f"casebase_dataset={casebase_dataset_path}, casebase_lambda={casebase_lambda}",
         ],
         md_path,
         mode="w",

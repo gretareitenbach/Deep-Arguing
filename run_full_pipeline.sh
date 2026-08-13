@@ -98,7 +98,7 @@ echo "# Stage 7/8: Fine-tune feature_weights_1 (irrelevance + casebase correctio
 echo "################################################################"
 python -m deeparguing.contest.scripts.finetune_irrelevance \
   --checkpoint model_checkpoint.pt --dataset irrelevance_finetune_dataset.pt \
-  --casebase-dataset casebase_finetune_dataset.pt --casebase-lambda 1.0 \
+  --casebase-dataset casebase_finetune_dataset.pt \
   --seed "$SEED"
 
 echo "################################################################"

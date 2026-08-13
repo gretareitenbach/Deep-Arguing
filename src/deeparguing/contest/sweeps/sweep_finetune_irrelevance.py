@@ -1,13 +1,24 @@
 """Grid-sweep ``finetune_irrelevance.py``'s hyperparameters -- ``lr``,
-``batch_size``, ``protect_margin``, ``protect_lambda``, ``protect_sample_size``
--- against a single fixed baseline checkpoint/dataset, and report each combo's
-outcome in a markdown report. ``chunk_size`` (a memory/compute chunking knob,
-not a modeling choice -- see ``correction_loss``'s docstring) and ``steps``
-(superseded by this sweep's own best-checkpoint tracking, same as
-``finetune_irrelevance.py``'s -- see below) are fixed, not swept. (A ``lam``
-axis, for the now-removed ``preservation_loss`` term, was swept here through
-2026-08-11 -- see updates.md and ``deeparguing.casebase_edge_weights.finetune``'s
-module docstring for why it's gone.)
+``batch_size``, ``protect_margin``, ``protect_lambda``, ``protect_sample_size``,
+``casebase_lambda`` -- against a single fixed baseline checkpoint/dataset, and
+report each combo's outcome in a markdown report. ``chunk_size`` (a
+memory/compute chunking knob, not a modeling choice -- see
+``correction_loss``'s docstring) and ``steps`` (superseded by this sweep's
+own best-checkpoint tracking, same as ``finetune_irrelevance.py``'s -- see
+below) are fixed, not swept. (A ``lam`` axis, for the now-removed
+``preservation_loss`` term, was swept here through 2026-08-11 -- see
+updates.md and ``deeparguing.casebase_edge_weights.finetune``'s module
+docstring for why it's gone.)
+
+``casebase_lambda`` axis added 2026-08-13, alongside ``finetune_irrelevance.py``
+making ``--casebase-dataset`` required and defaulting ``casebase_lambda`` to
+1.0 -- that default was carried over from what ``run_full_pipeline.sh`` had
+already been running (untuned), and the same day's full-pipeline run
+regressed test accuracy relative to baseline, so ``casebase_lambda`` needs
+its own comparison rather than staying fixed at a guessed value. Unlike the
+other axes, sweeping it costs the same per step as toggling it on (every
+step differentiably re-fits ``model.A`` -- see ``casebase_correction_loss``'s
+docstring), so this is more expensive per combo than the pre-existing axes.
 
 Motivation (2026-08-11, see updates.md): the first real fine-tune run showed
 val ``combined`` loss plateauing/overfitting well before its final step, at
@@ -42,8 +53,8 @@ import torch
 from tqdm import tqdm
 
 from deeparguing.casebase_edge_weights.finetune import (
-    TRAINABLE_FEATURE_EXTRACTOR_INDEX, assert_shares_partial_order,
-    freeze_all_except_trainable, run_finetune)
+    TRAINABLE_FEATURE_EXTRACTOR_INDEX, CasebaseFinetuneConfig,
+    assert_shares_partial_order, freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.global_optimize import _build_protect_set
 from deeparguing.contest.scripts.finetune_irrelevance import (
     DEFAULT_CHUNK_SIZE, DEFAULT_CONFIG_PATH, DEFAULT_EVAL_SPLIT,
@@ -63,9 +74,11 @@ DEFAULT_BATCH_SIZES = [64, 128]  # 0 means full-batch, see _parse_batch_sizes
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
 DEFAULT_PROTECT_LAMBDAS = [0.0, 1.0]
 DEFAULT_PROTECT_SAMPLE_SIZES = [100, 200]
+DEFAULT_CASEBASE_LAMBDAS = [0.0, 0.3, 1.0, 3.0]
 
 SWEEP_COLUMNS = [
     "lr", "batch_size", "protect_margin", "protect_lambda", "protect_sample_size",
+    "casebase_lambda",
 ]
 
 
@@ -76,6 +89,7 @@ class Combo:
     protect_margin: float
     protect_lambda: float
     protect_sample_size: int
+    casebase_lambda: float
 
 
 def _parse_floats(raw: str) -> list[float]:
@@ -95,13 +109,17 @@ def _run_combo(
     model, trainable_extractor, original_extractor_state: dict[str, Any],
     train_tensors: dict[str, torch.Tensor], val_tensors: dict[str, torch.Tensor],
     X_eval: torch.Tensor, y_eval: torch.Tensor,
+    casebase_edges: dict[str, dict[str, torch.Tensor]] | None,
     combo: Combo, steps: int, chunk_size: int, log_every: int, seed: int,
 ) -> tuple[Any, int, float]:
     """Reset the trainable extractor to the pre-finetune baseline and run one
     combo. The protect set is rebuilt fresh per combo (its
     ``protect_sample_size`` is itself swept, and rebuilding is cheap -- one
     forward pass), reseeding first so every combo's sampling starts from the
-    same RNG state.
+    same RNG state. ``casebase_edges`` (fixed across combos -- only
+    ``combo.casebase_lambda`` varies) is ``None`` when no
+    ``--casebase-dataset`` was given, in which case ``casebase_correction``
+    is always 0, same as ``finetune_irrelevance.py`` before 2026-08-13.
 
     Returns
     -------
@@ -114,11 +132,17 @@ def _run_combo(
     protect_samples, protect_target_classes = _build_protect_set(
         model, X_eval, y_eval, combo.protect_sample_size
     )
+    casebase_config = (
+        CasebaseFinetuneConfig(casebase_lambda=combo.casebase_lambda, **casebase_edges)
+        if casebase_edges is not None
+        else None
+    )
     start = time.perf_counter()
     result = run_finetune(
         model, train_tensors, val_tensors,
         combo.lr, steps, combo.batch_size, chunk_size,
         protect_samples, protect_target_classes, combo.protect_margin, combo.protect_lambda,
+        casebase_config=casebase_config,
         log_every=log_every, show_progress=False,
     )
     elapsed = time.perf_counter() - start
@@ -133,11 +157,15 @@ def _row_from_result(combo: Combo, result, num_protect_samples: int, elapsed: fl
         "protect_margin": combo.protect_margin,
         "protect_lambda": combo.protect_lambda,
         "protect_sample_size": combo.protect_sample_size,
+        "casebase_lambda": combo.casebase_lambda,
         "num_protect_samples": num_protect_samples,
         "best_step": result.best_step if result.best_step is not None else steps,
         "best_val_combined": result.best_val_losses.combined.item() if has_val else float("nan"),
         "best_val_correction": result.best_val_losses.correction.item() if has_val else float("nan"),
         "best_val_protect": result.best_val_losses.protect.item() if has_val else float("nan"),
+        "best_val_casebase_correction": (
+            result.best_val_losses.casebase_correction.item() if has_val else float("nan")
+        ),
         "final_val_combined": (
             result.final_val_losses.combined.item() if result.final_val_losses is not None else float("nan")
         ),
@@ -153,16 +181,18 @@ def _row_from_result(combo: Combo, result, num_protect_samples: int, elapsed: fl
 def _full_results_table(df: pd.DataFrame) -> str:
     header = (
         "| lr | batch_size | protect_margin | protect_lambda | protect_sample_size | "
-        "best_step | best_val_combined | final_val_combined | final_train_combined | "
-        "overfit_gap | elapsed (s) |"
+        "casebase_lambda | best_step | best_val_combined | best_val_casebase_correction | "
+        "final_val_combined | final_train_combined | overfit_gap | elapsed (s) |"
     )
-    sep = "|---|---|---|---|---|---|---|---|---|---|---|"
+    sep = "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     lines = [header, sep]
     for _, r in df.iterrows():
         lines.append(
             f"| {r['lr']:g} | {'full' if r['batch_size'] == 0 else int(r['batch_size'])} | "
             f"{r['protect_margin']:g} | {r['protect_lambda']:g} | {r['protect_sample_size']:g} | "
-            f"{r['best_step']:g} | {r['best_val_combined']:.6f} | {r['final_val_combined']:.6f} | "
+            f"{r['casebase_lambda']:g} | "
+            f"{r['best_step']:g} | {r['best_val_combined']:.6f} | {r['best_val_casebase_correction']:.6f} | "
+            f"{r['final_val_combined']:.6f} | "
             f"{r['final_train_combined']:.6f} | {r['overfit_gap']:+.6f} | {r['elapsed_sec']:.1f} |"
         )
     return "\n".join(lines)
@@ -224,9 +254,10 @@ def _write_report(
         f"- lr={best['lr']:g}, "
         f"batch_size={'full' if best['batch_size'] == 0 else int(best['batch_size'])}, "
         f"protect_margin={best['protect_margin']:g}, protect_lambda={best['protect_lambda']:g}, "
-        f"protect_sample_size={best['protect_sample_size']:g}",
+        f"protect_sample_size={best['protect_sample_size']:g}, casebase_lambda={best['casebase_lambda']:g}",
         f"- Best at step {best['best_step']:g}/{steps}: val combined={best['best_val_combined']:.6f} "
-        f"(correction={best['best_val_correction']:.6f}, protect={best['best_val_protect']:.6f})",
+        f"(correction={best['best_val_correction']:.6f}, protect={best['best_val_protect']:.6f}, "
+        f"casebase_correction={best['best_val_casebase_correction']:.6f})",
         f"- Final step ({steps}): val combined={best['final_val_combined']:.6f}, "
         f"train combined={best['final_train_combined']:.6f}, overfit gap={best['overfit_gap']:+.6f}",
         "",
@@ -257,6 +288,12 @@ def main() -> None:
     )
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dataset", default=None)
+    parser.add_argument(
+        "--casebase-dataset", default=None,
+        help="build_casebase_finetune_dataset.py output (see tuning/contest/finetune_irrelevance.yaml "
+        "for the default). If resolved to a path, casebase_correction_loss is wired into every combo "
+        "and --casebase-lambdas is swept; if not, casebase_lambda is forced to [0.0] for the whole grid.",
+    )
     parser.add_argument("--eval-split", default=None, choices=["val", "test"])
     parser.add_argument("--device", default=None)
     parser.add_argument("--steps", type=int, default=None, help=f"Fixed step budget per combo. Default: {DEFAULT_STEPS}.")
@@ -284,6 +321,11 @@ def main() -> None:
         "--protect-sample-sizes", default=",".join(str(x) for x in DEFAULT_PROTECT_SAMPLE_SIZES),
         help=f"Comma-separated protect_sample_size values. Default: {DEFAULT_PROTECT_SAMPLE_SIZES}.",
     )
+    parser.add_argument(
+        "--casebase-lambdas", default=",".join(str(x) for x in DEFAULT_CASEBASE_LAMBDAS),
+        help=f"Comma-separated casebase_lambda values. Default: {DEFAULT_CASEBASE_LAMBDAS}. "
+        "Ignored (forced to [0.0]) if --casebase-dataset doesn't resolve to a path.",
+    )
 
     parser.add_argument(
         "--max-combos", type=int, default=None,
@@ -297,6 +339,8 @@ def main() -> None:
 
     checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
     dataset_path = resolve_read_path(_required(args.dataset, config, "dataset", args.config))
+    casebase_dataset_arg = _resolved(args.casebase_dataset, config, "casebase_dataset", None)
+    casebase_dataset_path = resolve_read_path(casebase_dataset_arg) if casebase_dataset_arg else None
     eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
@@ -311,10 +355,15 @@ def main() -> None:
     protect_margins = _parse_floats(args.protect_margins)
     protect_lambdas = _parse_floats(args.protect_lambdas)
     protect_sample_sizes = _parse_ints(args.protect_sample_sizes)
+    if casebase_dataset_path is not None:
+        casebase_lambdas = _parse_floats(args.casebase_lambdas)
+    else:
+        print("No --casebase-dataset resolved -- casebase_lambda forced to [0.0] for the whole grid.")
+        casebase_lambdas = [0.0]
 
     combos = [
         Combo(*c) for c in itertools.product(
-            lrs, batch_sizes, protect_margins, protect_lambdas, protect_sample_sizes,
+            lrs, batch_sizes, protect_margins, protect_lambdas, protect_sample_sizes, casebase_lambdas,
         )
     ]
     total_grid = len(combos)
@@ -347,6 +396,23 @@ def main() -> None:
     if train_tensors["targets"].shape[0] == 0:
         raise ValueError(f"{dataset_path} has 0 training pairs -- nothing to fine-tune against.")
 
+    casebase_edges = None
+    if casebase_dataset_path is not None:
+        print(f"Loading casebase dataset from {casebase_dataset_path} ...")
+        casebase_dataset = torch.load(casebase_dataset_path, map_location=device, weights_only=False)
+        casebase_manifest = casebase_dataset["manifest"]
+        print(
+            f"casebase-internal edges: {casebase_manifest['num_train_edges']} train, "
+            f"{casebase_manifest['num_val_edges']} val "
+            f"({casebase_manifest['num_unreachable_dropped']} dropped as structurally unreachable)"
+        )
+        X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
+        casebase_edges = {
+            "X_casebase": X_casebase, "y_casebase": y_casebase,
+            "X_default": X_default, "y_default": y_default,
+            "train_edges": casebase_dataset["train"], "val_edges": casebase_dataset["val"],
+        }
+
     # Pre-finetune snapshot every combo resets to before it starts -- fixed
     # across the whole sweep, computed once from the freshly loaded
     # (untouched) checkpoint.
@@ -361,7 +427,7 @@ def main() -> None:
     for combo in pbar:
         result, num_protect_samples, elapsed = _run_combo(
             model, trainable_extractor, original_extractor_state,
-            train_tensors, val_tensors, X_eval, y_eval,
+            train_tensors, val_tensors, X_eval, y_eval, casebase_edges,
             combo, steps, chunk_size, log_every, seed,
         )
         row = _row_from_result(combo, result, num_protect_samples, elapsed, steps)
