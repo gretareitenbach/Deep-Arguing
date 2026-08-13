@@ -2,7 +2,7 @@
 (``{source, target, dim, old_weight, new_weight}``, casebase-item-to-
 casebase-item) into a training-ready ``casebase_finetune_dataset.pt``, the
 casebase-internal counterpart to ``build_irrelevance_finetune_dataset.py``'s
-new-case-to-casebase pairs. Consumed by ``finetune_irrelevance.py``'s
+new-case-to-casebase pairs. Consumed by ``contest.scripts.run_finetune``'s
 ``--casebase-dataset`` flag, which regresses ``model.A`` toward these values
 via ``casebase_correction_loss`` -- see that function's docstring for why
 this needs the checkpoint's ``X_train``/``y_train``/``default_indexes``
@@ -13,7 +13,7 @@ Unlike ``contest_all_irrelevance.json``'s fixed filename,
 ``contest_all.py`` writes a timestamped ``contestation_<ts>.json`` -- pass
 the exact path via ``--contest-log`` (or the ``contest_log`` config key).
 
-Filtering (see ``finetune_irrelevance.py``'s module docstring for the
+Filtering (see ``contest.scripts.run_finetune``'s module docstring for the
 mechanism this depends on): with ``defaults_not_attack=True`` (CIFAR10's
 config), an edge whose source is a default case AND whose source/target
 labels differ is forced to exactly 0 in the attacks channel, structurally,

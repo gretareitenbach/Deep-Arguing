@@ -1,5 +1,5 @@
 """Evaluate an irrelevance-finetuned checkpoint's real classification impact
-on the held-out eval split. Everything ``finetune_irrelevance.py`` logs
+on the held-out eval split. Everything ``contest.scripts.run_finetune`` logs
 during training (correction/protect losses) only ever measures
 ``partial_order``'s raw output or a *sampled* protect set's margins -- this
 is the first point in the pipeline that checks what fine-tuning actually did
@@ -10,7 +10,7 @@ running ``model(X_eval)`` -- i.e. what would actually happen if a new image
 went through the model, no extra fitting or adjustment at eval time:
 
 - ``baseline``: the pre-finetune checkpoint.
-- ``finetuned``: ``finetune_irrelevance.py``'s output. Since 2026-08-12 (see
+- ``finetuned``: ``contest.scripts.run_finetune``'s output. Since 2026-08-12 (see
   updates.md) that script recomputes ``model.A`` from the fine-tuned
   ``feature_weights_1`` before saving, so this checkpoint's ``A`` is already
   consistent with its own network -- no refit needed here. (Older
@@ -27,7 +27,7 @@ the two checkpoints' ``A``, not something this evaluation measures.
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/evaluate_irrelevance_finetune.yaml``); any CLI flag
 overrides the corresponding config value -- same pattern as
-``finetune_irrelevance.py``.
+``contest.scripts.run_finetune``.
 
 Usage::
 
@@ -44,9 +44,8 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.contest.scripts.finetune_irrelevance import (_load_config,
-                                                                _required,
-                                                                _resolved)
+from deeparguing.contest.scripts.run_finetune import (_load_config,
+                                                        _required, _resolved)
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.evals.evals import evaluate_model
 from deeparguing.gradual_aacbr import GradualAACBR

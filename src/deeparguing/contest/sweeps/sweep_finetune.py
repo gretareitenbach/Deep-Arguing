@@ -1,16 +1,16 @@
-"""Grid-sweep ``finetune_irrelevance.py``'s hyperparameters -- ``lr``,
+"""Grid-sweep ``contest.scripts.run_finetune``'s hyperparameters -- ``lr``,
 ``batch_size``, ``protect_margin``, ``protect_lambda``, ``protect_sample_size``,
 ``casebase_lambda`` -- against a single fixed baseline checkpoint/dataset, and
 report each combo's outcome in a markdown report. ``chunk_size`` (a
 memory/compute chunking knob, not a modeling choice -- see
 ``correction_loss``'s docstring) and ``steps`` (superseded by this sweep's
-own best-checkpoint tracking, same as ``finetune_irrelevance.py``'s -- see
+own best-checkpoint tracking, same as ``contest.scripts.run_finetune``'s -- see
 below) are fixed, not swept. (A ``lam`` axis, for the now-removed
 ``preservation_loss`` term, was swept here through 2026-08-11 -- see
 updates.md and ``deeparguing.casebase_edge_weights.finetune``'s module
 docstring for why it's gone.)
 
-``casebase_lambda`` axis added 2026-08-13, alongside ``finetune_irrelevance.py``
+``casebase_lambda`` axis added 2026-08-13, alongside ``contest.scripts.run_finetune``
 making ``--casebase-dataset`` required and defaulting ``casebase_lambda`` to
 1.0 -- that default was carried over from what ``run_full_pipeline.sh`` had
 already been running (untuned), and the same day's full-pipeline run
@@ -25,17 +25,17 @@ val ``combined`` loss plateauing/overfitting well before its final step, at
 fixed ``lr=0.001``. Before trusting any hyperparameter comparison, each combo
 here is trained for a fixed, generous ``--steps`` budget and ranked by the
 *best* val ``combined`` loss it reached along the way (via ``run_finetune``'s
-built-in tracking -- the same mechanism ``finetune_irrelevance.py`` uses to
+built-in tracking -- the same mechanism ``contest.scripts.run_finetune`` uses to
 pick its saved checkpoint), not by whatever the final step happened to land
 on. That keeps the comparison fair across combos that converge at different
 rates.
 
 Usage::
 
-    python -m deeparguing.contest.sweeps.sweep_finetune_irrelevance
-    python -m deeparguing.contest.sweeps.sweep_finetune_irrelevance \\
+    python -m deeparguing.contest.sweeps.sweep_finetune
+    python -m deeparguing.contest.sweeps.sweep_finetune \\
         --lrs 0.0001,0.0003,0.001 --protect-lambdas 0,1,5 --max-combos 40 \\
-        --output finetune_irrelevance_sweep.md
+        --output finetune_sweep.md
 """
 
 import argparse
@@ -56,14 +56,14 @@ from deeparguing.casebase_edge_weights.finetune import (
     TRAINABLE_FEATURE_EXTRACTOR_INDEX, CasebaseFinetuneConfig,
     assert_shares_partial_order, freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.global_optimize import _build_protect_set
-from deeparguing.contest.scripts.finetune_irrelevance import (
+from deeparguing.contest.scripts.run_finetune import (
     DEFAULT_CHUNK_SIZE, DEFAULT_CONFIG_PATH, DEFAULT_EVAL_SPLIT,
     DEFAULT_LOG_EVERY, DEFAULT_SEED, DEFAULT_STEPS, _load_config, _required,
     _resolved)
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
-DEFAULT_OUTPUT = "finetune_irrelevance_sweep.md"
+DEFAULT_OUTPUT = "finetune_sweep.md"
 CSV_DECIMALS = 6
 LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
 
@@ -119,7 +119,7 @@ def _run_combo(
     same RNG state. ``casebase_edges`` (fixed across combos -- only
     ``combo.casebase_lambda`` varies) is ``None`` when no
     ``--casebase-dataset`` was given, in which case ``casebase_correction``
-    is always 0, same as ``finetune_irrelevance.py`` before 2026-08-13.
+    is always 0, same as ``contest.scripts.run_finetune`` before 2026-08-13.
 
     Returns
     -------
@@ -284,13 +284,13 @@ def main() -> None:
     parser.add_argument(
         "--config", default=DEFAULT_CONFIG_PATH,
         help="YAML file holding the fixed (non-swept) checkpoint/dataset paths "
-        "(see tuning/contest/finetune_irrelevance.yaml). --checkpoint/--dataset override it.",
+        "(see tuning/contest/finetune.yaml). --checkpoint/--dataset override it.",
     )
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dataset", default=None)
     parser.add_argument(
         "--casebase-dataset", default=None,
-        help="build_casebase_finetune_dataset.py output (see tuning/contest/finetune_irrelevance.yaml "
+        help="build_casebase_finetune_dataset.py output (see tuning/contest/finetune.yaml "
         "for the default). If resolved to a path, casebase_correction_loss is wired into every combo "
         "and --casebase-lambdas is swept; if not, casebase_lambda is forced to [0.0] for the whole grid.",
     )

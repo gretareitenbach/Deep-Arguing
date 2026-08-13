@@ -26,9 +26,10 @@ Before each checkpoint is saved, ``model.A`` IS recomputed (via
 ``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
 from whatever ``feature_weights_1`` weights are being saved -- new-case edges
 already go through the live, fine-tuned network at prediction time (they're
-computed fresh per call, see ``finetune.py``'s module docstring), so leaving
-``model.A`` at its pre-finetune value would mean two different versions of
-the relevance function coexist in the same argumentation graph.
+computed fresh per call, see ``deeparguing.casebase_edge_weights.finetune``'s
+module docstring), so leaving ``model.A`` at its pre-finetune value would
+mean two different versions of the relevance function coexist in the same
+argumentation graph.
 2026-08-12's evaluation (see updates.md) found recomputing ``A`` this way is
 accuracy-neutral on the full CIFAR10 test set relative to leaving it frozen,
 while removing that inconsistency -- see
@@ -36,7 +37,7 @@ while removing that inconsistency -- see
 recompute actually changed the graph's topology (not just edge weights).
 
 Hyperparameters and paths come from a YAML config file (default
-``tuning/contest/finetune_irrelevance.yaml``); any CLI flag overrides the
+``tuning/contest/finetune.yaml``); any CLI flag overrides the
 corresponding config value -- same pattern as ``contest_all.py``/
 ``contest_all_irrelevance.py``.
 
@@ -54,8 +55,8 @@ checkpoint falls back to the final one, with a warning.
 
 Usage::
 
-    python -m deeparguing.contest.scripts.finetune_irrelevance
-    python -m deeparguing.contest.scripts.finetune_irrelevance --lr 1e-3 --protect-lambda 1 --steps 200
+    python -m deeparguing.contest.scripts.run_finetune
+    python -m deeparguing.contest.scripts.run_finetune --lr 1e-3 --protect-lambda 1 --steps 200
 """
 
 import argparse
@@ -76,7 +77,7 @@ from deeparguing.output_paths import (resolve_read_path, resolve_write_path,
                                        today_output_dir)
 from deeparguing.md_log import write_markdown_log
 
-DEFAULT_CONFIG_PATH = "tuning/contest/finetune_irrelevance.yaml"
+DEFAULT_CONFIG_PATH = "tuning/contest/finetune.yaml"
 DEFAULT_LR = 1e-3
 DEFAULT_STEPS = 200
 DEFAULT_BATCH_SIZE = 128
@@ -194,7 +195,7 @@ def main() -> None:
     final_checkpoint_filename = _resolved(
         args.final_checkpoint_filename, config, "final_checkpoint_filename", DEFAULT_FINAL_CHECKPOINT_FILENAME
     )
-    log_filename = _resolved(args.log_filename, config, "log_filename", "finetune_irrelevance.md")
+    log_filename = _resolved(args.log_filename, config, "log_filename", "finetune.md")
 
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -257,7 +258,7 @@ def main() -> None:
 
     write_markdown_log(
         [
-            "--- IRRELEVANCE FINE-TUNE RUN ---",
+            "--- FINE-TUNE RUN ---",
             f"checkpoint={checkpoint}, dataset={dataset_path}",
             f"lr={lr}, steps={steps}, batch_size={batch_size}, "
             f"chunk_size={chunk_size}, device={device}",

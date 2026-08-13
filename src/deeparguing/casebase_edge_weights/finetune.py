@@ -456,13 +456,13 @@ def run_finetune(
     log_every: int = 10,
     on_eval: Callable[[int, FinetuneLosses, FinetuneLosses | None], None] | None = None,
     show_progress: bool = True,
-    progress_desc: str = "Fine-tuning irrelevance channel",
+    progress_desc: str = "Fine-tuning edge weights",
 ) -> FinetuneRunResult:
     """Train ``feature_weights_1`` for ``steps`` Adam updates against
     ``train_tensors``, tracking both the final-step weights and the
     best-val-``combined``-loss weights seen along the way (2026-08-11's
     200-step run plateaued/overfit on val well before its final step -- see
-    ``finetune_irrelevance.py``'s module docstring -- so callers should
+    ``contest.scripts.run_finetune``'s module docstring -- so callers should
     normally prefer ``best_extractor_state`` over ``final_extractor_state``).
 
     Assumes ``freeze_all_except_trainable(model)`` has already been called
@@ -483,7 +483,7 @@ def run_finetune(
         0 pairs (no val split), in which case ``best_*`` falls back to the
         final step and ``on_eval``'s second argument is always ``None``.
     lr, steps, batch_size, chunk_size, protect_margin, protect_lambda :
-        See ``finetune_irrelevance.py``'s CLI flags of the same name.
+        See ``contest.scripts.run_finetune``'s CLI flags of the same name.
     casebase_config : CasebaseFinetuneConfig, optional
         Enables ``casebase_correction_loss`` (off, at zero extra cost, when
         ``None``). See ``CasebaseFinetuneConfig``.

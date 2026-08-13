@@ -20,4 +20,4 @@ device: null
 log_dir: null
 output_checkpoint_filename: finetuned_checkpoint.pt
 final_checkpoint_filename: finetuned_checkpoint_final.pt
-log_filename: finetune_irrelevance.md
+log_filename: finetune.md
