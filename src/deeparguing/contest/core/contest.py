@@ -10,7 +10,7 @@ best rival class by at least ``margin``. Falls back to
 """
 
 from dataclasses import dataclass, field
-from typing import NamedTuple, Sequence
+from typing import Callable, NamedTuple, Sequence
 
 import torch
 from torch import Tensor
@@ -194,6 +194,76 @@ def _mask_default_sources(model: GradualAACBR, vector: Tensor) -> Tensor:
     return vector.masked_fill(_default_source_mask(model.default_indexes, model.A.shape), 0.0)
 
 
+def _bisection_search(
+    trial: Callable[[float], tuple[Tensor, float, int | None, float]],
+    margin: float,
+    alpha_max: float = ALPHA_MAX,
+    factor: float = BACKTRACK_FACTOR,
+    max_backtracks: int = MAX_BACKTRACKS,
+    max_bisections: int = MAX_BISECTIONS,
+    bisect_tol: float = BISECT_TOL,
+) -> tuple[float, Tensor, float, int | None, float] | None:
+    """Two-phase bracket-then-bisect search for close to the smallest alpha
+    at which ``trial(alpha)``'s target beats its rival by at least
+    ``margin``. Shared by ``bisection_line_search`` here and in
+    ``new_case_contest.py`` -- the only thing that differs between
+    perturbing ``model.A`` vs. a sample's own ``E`` is what ``trial`` does.
+
+    Phase 1 (bracket): shrink alpha geometrically from ``alpha_max`` until a
+    trial crosses the margin. Phase 2 (bisect): binary search inside that
+    bracket to converge toward the minimal crossing point.
+
+    Parameters
+    ----------
+    trial : Callable[[float], tuple[Tensor, float, int | None, float]]
+        Given an alpha, returns ``(perturbed_value, target_strength,
+        rival_class, rival_strength)`` for that trial step.
+    margin, alpha_max, factor, max_backtracks, max_bisections, bisect_tol
+        See ``bisection_line_search``.
+
+    Returns
+    -------
+    tuple | None
+        ``(accepted_alpha, new_value, new_target_strength, rival_class,
+        rival_strength)`` for the smallest known-crossing alpha found, or
+        the smallest-alpha trial if none crossed within ``max_backtracks``,
+        or ``None`` if ``max_backtracks == 0``.
+    """
+    def crossed(target: float, rival: float) -> bool:
+        return target - rival >= margin
+
+    # ---- Phase 1: bracket ----
+    alpha_lo, alpha_hi = 0.0, alpha_max
+    best: tuple[float, Tensor, float, int | None, float] | None = None
+    hi_result: tuple[Tensor, float, int | None, float] | None = None
+
+    alpha = alpha_max
+    for _ in range(max_backtracks):
+        trial_value, trial_target, rival_class, trial_rival = trial(alpha)
+        if crossed(trial_target, trial_rival):
+            alpha_hi, hi_result = alpha, (trial_value, trial_target, rival_class, trial_rival)
+            break
+        best = (alpha, trial_value, trial_target, rival_class, trial_rival)
+        alpha_lo = alpha
+        alpha *= factor
+    else:
+        return best  # never crossed within budget
+
+    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] ----
+    for _ in range(max_bisections):
+        if alpha_hi - alpha_lo < bisect_tol:
+            break
+        alpha_mid = (alpha_lo + alpha_hi) / 2
+        trial_value, trial_target, rival_class, trial_rival = trial(alpha_mid)
+        if crossed(trial_target, trial_rival):
+            alpha_hi, hi_result = alpha_mid, (trial_value, trial_target, rival_class, trial_rival)
+        else:
+            alpha_lo = alpha_mid
+
+    trial_value, trial_target, rival_class, trial_rival = hi_result
+    return alpha_hi, trial_value, trial_target, rival_class, trial_rival
+
+
 def bisection_line_search(
     model: GradualAACBR,
     sample: Tensor,
@@ -210,10 +280,8 @@ def bisection_line_search(
 ) -> tuple[float, Tensor, float, int | None, float] | None:
     """Two-phase search for close to the smallest alpha (along ``direction``)
     that makes target_class beat the best rival class by at least margin.
-
-    Phase 1 (bracket): shrink alpha geometrically from ``alpha_max`` until a
-    trial crosses the margin. Phase 2 (bisect): binary search inside that
-    bracket to converge toward the minimal crossing point.
+    See ``_bisection_search`` for the search itself; this just supplies the
+    ``model.A``-perturbing trial step.
 
     Returns ``(accepted_alpha, new_A, new_target_strength, rival_class,
     rival_strength)`` for the smallest known-crossing alpha found, or the
@@ -230,39 +298,9 @@ def bisection_line_search(
         )
         return trial_A, trial_target, rival_class, trial_rival
 
-    def crossed(target: float, rival: float) -> bool:
-        return target - rival >= margin
-
-    # ---- Phase 1: bracket ----
-    alpha_lo, alpha_hi = 0.0, alpha_max
-    best: tuple[float, Tensor, float, int | None, float] | None = None
-    hi_result: tuple[Tensor, float, int | None, float] | None = None
-
-    alpha = alpha_max
-    for _ in range(max_backtracks):
-        trial_A, trial_target, rival_class, trial_rival = trial(alpha)
-        if crossed(trial_target, trial_rival):
-            alpha_hi, hi_result = alpha, (trial_A, trial_target, rival_class, trial_rival)
-            break
-        best = (alpha, trial_A, trial_target, rival_class, trial_rival)
-        alpha_lo = alpha
-        alpha *= factor
-    else:
-        return best  # never crossed within budget
-
-    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] ----
-    for _ in range(max_bisections):
-        if alpha_hi - alpha_lo < bisect_tol:
-            break
-        alpha_mid = (alpha_lo + alpha_hi) / 2
-        trial_A, trial_target, rival_class, trial_rival = trial(alpha_mid)
-        if crossed(trial_target, trial_rival):
-            alpha_hi, hi_result = alpha_mid, (trial_A, trial_target, rival_class, trial_rival)
-        else:
-            alpha_lo = alpha_mid
-
-    trial_A, trial_target, rival_class, trial_rival = hi_result
-    return alpha_hi, trial_A, trial_target, rival_class, trial_rival
+    return _bisection_search(
+        trial, margin, alpha_max, factor, max_backtracks, max_bisections, bisect_tol
+    )
 
 
 def contest(

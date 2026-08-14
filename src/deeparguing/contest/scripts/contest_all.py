@@ -15,53 +15,19 @@ import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import torch
-import yaml
 
 from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
 from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
                                                      DIVERGENCE_BOUND,
                                                      MAX_BACKTRACKS, TOL,
                                                      batch_contest)
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.scripts.run_contest import load_all_samples, load_model
 from deeparguing.output_paths import resolve_read_path, today_output_dir
 
 DEFAULT_CONFIG_PATH = "tuning/contest/contest.yaml"
-
-
-def _load_config(config_path: str) -> dict[str, Any]:
-    path = Path(config_path)
-    if not path.exists():
-        print(
-            f"Warning: config file {config_path} not found -- proceeding with "
-            "CLI flags and library defaults only."
-        )
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _resolved(cli_value: Any, config: dict[str, Any], key: str, fallback: Any) -> Any:
-    """CLI flag (if given) overrides the config file's value, which
-    overrides ``fallback``. A ``null``/absent key in the config file both
-    fall through to ``fallback``."""
-    if cli_value is not None:
-        return cli_value
-    if config.get(key) is not None:
-        return config[key]
-    return fallback
-
-
-def _required(cli_value: Any, config: dict[str, Any], key: str, config_path: str) -> Any:
-    value = cli_value if cli_value is not None else config.get(key)
-    if value is None:
-        raise ValueError(
-            f"'{key}' was not given on the command line and is not set in "
-            f"{config_path} -- add it there or pass --{key.replace('_', '-')}."
-        )
-    return value
 
 
 def main() -> None:
@@ -148,25 +114,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
-    num_samples = _resolved(args.num_samples, config, "num_samples", None)
-    k = _resolved(args.k, config, "k", DEFAULT_K)
-    threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
-    margin = _resolved(args.margin, config, "margin", MARGIN)
-    max_iters = _resolved(args.max_iters, config, "max_iters", MAX_ITERS)
-    tol = _resolved(args.tol, config, "tol", TOL)
-    max_edits = _resolved(args.max_edits, config, "max_edits", None)
-    batch_size = _resolved(args.batch_size, config, "batch_size", None)
-    divergence_bound = _resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
-    alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
-    max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
-    checkpoint_filename = _resolved(args.checkpoint_filename, config, "checkpoint_filename", "contested_checkpoint.pt")
-    log_prefix = _resolved(args.log_prefix, config, "log_prefix", "contestation")
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(required(args.qbaf, config, "qbaf", args.config))
+    num_samples = resolved(args.num_samples, config, "num_samples", None)
+    k = resolved(args.k, config, "k", DEFAULT_K)
+    threshold = resolved(args.threshold, config, "threshold", THRESHOLD)
+    margin = resolved(args.margin, config, "margin", MARGIN)
+    max_iters = resolved(args.max_iters, config, "max_iters", MAX_ITERS)
+    tol = resolved(args.tol, config, "tol", TOL)
+    max_edits = resolved(args.max_edits, config, "max_edits", None)
+    batch_size = resolved(args.batch_size, config, "batch_size", None)
+    divergence_bound = resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
+    alpha_init = resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
+    max_backtracks = resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    log_dir_str = resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    checkpoint_filename = resolved(args.checkpoint_filename, config, "checkpoint_filename", "contested_checkpoint.pt")
+    log_prefix = resolved(args.log_prefix, config, "log_prefix", "contestation")
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
 
     with open(qbaf, "r", encoding="utf-8") as f:

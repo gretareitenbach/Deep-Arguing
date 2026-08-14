@@ -27,8 +27,8 @@ from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
                                                      batch_contest)
 from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
                                                MAX_ITERS, THRESHOLD)
-from deeparguing.contest.scripts.contest_all import (DEFAULT_CONFIG_PATH,
-                                                      _load_config)
+from deeparguing.contest.scripts.config_cli import load_config
+from deeparguing.contest.scripts.contest_all import DEFAULT_CONFIG_PATH
 from deeparguing.contest.scripts.run_contest import (load_all_samples,
                                                       load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
@@ -167,7 +167,7 @@ def main() -> None:
 
     torch.manual_seed(args.seed)
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
     device = args.device or config.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = args.checkpoint or config.get("checkpoint")
     qbaf_path = args.qbaf or config.get("qbaf")

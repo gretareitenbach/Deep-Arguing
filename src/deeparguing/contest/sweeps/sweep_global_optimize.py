@@ -27,7 +27,7 @@ from tqdm import tqdm
 
 from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
 from deeparguing.contest.core.batch_contest import ALPHA_INIT, DIVERGENCE_BOUND, MAX_BACKTRACKS, TOL
-from deeparguing.contest.scripts.contest_all import _load_config, _required, _resolved
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.global_optimize import (DEFAULT_CONFIG_PATH,
                                                   DEFAULT_EVAL_SPLIT,
                                                   global_optimize)
@@ -291,26 +291,26 @@ def main() -> None:
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
-    num_samples = _resolved(args.num_samples, config, "num_samples", None)
-    k = _resolved(args.k, config, "k", DEFAULT_K)
-    threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
-    margin = _resolved(args.margin, config, "margin", MARGIN)
-    max_iters = _resolved(args.max_iters, config, "max_iters", MAX_ITERS)
-    tol = _resolved(args.tol, config, "tol", TOL)
-    max_edits = _resolved(args.max_edits, config, "max_edits", None)
-    batch_size = _resolved(args.batch_size, config, "batch_size", None)
-    divergence_bound = _resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
-    alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
-    max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(required(args.qbaf, config, "qbaf", args.config))
+    num_samples = resolved(args.num_samples, config, "num_samples", None)
+    k = resolved(args.k, config, "k", DEFAULT_K)
+    threshold = resolved(args.threshold, config, "threshold", THRESHOLD)
+    margin = resolved(args.margin, config, "margin", MARGIN)
+    max_iters = resolved(args.max_iters, config, "max_iters", MAX_ITERS)
+    tol = resolved(args.tol, config, "tol", TOL)
+    max_edits = resolved(args.max_edits, config, "max_edits", None)
+    batch_size = resolved(args.batch_size, config, "batch_size", None)
+    divergence_bound = resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
+    alpha_init = resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
+    max_backtracks = resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    eval_batch_size = _resolved(args.eval_batch_size, config, "eval_batch_size", None)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    eval_batch_size = resolved(args.eval_batch_size, config, "eval_batch_size", None)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
 
     protect_lambdas = _parse_floats(args.protect_lambdas)
     eval_everys = _parse_ints(args.eval_everys)

@@ -19,11 +19,6 @@ went through the model, no extra fitting or adjustment at eval time:
   evaluates the checkpoint exactly as loaded, honestly reflecting what
   deploying that specific file would do.)
 
-To see whether fine-tuning changed the argumentation graph's *topology*
-(which edges exist / are blocked), not just accuracy, see
-``diff_finetune_edge_sparsity.py`` instead -- that's a direct tensor diff of
-the two checkpoints' ``A``, not something this evaluation measures.
-
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/evaluate_irrelevance_finetune.yaml``); any CLI flag
 overrides the corresponding config value -- same pattern as
@@ -44,8 +39,7 @@ import pandas as pd
 import torch
 from numpy.typing import NDArray
 
-from deeparguing.contest.scripts.run_finetune import (_load_config,
-                                                        _required, _resolved)
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.evals.evals import evaluate_model
 from deeparguing.gradual_aacbr import GradualAACBR
@@ -120,21 +114,21 @@ def main() -> None:
     parser.add_argument("--output-filename", default=None)
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
     baseline_checkpoint = resolve_read_path(
-        _required(args.baseline_checkpoint, config, "baseline_checkpoint", args.config)
+        required(args.baseline_checkpoint, config, "baseline_checkpoint", args.config)
     )
     finetuned_checkpoint = resolve_read_path(
-        _required(args.finetuned_checkpoint, config, "finetuned_checkpoint", args.config)
+        required(args.finetuned_checkpoint, config, "finetuned_checkpoint", args.config)
     )
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    batch_size = _resolved(args.batch_size, config, "batch_size", None)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
-    output_filename = _resolved(args.output_filename, config, "output_filename", DEFAULT_OUTPUT_FILENAME)
+    batch_size = resolved(args.batch_size, config, "batch_size", None)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    log_dir_str = resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    output_filename = resolved(args.output_filename, config, "output_filename", DEFAULT_OUTPUT_FILENAME)
 
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)

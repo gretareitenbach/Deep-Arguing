@@ -56,10 +56,10 @@ from deeparguing.casebase_edge_weights.finetune import (
     TRAINABLE_FEATURE_EXTRACTOR_INDEX, CasebaseFinetuneConfig,
     assert_shares_partial_order, freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.global_optimize import _build_protect_set
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.scripts.run_finetune import (
     DEFAULT_CHUNK_SIZE, DEFAULT_CONFIG_PATH, DEFAULT_EVAL_SPLIT,
-    DEFAULT_LOG_EVERY, DEFAULT_SEED, DEFAULT_STEPS, _load_config, _required,
-    _resolved)
+    DEFAULT_LOG_EVERY, DEFAULT_SEED, DEFAULT_STEPS)
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
@@ -335,20 +335,20 @@ def main() -> None:
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    dataset_path = resolve_read_path(_required(args.dataset, config, "dataset", args.config))
-    casebase_dataset_arg = _resolved(args.casebase_dataset, config, "casebase_dataset", None)
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    dataset_path = resolve_read_path(required(args.dataset, config, "dataset", args.config))
+    casebase_dataset_arg = resolved(args.casebase_dataset, config, "casebase_dataset", None)
     casebase_dataset_path = resolve_read_path(casebase_dataset_arg) if casebase_dataset_arg else None
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    steps = _resolved(args.steps, config, "steps", DEFAULT_STEPS)
-    chunk_size = _resolved(args.chunk_size, config, "chunk_size", DEFAULT_CHUNK_SIZE)
-    log_every = _resolved(args.log_every, config, "log_every", DEFAULT_LOG_EVERY)
-    seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    steps = resolved(args.steps, config, "steps", DEFAULT_STEPS)
+    chunk_size = resolved(args.chunk_size, config, "chunk_size", DEFAULT_CHUNK_SIZE)
+    log_every = resolved(args.log_every, config, "log_every", DEFAULT_LOG_EVERY)
+    seed = resolved(args.seed, config, "seed", DEFAULT_SEED)
 
     lrs = _parse_floats(args.lrs)
     batch_sizes = _parse_batch_sizes(args.batch_sizes)

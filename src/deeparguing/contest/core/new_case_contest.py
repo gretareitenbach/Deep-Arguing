@@ -32,8 +32,8 @@ from deeparguing.gradual_aacbr import GradualAACBR
 
 from .contest import (ALPHA_MAX, BACKTRACK_FACTOR, BISECT_TOL, DEFAULT_K,
                        LIVE_GRAD_THRESHOLD, MARGIN, MAX_BACKTRACKS,
-                       MAX_BISECTIONS, MAX_ITERS, THRESHOLD, _target_and_rival,
-                       select_top_k)
+                       MAX_BISECTIONS, MAX_ITERS, THRESHOLD, _bisection_search,
+                       _target_and_rival, select_top_k)
 from .grae import _batched_casebase_base_scores, _replay_default_strengths
 
 # ---- Config -------------------------------------------------------------
@@ -180,13 +180,9 @@ def bisection_line_search(
 ) -> tuple[float, Tensor, float, int | None, float] | None:
     """Two-phase search for close to the smallest alpha (along ``direction``)
     that makes ``target_class`` beat the best rival class by at least
-    ``margin`` -- same two-phase (bracket, then bisect) structure as
-    ``contest.py``'s ``bisection_line_search``, retargeted to perturb ``E``
-    instead of ``model.A``.
-
-    Phase 1 (bracket): shrink alpha geometrically from ``alpha_max`` until a
-    trial crosses the margin. Phase 2 (bisect): binary search inside that
-    bracket to converge toward the minimal crossing point.
+    ``margin``. See ``contest.py``'s ``_bisection_search`` for the shared
+    bracket-then-bisect search; this just supplies the ``E``-perturbing
+    trial step.
 
     Returns ``(accepted_alpha, new_E, new_target_strength, rival_class,
     rival_strength)`` for the smallest known-crossing alpha found, or the
@@ -205,39 +201,9 @@ def bisection_line_search(
         )
         return trial_E, trial_target, rival_class, trial_rival
 
-    def crossed(target: float, rival: float) -> bool:
-        return target - rival >= margin
-
-    # ---- Phase 1: bracket ----
-    alpha_lo, alpha_hi = 0.0, alpha_max
-    best: tuple[float, Tensor, float, int | None, float] | None = None
-    hi_result: tuple[Tensor, float, int | None, float] | None = None
-
-    alpha = alpha_max
-    for _ in range(max_backtracks):
-        trial_E, trial_target, rival_class, trial_rival = trial(alpha)
-        if crossed(trial_target, trial_rival):
-            alpha_hi, hi_result = alpha, (trial_E, trial_target, rival_class, trial_rival)
-            break
-        best = (alpha, trial_E, trial_target, rival_class, trial_rival)
-        alpha_lo = alpha
-        alpha *= factor
-    else:
-        return best  # never crossed within budget
-
-    # ---- Phase 2: bisect within [alpha_lo, alpha_hi] ----
-    for _ in range(max_bisections):
-        if alpha_hi - alpha_lo < bisect_tol:
-            break
-        alpha_mid = (alpha_lo + alpha_hi) / 2
-        trial_E, trial_target, rival_class, trial_rival = trial(alpha_mid)
-        if crossed(trial_target, trial_rival):
-            alpha_hi, hi_result = alpha_mid, (trial_E, trial_target, rival_class, trial_rival)
-        else:
-            alpha_lo = alpha_mid
-
-    trial_E, trial_target, rival_class, trial_rival = hi_result
-    return alpha_hi, trial_E, trial_target, rival_class, trial_rival
+    return _bisection_search(
+        trial, margin, alpha_max, factor, max_backtracks, max_bisections, bisect_tol
+    )
 
 
 def new_case_contest(

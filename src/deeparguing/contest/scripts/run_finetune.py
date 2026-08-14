@@ -32,9 +32,7 @@ mean two different versions of the relevance function coexist in the same
 argumentation graph.
 2026-08-12's evaluation (see updates.md) found recomputing ``A`` this way is
 accuracy-neutral on the full CIFAR10 test set relative to leaving it frozen,
-while removing that inconsistency -- see
-``deeparguing.contest.scripts.diff_finetune_edge_sparsity`` for how much the
-recompute actually changed the graph's topology (not just edge weights).
+while removing that inconsistency.
 
 Hyperparameters and paths come from a YAML config file (default
 ``tuning/contest/finetune.yaml``); any CLI flag overrides the
@@ -65,13 +63,13 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import yaml
 
 from deeparguing.casebase_edge_weights.finetune import (
     TRAINABLE_FEATURE_EXTRACTOR_INDEX, CasebaseFinetuneConfig,
     assert_shares_partial_order, freeze_all_except_trainable, run_finetune)
 from deeparguing.contest.core.contest import MARGIN
 from deeparguing.contest.global_optimize import _build_protect_set
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.scripts.run_contest import load_fitted_model_and_data
 from deeparguing.output_paths import (resolve_read_path, resolve_write_path,
                                        today_output_dir)
@@ -90,33 +88,6 @@ DEFAULT_PROTECT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 0
 DEFAULT_FINAL_CHECKPOINT_FILENAME = "finetuned_checkpoint_final.pt"
 DEFAULT_CASEBASE_LAMBDA = 1.0
-
-
-def _load_config(config_path: str) -> dict[str, Any]:
-    path = Path(config_path)
-    if not path.exists():
-        print(f"Warning: config file {config_path} not found -- using CLI/defaults only.")
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _resolved(cli_value: Any, config: dict[str, Any], key: str, fallback: Any) -> Any:
-    if cli_value is not None:
-        return cli_value
-    if config.get(key) is not None:
-        return config[key]
-    return fallback
-
-
-def _required(cli_value: Any, config: dict[str, Any], key: str, config_path: str) -> Any:
-    value = cli_value if cli_value is not None else config.get(key)
-    if value is None:
-        raise ValueError(
-            f"'{key}' was not given on the command line and is not set in "
-            f"{config_path} -- add it there or pass --{key.replace('_', '-')}."
-        )
-    return value
 
 
 def main() -> None:
@@ -165,37 +136,37 @@ def main() -> None:
     parser.add_argument("--log-filename", default=None)
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    dataset_path = resolve_read_path(_required(args.dataset, config, "dataset", args.config))
-    lr = _resolved(args.lr, config, "lr", DEFAULT_LR)
-    steps = _resolved(args.steps, config, "steps", DEFAULT_STEPS)
-    batch_size = _resolved(args.batch_size, config, "batch_size", DEFAULT_BATCH_SIZE)
-    chunk_size = _resolved(args.chunk_size, config, "chunk_size", DEFAULT_CHUNK_SIZE)
-    log_every = _resolved(args.log_every, config, "log_every", DEFAULT_LOG_EVERY)
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    dataset_path = resolve_read_path(required(args.dataset, config, "dataset", args.config))
+    lr = resolved(args.lr, config, "lr", DEFAULT_LR)
+    steps = resolved(args.steps, config, "steps", DEFAULT_STEPS)
+    batch_size = resolved(args.batch_size, config, "batch_size", DEFAULT_BATCH_SIZE)
+    chunk_size = resolved(args.chunk_size, config, "chunk_size", DEFAULT_CHUNK_SIZE)
+    log_every = resolved(args.log_every, config, "log_every", DEFAULT_LOG_EVERY)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    protect_margin = _resolved(args.protect_margin, config, "protect_margin", DEFAULT_PROTECT_MARGIN)
-    protect_lambda = _resolved(args.protect_lambda, config, "protect_lambda", DEFAULT_PROTECT_LAMBDA)
-    protect_sample_size = _resolved(
+    protect_margin = resolved(args.protect_margin, config, "protect_margin", DEFAULT_PROTECT_MARGIN)
+    protect_lambda = resolved(args.protect_lambda, config, "protect_lambda", DEFAULT_PROTECT_LAMBDA)
+    protect_sample_size = resolved(
         args.protect_sample_size, config, "protect_sample_size", DEFAULT_PROTECT_SAMPLE_SIZE
     )
-    seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
+    seed = resolved(args.seed, config, "seed", DEFAULT_SEED)
     casebase_dataset_path = resolve_read_path(
-        _required(args.casebase_dataset, config, "casebase_dataset", args.config)
+        required(args.casebase_dataset, config, "casebase_dataset", args.config)
     )
-    casebase_lambda = _resolved(args.casebase_lambda, config, "casebase_lambda", DEFAULT_CASEBASE_LAMBDA)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
-    output_checkpoint_filename = _resolved(
+    casebase_lambda = resolved(args.casebase_lambda, config, "casebase_lambda", DEFAULT_CASEBASE_LAMBDA)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    log_dir_str = resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    output_checkpoint_filename = resolved(
         args.output_checkpoint_filename, config, "output_checkpoint_filename", "finetuned_checkpoint.pt"
     )
-    final_checkpoint_filename = _resolved(
+    final_checkpoint_filename = resolved(
         args.final_checkpoint_filename, config, "final_checkpoint_filename", DEFAULT_FINAL_CHECKPOINT_FILENAME
     )
-    log_filename = _resolved(args.log_filename, config, "log_filename", "finetune.md")
+    log_filename = resolved(args.log_filename, config, "log_filename", "finetune.md")
 
     log_dir = Path(log_dir_str)
     log_dir.mkdir(parents=True, exist_ok=True)
