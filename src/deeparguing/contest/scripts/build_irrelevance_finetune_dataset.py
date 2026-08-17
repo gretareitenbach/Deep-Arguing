@@ -1,24 +1,10 @@
-"""Serialize `contest_all_irrelevance.json`'s touched
-``(sample, casebase_item, old_E, corrected_E)`` triples into a training-ready
-``irrelevance_finetune_dataset.pt``, per ``week7_checklist.md``'s Tuesday plan.
-
-Only samples ``contest_all_irrelevance.py`` actually flipped are used --
-``corrected_E`` for a non-flipped sample is the search's best attempt after
-plateauing/hitting max_iters, not a verified fix, and this dataset is meant
-to be regressed against as ground truth.
-
-Split is by *sample* (not by individual touched pair): every touched pair
-belonging to a given sample goes entirely into train or entirely into val,
-so a fine-tuned model's val performance isn't inflated by having seen other
-edges of the same sample during training.
+"""Serialize contest_all_irrelevance.json's touched
+(sample, casebase_item, old_E, corrected_E) triples into
+irrelevance_finetune_dataset.pt.
 
 Usage::
 
     python -m deeparguing.contest.scripts.build_irrelevance_finetune_dataset
-    python -m deeparguing.contest.scripts.build_irrelevance_finetune_dataset \\
-        --contest-log outputs/10Aug2026/contest_all_irrelevance.json \\
-        --checkpoint outputs/30Jul2026/model_checkpoint.pt \\
-        --qbaf outputs/30Jul2026/misclassified_qbaf.json
 """
 
 import argparse
@@ -40,7 +26,7 @@ DEFAULT_SEED = 0
 
 
 def _gather_rows(contest_log: dict) -> list[dict]:
-    """One row per touched (sample, casebase_item) pair, flipped samples only."""
+    """One row per (sample, casebase_item) pair, flipped samples only."""
     rows = []
     for sample in contest_log["samples"]:
         if not sample.get("flipped"):
@@ -124,8 +110,7 @@ def main() -> None:
     if "schema_version" not in contest_log.get("config", {}):
         raise ValueError(
             f"{contest_log_path} predates touched_edges logging (no "
-            "config.schema_version) -- re-run contest_all_irrelevance.py "
-            "first (with --resume, it'll detect the mismatch and redo the run)."
+            "config.schema_version)."
         )
 
     print(f"Loading qbaf from {qbaf_path} ...")

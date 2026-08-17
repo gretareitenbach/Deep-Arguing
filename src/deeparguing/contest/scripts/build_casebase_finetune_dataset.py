@@ -1,35 +1,10 @@
-"""Serialize a ``contest_all.py`` run's touched ``model.A`` edges
-(``{source, target, dim, old_weight, new_weight}``, casebase-item-to-
-casebase-item) into a training-ready ``casebase_finetune_dataset.pt``, the
-casebase-internal counterpart to ``build_irrelevance_finetune_dataset.py``'s
-new-case-to-casebase pairs. Consumed by ``contest.scripts.run_finetune``'s
-``--casebase-dataset`` flag, which regresses ``model.A`` toward these values
-via ``casebase_correction_loss`` -- see that function's docstring for why
-this needs the checkpoint's ``X_train``/``y_train``/``default_indexes``
-(to differentiably re-fit through), not just the touched-edge values
-themselves.
-
-Unlike ``contest_all_irrelevance.json``'s fixed filename,
-``contest_all.py`` writes a timestamped ``contestation_<ts>.json`` -- pass
-the exact path via ``--contest-log`` (or the ``contest_log`` config key).
-
-Filtering (see ``contest.scripts.run_finetune``'s module docstring for the
-mechanism this depends on): with ``defaults_not_attack=True`` (CIFAR10's
-config), an edge whose source is a default case AND whose source/target
-labels differ is forced to exactly 0 in the attacks channel, structurally,
-regardless of ``feature_weights_1`` -- ``casebase_correction_loss`` could
-never fit a nonzero target there. Such edges are dropped, with a warning
-giving the count, rather than silently included as an unfittable residual.
-
-Split is by *edge* (not by sample -- there's no "sample" grouping concept
-for casebase-internal pairs; every touched edge is already the finest-grained
-unit here).
+"""Serialize a contest_all.py run's touched model.A edges
+({source, target, dim, old_weight, new_weight}, casebase-item-to-
+casebase-item) into casebase_finetune_dataset.pt.
 
 Usage::
 
-    python -m deeparguing.contest.scripts.build_casebase_finetune_dataset \\
-        --contest-log outputs/12Aug2026/contestation_20260812T120000Z.json \\
-        --checkpoint outputs/30Jul2026/model_checkpoint.pt
+    python -m deeparguing.contest.scripts.build_casebase_finetune_dataset
 """
 
 import argparse
@@ -50,10 +25,9 @@ DEFAULT_SEED = 0
 def _unreachable_mask(
     source_idx: torch.Tensor, target_idx: torch.Tensor, y_train: torch.Tensor, default_indexes: torch.Tensor,
 ) -> torch.Tensor:
-    """True where an edge is structurally forced to 0 regardless of
+    """True where an edge is forced to 0 regardless of
     feature_weights_1: source is a default case, and source/target labels
-    differ (``defaults_not_attack``'s effect on the attacks channel --
-    supports aren't default-masked, so same-label default edges are fine).
+    differ.
     """
     is_default_source = torch.isin(source_idx, default_indexes)
     differing_labels = torch.any(y_train[source_idx] != y_train[target_idx], dim=-1)
@@ -108,9 +82,6 @@ def main() -> None:
     print(f"{len(touched_edges)} touched edges in log")
 
     print(f"Loading y_train/default_indexes from {checkpoint_path} ...")
-    # Only reads saved tensors, not the full data pipeline (no dataset
-    # download/access needed -- y_train/default_indexes are exactly what
-    # _unreachable_mask needs, straight off the checkpoint).
     checkpoint = torch.load(checkpoint_path, map_location=args.device, weights_only=False)
     y_train = checkpoint["y_train"]
     default_indexes = checkpoint["default_indexes"]
@@ -128,8 +99,7 @@ def main() -> None:
     if num_unreachable:
         print(
             f"WARNING: dropped {num_unreachable} touched edge(s) whose source is a default "
-            "case with a differing-label target -- structurally forced to 0 regardless of "
-            "feature_weights_1 (defaults_not_attack), can't be fit. See module docstring."
+            "case with a differing-label target."
         )
 
     train_indices, val_indices = _split_by_edge(len(rows), args.val_frac, args.seed)

@@ -1,14 +1,5 @@
 """Run a single joint optimization over every misclassified sample against a
-shared ``model.A``, via ``batch_contest()``, instead of contesting each
-sample sequentially. Hyperparameters and dataset/checkpoint paths come from
-a YAML config file (default ``tuning/contest/contest.yaml``); any CLI flag
-overrides the corresponding config value.
-
-Usage::
-
-    python -m deeparguing.contest.scripts.contest_all
-    python -m deeparguing.contest.scripts.contest_all --config tuning/contest/contest.yaml
-    python -m deeparguing.contest.scripts.contest_all --k 10 --margin 0.005
+shared model adjacency.
 """
 
 import argparse
@@ -101,16 +92,13 @@ def main() -> None:
         "--checkpoint-filename",
         default=None,
         help="Filename (under log-dir) for the saved checkpoint. Default: "
-        "'contested_checkpoint.pt'. Override this in a variant config (e.g. "
-        "'pruned_contested_checkpoint.pt') so it doesn't collide with "
-        "another variant's output landing in the same date folder.",
+        "'contested_checkpoint.pt'.",
     )
     parser.add_argument(
         "--log-prefix",
         default=None,
         help="Filename prefix (under log-dir) for the timestamped JSON log. "
-        "Default: 'contestation'. Same collision-avoidance purpose as "
-        "--checkpoint-filename.",
+        "Default: 'contestation'.",
     )
     args = parser.parse_args()
 

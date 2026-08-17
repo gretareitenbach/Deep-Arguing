@@ -24,20 +24,9 @@ from qbaf_fixtures import (
     make_fitted_model as _make_qbaf_model,
 )
 
-# ---------------------------------------------------------------------------
-# Shared small synthetic EW-QBAF -- see ``tests/qbaf_fixtures.py`` (5
-# casebase arguments, 1 default argument, 2 new cases) so the
-# strengths/G-RAEs behind ``contest``'s decisions are already known-good.
-# ---------------------------------------------------------------------------
-
 
 def _make_fitted_model(max_iters: int) -> GradualAACBR:
     return _make_qbaf_model(SigmoidSemantics(max_iters=max_iters, epsilon=0))
-
-
-# ---------------------------------------------------------------------------
-# select_top_k
-# ---------------------------------------------------------------------------
 
 
 def test_select_top_k_orders_by_absolute_magnitude():
@@ -52,19 +41,6 @@ def test_select_top_k_respects_k():
     assert indices.tolist() == [1]
 
 
-# ---------------------------------------------------------------------------
-# _default_source_mask / _mask_default_sources
-#
-# fit() never lets a default/topic argument originate an edge (see
-# gradual_aacbr.py's __prepare_default/attackers_default_mask). A real
-# checkpoint showed contest edge-selection ignoring that invariant: after
-# pruning, batch_contest picked 3 brand-new edges *out of* a class's own
-# default argument, clearing 57/1661 targeted samples while collapsing
-# ~700 previously-correct same-class predictions into a rival class. These
-# tests pin down the fix.
-# ---------------------------------------------------------------------------
-
-
 def _fake_model(n: int, default_indexes: list[int], defaults_not_attack: bool = True):
     return SimpleNamespace(
         A=torch.zeros(n, n, 1),
@@ -74,15 +50,12 @@ def _fake_model(n: int, default_indexes: list[int], defaults_not_attack: bool = 
 
 
 def test_default_source_mask_flags_only_edges_out_of_default_nodes():
-    # n=3, d=1, default node is index 1 -- only entries with source==1
-    # (flat indices 3, 4, 5) should be flagged.
     mask = _default_source_mask(torch.tensor([1]), torch.Size([3, 3, 1]))
     assert mask.tolist() == [False, False, False, True, True, True, False, False, False]
 
 
 def test_mask_default_sources_zeroes_edges_from_default_nodes():
     model = _fake_model(n=3, default_indexes=[1])
-    # Flat layout is (source, target, dim); source==1 occupies indices 3-5.
     vector = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
 
     masked = _mask_default_sources(model, vector)
@@ -100,22 +73,13 @@ def test_mask_default_sources_is_noop_when_defaults_may_attack():
 
 
 def test_select_top_k_after_masking_skips_a_default_sourced_edge():
-    """Composition test matching the real call site in ``contest()``: the
-    single largest-magnitude entry sits on an edge sourced from the default
-    node (flat index 4, source==1) and must lose out to the next-largest
-    once masked, instead of ever being handed to ``select_top_k``."""
     model = _fake_model(n=3, default_indexes=[1])
     grae_vector = torch.tensor([1.0, 2.0, 3.0, 4.0, 100.0, 6.0, 7.0, 8.0, 9.0])
 
     masked = _mask_default_sources(model, grae_vector)
     indices = select_top_k(masked, k=1)
 
-    assert indices.tolist() == [8]  # the 100.0 at a default-sourced edge is excluded
-
-
-# ---------------------------------------------------------------------------
-# bisection_line_search
-# ---------------------------------------------------------------------------
+    assert indices.tolist() == [8]
 
 
 def _top_k_direction(model, new_case, target_class, k=2):
@@ -137,8 +101,6 @@ def test_bisection_line_search_finds_a_crossing_alpha():
 
     assert step is not None
     alpha, new_A, new_target_strength, rival_class, rival_strength = step
-    # single-default-argument casebase -> no real rival, threshold is the
-    # fixed virtual competitor
     assert rival_class is None
     assert rival_strength == THRESHOLD
     assert new_target_strength >= THRESHOLD + MARGIN
@@ -173,15 +135,10 @@ def test_bisection_line_search_returns_none_when_max_backtracks_is_zero():
 
 
 def test_bisection_line_search_refines_below_alpha_max_when_it_overshoots():
-    """If alpha_max itself crosses the margin on the first trial, bisection
-    should keep narrowing instead of accepting alpha_max outright -- unlike
-    plain backtracking, which would return alpha_max unrefined."""
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
     edge_indices, direction = _top_k_direction(model, new_case, TARGET_INDEX)
 
-    # A very generous margin/threshold gap forces alpha_max to overshoot
-    # substantially, giving bisection real room to refine downward.
     step = bisection_line_search(
         model, new_case, TARGET_INDEX, edge_indices, direction,
         threshold=0.0, margin=0.01, alpha_max=1.0,
@@ -193,17 +150,12 @@ def test_bisection_line_search_refines_below_alpha_max_when_it_overshoots():
     assert alpha <= 1.0
 
 
-# ---------------------------------------------------------------------------
-# contest
-# ---------------------------------------------------------------------------
-
-
 def test_contest_finds_a_crossing_step_and_commits_it_to_model_A():
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
     before = model(new_case)[0, TARGET_INDEX].item()
-    assert before < THRESHOLD + MARGIN  # sanity: starts below the boundary
+    assert before < THRESHOLD + MARGIN
 
     result = contest(model, new_case, TARGET_INDEX, k=2, max_iters=10)
 
@@ -211,14 +163,12 @@ def test_contest_finds_a_crossing_step_and_commits_it_to_model_A():
     assert result.success
     assert result.final_target_strength is not None
     assert result.final_target_strength >= THRESHOLD + MARGIN
-    # single-default-argument casebase -> no real rival, threshold stands in
     assert result.final_rival_class is None
     assert result.final_rival_strength == THRESHOLD
     assert result.iterations >= 1
     assert result.max_weight_delta > 0
     assert len(result.edge_trace) == result.iterations
 
-    # the accepted step must persist on the model, not just a trial copy
     after = model(new_case)[0, TARGET_INDEX].item()
     assert after == pytest.approx(result.final_target_strength)
 
@@ -272,14 +222,7 @@ def test_contest_raises_on_batch_size_other_than_one():
         contest(model, new_cases, TARGET_INDEX)
 
 
-# ---------------------------------------------------------------------------
-# contest -- max_edits
-# ---------------------------------------------------------------------------
-
-
 def test_contest_respects_max_edits_budget_with_k_one():
-    """With k=1, at most one new edge is introduced per iteration, so
-    max_edits is an exact (not just soft) cap on the touched-edge count."""
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
@@ -290,23 +233,17 @@ def test_contest_respects_max_edits_budget_with_k_one():
 
 
 def test_contest_can_overshoot_max_edits_within_one_iterations_k():
-    """max_edits is only checked after a step is accepted, so one
-    iteration's top-k selection can still push the touched count past the
-    cap before the next check -- same soft-cap semantics as
-    batch_contest's max_edits."""
     model = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)
 
     result = contest(model, new_case, TARGET_INDEX, k=3, max_iters=20, max_edits=1)
 
-    assert len(result.edge_trace) == 1  # stopped right after the first accepted step
+    assert len(result.edge_trace) == 1
     touched = {eid for step in result.edge_trace for eid in step.edge_ids}
-    assert len(touched) == 3  # all k edges from that one step -- past the cap of 1
+    assert len(touched) == 3
 
 
 def test_contest_max_edits_none_matches_unbounded_default():
-    """Sanity: omitting max_edits (or passing None explicitly) must behave
-    identically to the pre-max_edits code path."""
     model_a = _make_fitted_model(max_iters=5)
     model_b = _make_fitted_model(max_iters=5)
     new_case = torch.tensor([[6]], dtype=torch.float32)

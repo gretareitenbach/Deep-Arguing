@@ -1,25 +1,6 @@
-"""
-src/deeparguing/contest/core/new_case_contest.py
-
-Single-sample contestability search restricted to a new case's own edges
-into the casebase (``model.new_cases_attacks_adjacency``), instead of
-``contest.py``'s edits to the shared ``model.A``. Same bracket-and-bisect
-line search as ``contest.py``, retargeted from ``A`` to a sample's own
-irrelevance row ``E`` (``E = -irrelevance_edge_weights(sample, casebase)``).
-
-Unlike ``contest()``, nothing is ever written back onto the model: ``E`` is
-recomputed from scratch by the network on every real forward pass (see
-``GradualAACBR.__new_case_influence``), so there is nothing meaningful to
-persist there -- an edit committed to ``model.new_cases_attacks_adjacency``
-would just be overwritten the next time anything calls ``model(...)``. This
-also means ``_new_case_grae`` cannot simply reread ``model``'s live state
-across outer iterations the way ``contest.py``'s ``_casebase_grae`` rereads
-``model.A`` (which ``contest()`` *does* mutate in place each iteration) --
-it differentiates at an explicitly-passed ``E`` instead, so the gradient
-direction stays correct as the search moves away from the network's
-original output. Callers collect the returned ``final_E`` (and the trace's
-old/new weights) for downstream use, e.g. Tuesday's fine-tuning dataset of
-``(sample, casebase_item, old_E, corrected_E)`` triples.
+"""Single-sample contestability search restricted to a new case's irrelevance edges
+into the casebase, instead of contest.py's edits to the shared model
+adjacency. (Same bracket-and-bisect line search as contest.py)
 """
 
 from dataclasses import dataclass, field
@@ -36,25 +17,11 @@ from .contest import (ALPHA_MAX, BACKTRACK_FACTOR, BISECT_TOL, DEFAULT_K,
                        _target_and_rival, select_top_k)
 from .grae import _batched_casebase_base_scores, _replay_default_strengths
 
-# ---- Config -------------------------------------------------------------
-
-# E = -irrelevance_edge_weights(...), and irrelevance is valued in [0, 1]
-# (RegularIrrelevance = 1 - partial_order, partial_order in [0, 1);
-# FeatureWeightedIrrelevance = sigmoid(...) in (0, 1)) -- so E's valid range
-# is [-1, 0], unlike _perturb_adjacency's [-1, 1] for A.
 E_MIN = -1.0
 E_MAX = 0.0
 
 
 class NewCaseEdgeTraceStep(NamedTuple):
-    """One accepted perturbation step, mirroring ``contest.py``'s
-    ``EdgeTraceStep`` but for ``E`` instead of ``A``.
-
-    Fields: edge_ids (flat indices into ``E``'s (n*d,) layout), alpha,
-    old_weights, new_weights, old_target_strength, new_target_strength,
-    old_rival_class, old_rival_strength, new_rival_class, new_rival_strength.
-    ``*_rival_class`` is ``None`` if target_class has no real rival.
-    """
 
     edge_ids: list[int]
     alpha: float
@@ -70,14 +37,10 @@ class NewCaseEdgeTraceStep(NamedTuple):
 
 @dataclass
 class NewCaseContestResult:
-    """Outcome of ``new_case_contest()``: whether the target class flipped,
-    how many iterations it took, the largest single ``E``-entry change
-    made, the full step-by-step trace, the final target/rival strengths,
-    and both the starting and final ``E``.
-
-    ``initial_E``/``final_E`` are included (unlike ``ContestResult``, which
-    has no analogue) because nothing is persisted onto the model -- callers
-    must collect ``final_E`` themselves.
+    """Outcome of new_case_contest(): whether the target class flipped, how
+    many iterations it took, the largest single E-entry change made, the
+    full step-by-step trace, the final target/rival strengths, and both the
+    starting and final E.
     """
 
     success: bool
@@ -94,10 +57,9 @@ class NewCaseContestResult:
 def _perturb_new_case_edges(
     E: Tensor, edge_indices: Tensor, direction: Tensor, alpha: float
 ) -> Tensor:
-    """Copy of ``E`` (a single sample's (n, d) row of
-    ``model.new_cases_attacks_adjacency``) with the entries at
-    ``edge_indices`` (flat indices) shifted by ``alpha * direction`` and
-    clamped to ``[E_MIN, E_MAX]``; all other entries are unchanged.
+    """Copy of E (a single sample's (n, d) row into the casebase) with the
+    entries at edge_indices shifted by alpha * direction and clamped to
+    [E_MIN, E_MAX]; all other entries are unchanged.
     """
     new_E = E.detach().clone()
     flat = new_E.view(-1)
@@ -112,19 +74,11 @@ def _new_case_grae(
     casebase_base_scores: Tensor,
     new_cases_base_scores: Tensor,
 ) -> Tensor:
-    """Gradient of ``target_class``'s strength w.r.t. every entry of ``E``
-    (a single sample's own (n, d) row into the casebase), evaluated *at*
-    the given ``E`` -- which may already be a search-perturbed value, not
-    the network's live output.
-
-    Reuses ``grae.py``'s ``_replay_default_strengths`` for the aggregation/
-    influence/semantics replay (``model.A`` is detached first: it may carry
-    a live graph back to the trainable partial-order network from ``fit()``,
-    and we only want the gradient w.r.t. ``E``, not a wasted -- or
-    potentially graph-already-freed -- backward through ``A`` too).
-
-    Returns a flattened (n*d,) tensor matching ``select_top_k``'s index
-    convention.
+    """Gradient of target_class's strength w.r.t. every entry of E, evaluated
+    at the given E (which may already be a search-perturbed value, not the
+    network's live output). model.A is detached first since only the
+    gradient w.r.t. E is wanted. Returns a flattened (n*d,) tensor matching
+    select_top_k's index convention.
     """
     assert model.A is not None
     A = model.A.detach()
@@ -143,16 +97,9 @@ def _forward_new_case_strengths(
     casebase_base_scores: Tensor,
     new_cases_base_scores: Tensor,
 ) -> Tensor:
-    """Trial forward pass with ``model.A`` fixed and the sample's own new-
-    case row set to ``E`` (shape (1, n, d)), by replaying ``grae.py``'s
-    ``_replay_default_strengths`` -- so neither ``model.A`` nor any live
-    model state is touched, and no repeated ``compute_base_scores`` calls
-    are needed once the caller has hoisted ``casebase_base_scores``/
-    ``new_cases_base_scores`` (both invariant across the whole search: they
-    depend only on ``model.A``/``model.X_train``/the sample, none of which
-    ``new_case_contest`` ever changes).
-
-    Returns every default class's strength, shape (D,).
+    """Trial forward pass with model.A fixed and the sample's own new-case
+    row set to E, without touching any live model state. Returns every
+    default class's strength, shape (D,).
     """
     assert model.A is not None
     with torch.no_grad():
@@ -178,16 +125,8 @@ def bisection_line_search(
     max_bisections: int = MAX_BISECTIONS,
     bisect_tol: float = BISECT_TOL,
 ) -> tuple[float, Tensor, float, int | None, float] | None:
-    """Two-phase search for close to the smallest alpha (along ``direction``)
-    that makes ``target_class`` beat the best rival class by at least
-    ``margin``. See ``contest.py``'s ``_bisection_search`` for the shared
-    bracket-then-bisect search; this just supplies the ``E``-perturbing
-    trial step.
-
-    Returns ``(accepted_alpha, new_E, new_target_strength, rival_class,
-    rival_strength)`` for the smallest known-crossing alpha found, or the
-    smallest-alpha trial if none crossed within ``max_backtracks``, or
-    ``None`` if ``max_backtracks == 0``.
+    """Two-phase search for close to the smallest alpha (along direction)
+    that makes target_class beat the best rival class by at least margin.
     """
     assert model.A is not None
 
@@ -216,29 +155,10 @@ def new_case_contest(
     max_iters: int = MAX_ITERS,
     max_edits: int | None = None,
 ) -> NewCaseContestResult:
-    """Contest a single sample's prediction towards ``target_class`` by
-    editing only its own edges into the casebase (``E``), never
-    ``model.A`` and never any live model state.
-
-    Parameters
-    ----------
-    model : GradualAACBR
-        A fitted model (``model.A`` populated).
-    sample : Tensor
-        A single new case, shape (1, x1, ..., xn).
-    target_class : int
-        Which entry of ``model.default_indexes`` to push the sample's
-        strength towards.
-    k, threshold, margin, max_iters
-        See ``contest.py``'s module-level defaults (reused here).
-    max_edits : int | None
-        Stop once this many distinct entries of ``E`` (flat indices into
-        its (n*d,) layout) have been touched -- same semantics as
-        ``contest()``'s ``max_edits``. ``None`` (default) is unbounded.
-
-    Returns
-    -------
-    NewCaseContestResult
+    """Contest a single sample's prediction towards target_class by editing
+    only its own edges into the casebase (E).
+    max_edits stops the search once that many distinct
+    entries of E have been touched (None is unbounded).
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -279,7 +199,7 @@ def new_case_contest(
         )
 
         if grae_vector.abs().max().item() <= LIVE_GRAD_THRESHOLD:
-            break  # dead gradient -- E-only edits can't move this sample
+            break  # dead gradient
 
         edge_indices = select_top_k(grae_vector, k)
         direction = grae_vector[edge_indices]
@@ -290,14 +210,10 @@ def new_case_contest(
         )
 
         if step is None:
-            break  # plateaued -- no accepted step within budget
+            break  # plateaued
 
         alpha, new_E, new_target_strength, new_rival_class, new_rival_strength = step
         if torch.equal(new_E, E):
-            # Direction points straight into the E_MIN/E_MAX clamp boundary
-            # (e.g. weakening an already-zero attack further) -- every trial
-            # collapses to a no-op, so further iterations would just repeat
-            # this same stalemate.
             break
 
         old_values = E.view(-1)[edge_indices]
@@ -326,7 +242,7 @@ def new_case_contest(
 
         touched_edges.update(edge_indices.tolist())
         if max_edits is not None and len(touched_edges) >= max_edits:
-            break  # edit budget hit -- stop even if the margin isn't met yet
+            break  # edit budget hit
 
     if target_strength - rival_strength >= margin:
         return NewCaseContestResult(

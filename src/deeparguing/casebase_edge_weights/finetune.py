@@ -1,56 +1,6 @@
-"""
-src/deeparguing/casebase_edge_weights/finetune.py
-
-Loss terms for distilling ``new_case_contest``'s and ``batch_contest``'s
-corrections into ``LearnedPartialOrder``'s trainable ``feature_weights_1``
-extractor, per ``week7_checklist.md``'s Tuesday plan: ``correction_loss``
-(fit the new-case-to-casebase touched pairs), ``casebase_correction_loss``
-(fit the casebase-internal touched pairs -- i.e. ``model.A`` entries
-``contest_all.py``/``batch_contest`` edited, see its docstring), and
-``protect_loss`` (output-level margin hinge on currently-correct held-out
-samples -- see its docstring).
-
-``casebase_correction_loss`` added 2026-08-12 (see updates.md): unlike
-``correction_loss``, there's no clean pointwise target-space formula for
-``model.A`` -- ``fit()``'s construction of ``A`` (label-based masking, a
-continuous minimality/blocking product over the whole casebase, an optional
-symmetric-attacks combination, then negation and the supports term ``B``)
-depends on the whole casebase, not just the one edited pair. So instead of
-inverting a formula, this loss differentiably re-runs ``model.fit()`` each
-call and compares the resulting ``model.A`` entries directly -- verified
-(see ``tests/finetune_test.py``) that gradients really do flow back to
-``feature_weights_1`` through the minimality product, since it's a
-continuous t-norm product, not a hard argmin/threshold.
-
-An earlier third term, ``preservation_loss`` (an MSE anchor pulling
-``partial_order``'s raw output back toward its pre-finetune values, weighted
-by ``|model.A|``), was removed 2026-08-12 -- see updates.md. The rationale:
-it anchored the network's internal representation for its own sake, but what
-actually matters is whether currently-correct *predictions* stay correct,
-which is exactly what ``protect_loss`` already checks directly. A same-day
-ablation (``lam=0``, sweeping ``protect_lambda``) confirmed ``protect_loss``
-alone catches real margin violations that occur when nothing anchors the
-raw output -- it isn't just redundant with the removed term. With
-``casebase_correction_loss`` now able to move ``model.A`` every training
-step (not just once at save time), ``protect_loss`` is the thing standing
-between that and collateral damage to currently-correct predictions -- see
-its docstring.
-
-Target-space note (decided/verified 2026-08-10, see updates.md): the
-``corrected_E`` values logged by ``contest_all_irrelevance.py`` are
-``new_case_contest``'s internal ``E`` -- i.e.
-``model.new_cases_attacks_adjacency`` -- which is ``-irrelevance_edge_weights(...)
-= -(1 - partial_order(...)) = partial_order(...) - 1``. The regression target
-for ``partial_order``'s raw output is therefore ``corrected_E + 1``, NOT
-``1 - corrected_E`` (that formula is for the *unnegated* irrelevance value,
-which is not what's stored). See ``corrected_E_to_partial_order_target``.
-
-This only applies when ``irrelevance_edge_weights`` is a ``RegularIrrelevance``
-sharing its ``compute_partial_order`` with ``casebase_edge_weights`` (true for
-``tuning/cifar10/resnet/relu/model_cifar10_image.yaml``, not true in general --
-``FeatureWeightedIrrelevance`` has its own independent weights and no
-``partial_order`` to regress toward at all). ``assert_shares_partial_order``
-guards this precondition.
+"""Loss terms for distilling new_case_contest's and batch_contest's
+corrections into LearnedPartialOrder's trainable feature_weights_1
+extractor: correction_loss, casebase_correction_loss, and protect_loss.
 """
 
 import copy
@@ -72,45 +22,33 @@ from deeparguing.gradual_aacbr import GradualAACBR
 from deeparguing.irrelevance_edge_weights.regular_irrelevance import \
     RegularIrrelevance
 
-# Index into LearnedPartialOrder.feature_extractors that Week 7's plan
-# fine-tunes; feature_extractors[0] ("feature_weights") is the frozen
-# ResNet shared with base_score, feature_extractors[1] ("feature_weights_1")
-# is the trainable MLP -- see tuning/cifar10/resnet/relu/model_cifar10_image.yaml.
 TRAINABLE_FEATURE_EXTRACTOR_INDEX = 1
 
-DEFAULT_CHUNK_SIZE = 128  # bounds the quadratic cost of the diagonal trick below
+DEFAULT_CHUNK_SIZE = 128
 
 
 def corrected_E_to_partial_order_target(corrected_E: Tensor) -> Tensor:
-    """Convert a logged ``corrected_E`` value (``new_case_contest``'s
-    internal, already-negated E) to the regression target for
-    ``partial_order``'s raw output. See module docstring -- this is
-    ``corrected_E + 1``, not ``1 - corrected_E``.
+    """Convert a corrected_E value to the regression target for
+    partial_order's raw output
     """
     return corrected_E + 1.0
 
 
 def assert_shares_partial_order(model: GradualAACBR) -> None:
-    """Raise if this model's irrelevance channel isn't a ``RegularIrrelevance``
-    sharing the same ``compute_partial_order`` instance as
-    ``model.casebase_edge_weights`` -- the precondition
-    ``corrected_E_to_partial_order_target`` and this whole fine-tuning
-    approach depend on. Fails loudly rather than silently regressing a
-    disconnected (e.g. ``FeatureWeightedIrrelevance``) irrelevance channel
-    toward a target it has no relationship to.
+    """Raise if this model's irrelevance channel isn't a RegularIrrelevance
+    sharing the same compute_partial_order instance as
+    model.casebase_edge_weights.
     """
     irrelevance = model.irrelevance_edge_weights
     if not isinstance(irrelevance, RegularIrrelevance):
         raise TypeError(
             f"model.irrelevance_edge_weights is a {type(irrelevance).__name__}, "
-            "not RegularIrrelevance -- the corrected_E <-> partial_order target "
-            "conversion this module relies on doesn't hold for it."
+            "not RegularIrrelevance "
         )
     if irrelevance.compute_partial_order is not model.casebase_edge_weights:
         raise ValueError(
             "model.irrelevance_edge_weights.compute_partial_order is not the "
-            "same instance as model.casebase_edge_weights -- fine-tuning it "
-            "wouldn't affect this model's irrelevance channel."
+            "same instance as model.casebase_edge_weights "
         )
 
 
@@ -126,25 +64,14 @@ def _partial_order_module(model: GradualAACBR) -> LearnedPartialOrder:
 
 
 def trainable_parameters(model: GradualAACBR) -> Iterator[Parameter]:
-    """The parameters Week 7's plan fine-tunes: only
-    ``casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]``
-    (``feature_weights_1``), never the frozen ResNet or the comparison
-    function's own parameters (if any).
-    """
     partial_order = _partial_order_module(model)
     extractor = partial_order.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     return extractor.parameters()
 
 
 def freeze_all_except_trainable(model: GradualAACBR) -> None:
-    """Set ``requires_grad=False`` on every parameter, then ``True`` on just
-    ``trainable_parameters(model)``. Also puts the whole model in ``eval()``
-    mode: even with ``requires_grad=False``, BatchNorm layers inside the
-    frozen ResNet would otherwise keep updating their running stats in
-    ``train()`` mode. ``eval()`` mode doesn't block gradients into
-    ``feature_weights_1`` -- it only disables dropout/BN-stat-updates, which
-    is the right call for fine-tuning against a small touched-pairs dataset
-    anyway (avoids noisy BN drift from a handful of steps).
+    """Freeze every parameter except trainable_parameters(model), and put the
+    whole model in eval() mode.
     """
     for p in model.parameters():
         p.requires_grad_(False)
@@ -160,32 +87,8 @@ def correction_loss(
     targets: Tensor,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> Tensor:
-    """MSE between ``partial_order(new_cases[i], casebase_items[i])`` and
-    ``targets[i]``, for aligned pairs (NOT ``LearnedPartialOrder.forward``'s
-    usual cross-product).
-
-    ``LearnedPartialOrder.forward(attacker, target)`` broadcasts to every
-    (attacker, target) combination, shape (len(attacker), len(target), d).
-    For a batch of specific, already-paired (new_case, casebase_item) pairs
-    we only want the diagonal of that -- computing the full cross-product
-    for the whole dataset at once would be quadratic in memory (thousands of
-    touched pairs squared). Chunking into ``chunk_size``-sized pieces and
-    taking the diagonal of each keeps the wasted off-diagonal compute
-    bounded while still reusing ``LearnedPartialOrder.forward`` as-is (no
-    new broadcasting logic).
-
-    Parameters
-    ----------
-    new_cases, casebase_items : Tensor
-        Aligned, shape (T, ...) each -- new_cases[i] pairs with casebase_items[i].
-    targets : Tensor
-        Shape (T,), see ``corrected_E_to_partial_order_target``.
-    chunk_size : int
-
-    Returns
-    -------
-    Tensor
-        Scalar mean squared error over all T pairs.
+    """MSE between partial_order(new_cases[i], casebase_items[i]) and
+    targets[i].
     """
     partial_order = _partial_order_module(model)
     T = new_cases.shape[0]
@@ -216,17 +119,6 @@ def correction_loss(
 
 @dataclass(frozen=True)
 class CasebaseCorrectionBatch:
-    """Inputs ``casebase_correction_loss`` needs for one call.
-    ``X_casebase``/``y_casebase``/``X_default``/``y_default`` are the fixed
-    casebase/defaults split (``model.casebase_and_defaults()``) needed to
-    differentiably re-fit ``model.A`` through -- the same for every call in
-    a run, since the casebase itself never changes, only
-    ``feature_weights_1``'s live weights. ``source_idx``/``target_idx``/
-    ``dim_idx``/``targets`` are the touched-edge indices (into ``model.A``)
-    and their ``contest_all.py``-corrected values for *this* batch (the
-    full val set, or the full train set -- see ``casebase_correction_loss``'s
-    docstring for why there's no benefit to sub-batching these).
-    """
     X_casebase: Tensor
     y_casebase: Tensor
     X_default: Tensor
@@ -238,38 +130,9 @@ class CasebaseCorrectionBatch:
 
 
 def casebase_correction_loss(model: GradualAACBR, batch: CasebaseCorrectionBatch) -> Tensor:
-    """MSE between ``model.A``'s touched entries and their
-    ``contest_all.py``-corrected values, after differentiably re-fitting
-    ``model.A`` from the current (training) ``feature_weights_1``.
-
-    Unlike ``correction_loss``, there's no cheap way to isolate just the
-    touched pairs -- ``model.A``'s construction (label masking, the
-    minimality/blocking product, symmetric attacks, negation, ``B``) mixes
-    every casebase pair together, so getting the right gradient means
-    re-running the whole ``fit()`` (see module docstring). This is the same
-    cost class as the removed ``preservation_loss`` (a full casebase pass
-    every call) -- fine for a small casebase, wouldn't scale to a large one
-    without rethinking.
-
-    A side effect worth knowing about: this call leaves ``model.A`` mutated
-    to the freshly-refit value (``fit()`` always reassigns ``self.A``) --
-    intentional, since ``protect_loss`` reads ``model.A`` directly and
-    should see the same, current graph this loss just fit, not a stale one
-    from before this call. ``compute_losses`` relies on this by calling
-    ``casebase_correction_loss`` before ``protect_loss``.
-
-    Parameters
-    ----------
-    model : GradualAACBR
-    batch : CasebaseCorrectionBatch
-        Empty ``targets`` (0 touched edges in this batch) is a no-op --
-        note it still skips the ``fit()`` call entirely in that case, so an
-        empty val split doesn't pay the refit cost for nothing.
-
-    Returns
-    -------
-    Tensor
-        Scalar MSE, 0 if ``batch.targets`` is empty.
+    """MSE between model.A's touched entries and their contest_all.py-
+    corrected values, after differentiably re-fitting model.A from the
+    current feature_weights_1.
     """
     if batch.targets.shape[0] == 0:
         return torch.zeros((), device=batch.targets.device, dtype=batch.targets.dtype)
@@ -285,39 +148,7 @@ def protect_loss(
     protect_margin: float = MARGIN,
 ) -> Tensor:
     """Margin hinge over samples that are currently (pre-finetune) correctly
-    classified: penalizes the thing we actually care about directly, not a
-    proxy over ``partial_order``'s raw value. For each sample in
-    ``protect_samples``, does its target class still beat the best rival by
-    ``protect_margin``, evaluated through the model's *current* (training)
-    ``feature_weights_1`` but the *frozen* ``model.A`` -- the exact forward
-    path ``new_case_contest``/``grae.py`` already use, never
-    ``model.forward()`` (which doesn't detach ``model.A``). Same hinge
-    formula as ``batch_contest.py``'s existing ``protect_lambda`` mechanism
-    (``clamp(protect_margin - margin, min=0)``), just evaluated in
-    weight-space instead of A-space.
-
-    The only regularizer against ``correction_loss`` since ``preservation_loss``
-    (an MSE anchor on ``partial_order``'s raw output) was removed -- see this
-    module's docstring. Unlike that removed term, this one is a hinge: it's
-    exactly 0, with no gradient, whenever every protected sample's margin is
-    already comfortably above ``protect_margin``, so it only pushes back once
-    something concrete is actually at risk.
-
-    Parameters
-    ----------
-    model : GradualAACBR
-    protect_samples : Tensor
-        Shape (M, ...) -- samples known to be correctly classified before
-        fine-tuning started (e.g. from ``global_optimize.py``'s
-        ``_build_protect_set``). Empty batches are a no-op.
-    protect_target_classes : Sequence[int]
-        Length-M true class of each protect sample.
-    protect_margin : float
-
-    Returns
-    -------
-    Tensor
-        Scalar mean hinge loss.
+    classified.
     """
     assert model.A is not None
     if protect_samples.shape[0] == 0:
@@ -356,16 +187,9 @@ def compute_losses(
     casebase_lambda: float = 0.0,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> FinetuneLosses:
-    """One call per training step: correction loss over the given batch of
-    new-case-to-casebase touched pairs, casebase-internal correction loss
-    (if ``casebase_batch`` is given -- optional, off by default), protect
-    loss over currently-correct held-out samples, and their
-    ``protect_lambda``/``casebase_lambda``-weighted combination.
-
-    Order matters: ``casebase_correction_loss`` (if it runs) mutates
-    ``model.A`` via its internal ``fit()`` call, and ``protect_loss`` reads
-    ``model.A`` directly -- so ``casebase_correction_loss`` must run first,
-    or ``protect_loss`` would see a stale ``A`` from before this call.
+    """One call per training step: correction loss, casebase-internal
+    correction loss (if casebase_batch is given), protect loss, and their
+    weighted combination.
     """
     correction = correction_loss(model, new_cases, casebase_items, targets, chunk_size)
     casebase_correction = (
@@ -388,17 +212,8 @@ def _sample_batch(tensors: dict[str, Tensor], batch_size: int | None) -> dict[st
 
 @dataclass(frozen=True)
 class CasebaseFinetuneConfig:
-    """Optional casebase-internal-edge correction, alongside the
-    always-on new-case correction. ``X_casebase``/``y_casebase``/
-    ``X_default``/``y_default`` (e.g. ``model.casebase_and_defaults()``,
-    captured once by the caller before training starts) and
-    ``train_edges``/``val_edges`` (``{"source_idx", "target_idx", "dim_idx",
-    "targets"}`` dicts, as produced by ``build_casebase_finetune_dataset.py``)
-    are combined into a ``CasebaseCorrectionBatch`` fresh each call --
-    ``train_edges`` is used in full every training step (no sub-batching:
-    ``casebase_correction_loss``'s cost is dominated by the casebase-wide
-    ``fit()`` call, not by how many touched edges are compared afterward,
-    so subsampling wouldn't save anything).
+    """Optional casebase-internal-edge correction alongside the
+    new-case correction.
     """
     X_casebase: Tensor
     y_casebase: Tensor
@@ -406,9 +221,6 @@ class CasebaseFinetuneConfig:
     y_default: Tensor
     train_edges: dict[str, Tensor]
     val_edges: dict[str, Tensor]
-    # 0.0 (inert), not 1.0 -- see contest.scripts.run_finetune's module
-    # docstring: a 2026-08-14 real-accuracy check found every nonzero value
-    # tested monotonically regressed CIFAR10 test accuracy.
     casebase_lambda: float = 0.0
 
     def _batch(self, edges: dict[str, Tensor]) -> CasebaseCorrectionBatch:
@@ -428,12 +240,6 @@ class CasebaseFinetuneConfig:
 
 @dataclass
 class FinetuneRunResult:
-    """Everything a caller (the CLI script, a hyperparameter sweep, ...)
-    needs after ``run_finetune`` returns. ``best_*`` tracks the lowest
-    val-``combined``-loss point seen across every eval (not just the final
-    step) -- see ``run_finetune``'s docstring for why. ``history`` has one
-    entry per eval (every ``log_every`` steps, plus the final step).
-    """
     best_step: int | None
     best_val_losses: FinetuneLosses | None
     best_extractor_state: dict[str, Tensor] | None
@@ -461,50 +267,9 @@ def run_finetune(
     show_progress: bool = True,
     progress_desc: str = "Fine-tuning edge weights",
 ) -> FinetuneRunResult:
-    """Train ``feature_weights_1`` for ``steps`` Adam updates against
-    ``train_tensors``, tracking both the final-step weights and the
-    best-val-``combined``-loss weights seen along the way (2026-08-11's
-    200-step run plateaued/overfit on val well before its final step -- see
-    ``contest.scripts.run_finetune``'s module docstring -- so callers should
-    normally prefer ``best_extractor_state`` over ``final_extractor_state``).
-
-    Assumes ``freeze_all_except_trainable(model)`` has already been called
-    and the trainable extractor already holds whatever weights this run
-    should start from -- this function trains in place and never resets
-    them itself, so a caller running several fine-tunes back to back (e.g.
-    one per hyperparameter combo in a sweep) must reset the extractor's
-    weights (``load_state_dict`` on a saved pre-finetune snapshot) between
-    calls.
-
-    Parameters
-    ----------
-    model, protect_samples, protect_target_classes :
-        See ``compute_losses``.
-    train_tensors, val_tensors : dict[str, Tensor]
-        ``{"new_cases", "casebase_items", "targets"}``, as produced by
-        ``build_irrelevance_finetune_dataset.py``. ``val_tensors`` may have
-        0 pairs (no val split), in which case ``best_*`` falls back to the
-        final step and ``on_eval``'s second argument is always ``None``.
-    lr, steps, batch_size, chunk_size, protect_margin, protect_lambda :
-        See ``contest.scripts.run_finetune``'s CLI flags of the same name.
-    casebase_config : CasebaseFinetuneConfig, optional
-        Enables ``casebase_correction_loss`` (off, at zero extra cost, when
-        ``None``). See ``CasebaseFinetuneConfig``.
-    log_every : int
-        Eval (and ``on_eval`` callback) frequency, in steps.
-    on_eval : callable, optional
-        Called with ``(step, train_losses, val_losses)`` at every eval point,
-        for callers that want their own logging (markdown log, sweep
-        summary, ...) without this function taking an opinion on format.
-    show_progress : bool
-        Whether to wrap the step loop in a ``tqdm`` bar (off for sweeps,
-        which drive their own outer progress bar over combos).
-    progress_desc : str
-        ``tqdm`` bar description, when ``show_progress`` is true.
-
-    Returns
-    -------
-    FinetuneRunResult
+    """Train feature_weights_1 for steps Adam updates against train_tensors,
+    tracking both the final-step weights and the best-val-combined-loss
+    weights seen along the way.
     """
     trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     optimizer = torch.optim.Adam(trainable_parameters(model), lr=lr)
@@ -581,7 +346,7 @@ def run_finetune(
             if on_eval is not None:
                 on_eval(step, train_losses, val_losses)
 
-    assert train_losses is not None  # steps >= 1 is the only supported case
+    assert train_losses is not None
     return FinetuneRunResult(
         best_step=best_step,
         best_val_losses=best_val_losses,

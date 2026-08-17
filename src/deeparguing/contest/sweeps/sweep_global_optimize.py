@@ -1,14 +1,5 @@
-"""Grid-sweep the five global-optimization-specific hyperparameters of
-``global_optimize.py`` -- ``protect_lambda``, ``eval_every``, ``protect_margin``,
-``protect_sample_size``, ``max_acc_drop`` -- against a single fixed baseline
-checkpoint, and report each combo's outcome in a markdown report.
-
-Usage::
-
-    python -m deeparguing.contest.sweeps.sweep_global_optimize
-    python -m deeparguing.contest.sweeps.sweep_global_optimize \\
-        --protect-lambdas 1,5,20,50 --eval-everys 1,5,10 \\
-        --max-combos 40 --output global_optimize_sweep.md
+"""Grid-sweep the hyperparameters of global_optimize.py 
+and report each combo's outcome in a markdown report.
 """
 
 import argparse
@@ -39,9 +30,8 @@ from deeparguing.output_paths import resolve_read_path, resolve_write_path
 DEFAULT_OUTPUT = "global_optimize_sweep.md"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 6
-LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
+LARGE_GRID_WARNING_THRESHOLD = 100
 
-# Candidate values for each swept hyperparameter.
 DEFAULT_PROTECT_LAMBDAS = [5.0, 20.0]
 DEFAULT_EVAL_EVERYS = [1, 5]
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
@@ -75,14 +65,9 @@ def _run_combo(
     model, original_A, samples, true_classes, X_eval, y_eval,
     combo: Combo, fixed_kwargs: dict[str, Any], seed: int,
 ) -> tuple[Any, float]:
-    """Reset ``model.A`` to the baseline and run ``global_optimize`` for one
-    combo, reseeding torch first so every combo's protect-set sampling
-    starts from the same RNG state.
-
-    Returns
-    -------
-    tuple[Any, float]
-        The ``GlobalOptimizeResult`` and elapsed wall time in seconds.
+    """Reset model.A to the baseline and run global_optimize for one combo,
+    reseeding torch first so every combo's protect-set sampling starts from
+    the same RNG state.
     """
     model.A = original_A.clone()
     torch.manual_seed(seed)
@@ -141,13 +126,7 @@ def _full_results_table(df: pd.DataFrame) -> str:
 
 
 def _marginal_tables(df: pd.DataFrame) -> str:
-    """For each swept hyperparameter, average outcomes across every other axis.
-
-    Returns
-    -------
-    str
-        Markdown sections, one per swept column.
-    """
+    """For each swept hyperparameter, average outcomes across every other axis."""
     sections = []
     for col in SWEEP_COLUMNS:
         grouped = (
@@ -381,7 +360,7 @@ def main() -> None:
         )
     total_elapsed = time.perf_counter() - sweep_start
 
-    model.A = original_A  # leave the shared model exactly as it was loaded
+    model.A = original_A
 
     df = pd.DataFrame(rows)
     df_sorted = df.sort_values(

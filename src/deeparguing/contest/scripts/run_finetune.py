@@ -1,73 +1,6 @@
-"""Fine-tune ``LearnedPartialOrder``'s ``feature_weights_1`` extractor
-against the touched-pairs dataset ``build_irrelevance_finetune_dataset.py``
-produces, per ``week7_checklist.md``'s Wednesday plan. During training, only
-``feature_weights_1`` moves -- the frozen ResNet, comparison function, base
-score, and ``model.A`` are all untouched step-to-step (``model.A`` is
-recomputed once, at save time -- see below) -- see
-``deeparguing.casebase_edge_weights.finetune`` for the loss terms
-(correction + protect_lambda * protect [+ casebase_lambda *
-casebase_correction]) and why the fine-tuned parameter is scoped that
-narrowly. ``protect`` is a margin hinge over a held-out ``eval_split``
-sample of currently-correct predictions (``global_optimize.py``'s
-``_build_protect_set``) -- see ``protect_loss``'s docstring. (A third term,
-``preservation``, was removed 2026-08-12 -- see updates.md and
-``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
-
-``--casebase-dataset`` (added 2026-08-12, see updates.md): also regresses
-``model.A`` toward ``contest_all.py``'s casebase-internal
-(``source``-item-to-``target``-item) corrections, via
-``casebase_correction_loss`` -- see that function's and
-``build_casebase_finetune_dataset.py``'s docstrings. The dataset itself is
-still required, like ``--checkpoint``/``--dataset`` (every training step
-differentiably re-fits ``model.A`` to compute it, the same cost class as the
-removed ``preservation_loss`` -- fine for a small casebase, not for a large
-one), but ``casebase_lambda`` -- its weight in the combined loss -- defaults
-to 0.0 (inert) as of 2026-08-14, back down from a brief 2026-08-13 stint at
-1.0. A same-day real-accuracy comparison across ``casebase_lambda`` in
-``{0, 0.3, 1, 3}`` (see updates.md) found a clean monotonic regression on
-CIFAR10 test accuracy as the weight increases -- 0.8310, 0.8251, 0.8229,
-0.7832 against a 0.8312 baseline -- consistent with ``run_full_pipeline.sh``'s
-stage-5 risk note: ``casebase_correction_loss`` regresses ``model.A`` toward
-``batch_contest``'s touched edges, and editing a shared ``model.A`` under
-``ReluSemantics`` is the same mechanism already documented (2026-08-06) to
-cause catastrophic accuracy collapse. This term doesn't sidestep that
-instability, it launders it through gradient descent -- pass
-``--casebase-lambda`` explicitly (nonzero) only with that in mind, and check
-``evaluate_irrelevance_finetune.py`` afterward.
-
-Before each checkpoint is saved, ``model.A`` IS recomputed (via
-``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
-from whatever ``feature_weights_1`` weights are being saved -- new-case edges
-already go through the live, fine-tuned network at prediction time (they're
-computed fresh per call, see ``deeparguing.casebase_edge_weights.finetune``'s
-module docstring), so leaving ``model.A`` at its pre-finetune value would
-mean two different versions of the relevance function coexist in the same
-argumentation graph.
-2026-08-12's evaluation (see updates.md) found recomputing ``A`` this way is
-accuracy-neutral on the full CIFAR10 test set relative to leaving it frozen,
-while removing that inconsistency.
-
-Hyperparameters and paths come from a YAML config file (default
-``tuning/contest/finetune.yaml``); any CLI flag overrides the
-corresponding config value -- same pattern as ``contest_all.py``/
-``contest_all_irrelevance.py``.
-
-Checkpoint selection: val ``combined`` loss is tracked at every eval
-(``log_every`` steps); ``output_checkpoint_filename`` (default
-``finetuned_checkpoint.pt`` -- what downstream pipeline stages read) always
-holds the lowest-val-combined-loss snapshot of ``feature_weights_1`` (with
-``A`` recomputed from those weights), not whatever the last step happened to
-land on, since 2026-08-11's 200-step run plateaued/overfit on val well
-before the final step (see updates.md). The actual final-step weights (also
-with ``A`` recomputed from them) are saved separately under
-``final_checkpoint_filename`` (default ``finetuned_checkpoint_final.pt``)
-for comparison. If no val eval ever ran (empty val split), the best
-checkpoint falls back to the final one, with a warning.
-
-Usage::
-
-    python -m deeparguing.contest.scripts.run_finetune
-    python -m deeparguing.contest.scripts.run_finetune --lr 1e-3 --protect-lambda 1 --steps 200
+"""Fine-tune feature_weights_1 against the touched-pairs dataset
+build_irrelevance_finetune_dataset.py produces, plus casebase-internal
+corrections.
 """
 
 import argparse
@@ -284,12 +217,7 @@ def main() -> None:
     config_paths = torch.load(checkpoint, map_location=device, weights_only=False)["config_paths"]
 
     def _recompute_A() -> None:
-        """Re-fit model.A from the casebase using model.casebase_edge_weights's
-        CURRENT (live) feature_weights_1 -- see this module's docstring for why.
-        no_grad since this is a save-time recompute, not a training step --
-        without it, model.A keeps an autograd graph back to feature_weights_1's
-        (still requires_grad=True) parameters, which torch.save then persists
-        into the checkpoint for no reason."""
+        """Re-fit model.A from the casebase using the current feature_weights_1 weights."""
         X_casebase, y_casebase, X_default, y_default = model.casebase_and_defaults()
         with torch.no_grad():
             model.fit(X_casebase, y_casebase, X_default, y_default)
@@ -307,7 +235,6 @@ def main() -> None:
             path,
         )
 
-    # model's live weights are already the final-step ones -- run_finetune trains in place.
     _recompute_A()
     final_state_dict = copy.deepcopy(model.state_dict())
     final_checkpoint_path = log_dir / final_checkpoint_filename
@@ -332,7 +259,7 @@ def main() -> None:
         )
     _save(best_state_dict, output_checkpoint_path)
     print(selection_line)
-    print(f"Saved best-val checkpoint (used by downstream pipeline stages) to {output_checkpoint_path}")
+    print(f"Saved best-val checkpoint to {output_checkpoint_path}")
     write_markdown_log(
         [
             selection_line,

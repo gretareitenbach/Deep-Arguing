@@ -1,55 +1,5 @@
-"""Grid-sweep ``contest.scripts.run_finetune``'s hyperparameters -- ``lr``,
-``batch_size``, ``protect_margin``, ``protect_lambda``, ``protect_sample_size``,
-``casebase_lambda`` -- against a single fixed baseline checkpoint/dataset, and
-report each combo's outcome in a markdown report. ``chunk_size`` (a
-memory/compute chunking knob, not a modeling choice -- see
-``correction_loss``'s docstring) and ``steps`` (superseded by this sweep's
-own best-checkpoint tracking, same as ``contest.scripts.run_finetune``'s -- see
-below) are fixed, not swept. (A ``lam`` axis, for the now-removed
-``preservation_loss`` term, was swept here through 2026-08-11 -- see
-updates.md and ``deeparguing.casebase_edge_weights.finetune``'s module
-docstring for why it's gone.)
-
-``casebase_lambda`` axis added 2026-08-13, alongside ``contest.scripts.run_finetune``
-making ``--casebase-dataset`` required and (briefly) defaulting
-``casebase_lambda`` to 1.0 -- that default was carried over from what
-``run_full_pipeline.sh`` had already been running (untuned), and the same
-day's full-pipeline run regressed test accuracy relative to baseline.
-Unlike the other axes, sweeping it costs the same per step as toggling it on
-(every step differentiably re-fits ``model.A`` -- see
-``casebase_correction_loss``'s docstring), so this is more expensive per
-combo than the pre-existing axes.
-
-Caveat this sweep can't resolve on its own: ranking combos by val
-``combined`` loss (below) isn't a valid comparison *across different
-``casebase_lambda`` values, since ``combined = correction + protect_lambda
-* protect + casebase_lambda * casebase_correction`` mechanically grows with
-``casebase_lambda`` regardless of whether the term is doing anything useful
--- this sweep's own results table shows exactly that artifact (mean best val
-combined 0.05 at ``casebase_lambda=0`` vs. 3.11 at ``=3``, which looks like a
-clear win for 0 but isn't evidence either way). The real comparison needs
-held-out accuracy, not this sweep's loss ranking: a direct 2026-08-14 check
-(``evaluate_irrelevance_finetune.py`` run once per ``casebase_lambda`` in
-``{0, 0.3, 1, 3}``, see updates.md) found a clean monotonic accuracy
-regression as the weight increases, which is what set the default back to
-0.0.
-
-Motivation (2026-08-11, see updates.md): the first real fine-tune run showed
-val ``combined`` loss plateauing/overfitting well before its final step, at
-fixed ``lr=0.001``. Before trusting any hyperparameter comparison, each combo
-here is trained for a fixed, generous ``--steps`` budget and ranked by the
-*best* val ``combined`` loss it reached along the way (via ``run_finetune``'s
-built-in tracking -- the same mechanism ``contest.scripts.run_finetune`` uses to
-pick its saved checkpoint), not by whatever the final step happened to land
-on. That keeps the comparison fair across combos that converge at different
-rates.
-
-Usage::
-
-    python -m deeparguing.contest.sweeps.sweep_finetune
-    python -m deeparguing.contest.sweeps.sweep_finetune \\
-        --lrs 0.0001,0.0003,0.001 --protect-lambdas 0,1,5 --max-combos 40 \\
-        --output finetune_sweep.md
+"""Grid-sweep run_finetune's hyperparameters against a single fixed baseline
+checkpoint/dataset, and report each combo's outcome in a markdown report.
 """
 
 import argparse
@@ -79,12 +29,10 @@ from deeparguing.output_paths import resolve_read_path, resolve_write_path
 
 DEFAULT_OUTPUT = "finetune_sweep.md"
 CSV_DECIMALS = 6
-LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
+LARGE_GRID_WARNING_THRESHOLD = 100
 
-# Candidate values for each swept hyperparameter. lr gets 3 points since
-# it's the most consequential axis (see updates.md); the rest get 2.
 DEFAULT_LRS = [3e-4, 1e-3, 3e-3]
-DEFAULT_BATCH_SIZES = [64, 128]  # 0 means full-batch, see _parse_batch_sizes
+DEFAULT_BATCH_SIZES = [0, 64, 128]
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
 DEFAULT_PROTECT_LAMBDAS = [0.0, 1.0]
 DEFAULT_PROTECT_SAMPLE_SIZES = [100, 200]
@@ -111,7 +59,7 @@ def _parse_floats(raw: str) -> list[float]:
 
 
 def _parse_batch_sizes(raw: str) -> list[int | None]:
-    """``0`` means full-batch (``run_finetune``'s ``batch_size=None``)."""
+    """0 means full-batch (run_finetune's batch_size=None)."""
     return [None if int(x) == 0 else int(x) for x in raw.split(",")]
 
 
@@ -127,19 +75,8 @@ def _run_combo(
     combo: Combo, steps: int, chunk_size: int, log_every: int, seed: int,
 ) -> tuple[Any, int, float]:
     """Reset the trainable extractor to the pre-finetune baseline and run one
-    combo. The protect set is rebuilt fresh per combo (its
-    ``protect_sample_size`` is itself swept, and rebuilding is cheap -- one
-    forward pass), reseeding first so every combo's sampling starts from the
-    same RNG state. ``casebase_edges`` (fixed across combos -- only
-    ``combo.casebase_lambda`` varies) is ``None`` when no
-    ``--casebase-dataset`` was given, in which case ``casebase_correction``
-    is always 0, same as ``contest.scripts.run_finetune`` before 2026-08-13.
-
-    Returns
-    -------
-    tuple[Any, int, float]
-        ``run_finetune``'s ``FinetuneRunResult``, the number of protect
-        samples actually used, and elapsed wall time in seconds.
+    combo, reseeding first so every combo's sampling starts from the same
+    RNG state.
     """
     trainable_extractor.load_state_dict(original_extractor_state)
     torch.manual_seed(seed)
@@ -427,9 +364,6 @@ def main() -> None:
             "train_edges": casebase_dataset["train"], "val_edges": casebase_dataset["val"],
         }
 
-    # Pre-finetune snapshot every combo resets to before it starts -- fixed
-    # across the whole sweep, computed once from the freshly loaded
-    # (untouched) checkpoint.
     freeze_all_except_trainable(model)
     trainable_extractor = model.casebase_edge_weights.feature_extractors[TRAINABLE_FEATURE_EXTRACTOR_INDEX]
     original_extractor_state = copy.deepcopy(trainable_extractor.state_dict())
@@ -454,7 +388,7 @@ def main() -> None:
         )
     total_elapsed = time.perf_counter() - sweep_start
 
-    trainable_extractor.load_state_dict(original_extractor_state)  # leave the shared model as loaded
+    trainable_extractor.load_state_dict(original_extractor_state)
 
     df = pd.DataFrame(rows)
     df_sorted = df.sort_values("best_val_combined", ascending=True).reset_index(drop=True)

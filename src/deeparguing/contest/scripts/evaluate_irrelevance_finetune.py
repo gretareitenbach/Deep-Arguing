@@ -1,34 +1,6 @@
 """Evaluate an irrelevance-finetuned checkpoint's real classification impact
-on the held-out eval split. Everything ``contest.scripts.run_finetune`` logs
-during training (correction/protect losses) only ever measures
-``partial_order``'s raw output or a *sampled* protect set's margins -- this
-is the first point in the pipeline that checks what fine-tuning actually did
-to real classification accuracy, on the full eval split.
-
-Compares two checkpoints, each evaluated by loading it exactly as saved and
-running ``model(X_eval)`` -- i.e. what would actually happen if a new image
-went through the model, no extra fitting or adjustment at eval time:
-
-- ``baseline``: the pre-finetune checkpoint.
-- ``finetuned``: ``contest.scripts.run_finetune``'s output. Since 2026-08-12 (see
-  updates.md) that script recomputes ``model.A`` from the fine-tuned
-  ``feature_weights_1`` before saving, so this checkpoint's ``A`` is already
-  consistent with its own network -- no refit needed here. (Older
-  checkpoints saved before that change still load and evaluate fine here,
-  just with whatever ``A`` they were saved with -- this script always
-  evaluates the checkpoint exactly as loaded, honestly reflecting what
-  deploying that specific file would do.)
-
-Hyperparameters and paths come from a YAML config file (default
-``tuning/contest/evaluate_irrelevance_finetune.yaml``); any CLI flag
-overrides the corresponding config value -- same pattern as
-``contest.scripts.run_finetune``.
-
-Usage::
-
-    python -m deeparguing.contest.scripts.evaluate_irrelevance_finetune
-    python -m deeparguing.contest.scripts.evaluate_irrelevance_finetune \\
-        --finetuned-checkpoint outputs/12Aug2026/finetuned_checkpoint.pt --eval-split test
+on the held-out eval split, comparing it against the pre-finetune baseline
+checkpoint.
 """
 
 import argparse
@@ -58,10 +30,7 @@ def _evaluate(
     y_eval: torch.Tensor,
     batch_size: int | None,
 ) -> dict[str, Any]:
-    """One row of the report: evaluate ``model`` exactly as loaded (no
-    ``fit()`` call -- ``model.A`` is whatever the checkpoint saved) on
-    ``X_eval``/``y_eval``, the same forward path a real prediction takes.
-    """
+    """One row of the report: evaluate model exactly as loaded, no fit() call."""
     accuracy, precision, recall, f1, cm = evaluate_model(
         model, None, None, None, None,
         X_eval, y_eval, batch_size=batch_size, refit=False,
@@ -96,7 +65,8 @@ def _confusion_matrix_block(label: str, cm: NDArray) -> str:
         index=[f"Actual {i}" for i in range(cm.shape[0])],
         columns=[f"Pred {i}" for i in range(cm.shape[1])],
     )
-    return f"{label} confusion matrix:\n```\n{df.to_string()}\n```"
+    indented = "\n".join("    " + line for line in df.to_string().split("\n"))
+    return f"{label} confusion matrix:\n\n{indented}"
 
 
 def main() -> None:

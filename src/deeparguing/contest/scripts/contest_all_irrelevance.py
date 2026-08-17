@@ -1,27 +1,6 @@
-"""Run ``new_case_contest`` independently over every misclassified sample in a
-QBAF export, editing only each sample's own irrelevance row (``E``) rather
-than the shared ``model.A`` that ``contest_all.py``/``batch_contest`` edit.
-Unlike ``batch_contest``, there is no shared state to jointly optimize --
-each sample's ``E`` is independent, so this is a plain per-sample loop, with
-incremental saving and resume support since a full run over every
-misclassified sample can take a while.
-
-For every sample, logs each touched ``(casebase_item, dim, old_E,
-corrected_E)`` entry (``old_E``/``corrected_E`` read off ``result.initial_E``/
-``result.final_E`` at every index where the search actually changed a value)
--- this is the ``(sample, casebase_item, old_E, corrected_E)`` triple dataset
-the irrelevance-channel fine-tuning step regresses against.
-
-Hyperparameters and dataset/checkpoint paths come from a YAML config file
-(default ``tuning/contest/contest_all_irrelevance.yaml``); any CLI flag
-overrides the corresponding config value.
-
-Usage::
-
-    python -m deeparguing.contest.scripts.contest_all_irrelevance
-    python -m deeparguing.contest.scripts.contest_all_irrelevance --config tuning/contest/contest_all_irrelevance.yaml
-    python -m deeparguing.contest.scripts.contest_all_irrelevance --num-samples 500
-    python -m deeparguing.contest.scripts.contest_all_irrelevance --resume
+"""Run new_case_contest independently over every misclassified sample in a
+QBAF export, editing only each sample's own irrelevance row rather than the
+shared model adjacency that contest_all.py/batch_contest edits.
 """
 
 import argparse
@@ -45,17 +24,8 @@ DEFAULT_CONFIG_PATH = "tuning/contest/contest_all_irrelevance.yaml"
 def _touched_edge_triples(
     initial_E: torch.Tensor | None, final_E: torch.Tensor | None
 ) -> list[dict[str, Any]]:
-    """Every ``(casebase_item, dim, old_E, corrected_E)`` entry where
-    ``new_case_contest`` actually changed the sample's own irrelevance row
-    (``E``, shape (n, d)) between ``initial_E`` and ``final_E``.
-
-    Diffs the two tensors directly (rather than re-deriving touched indices
-    from ``edge_trace``) so this reflects the net change even if a later
-    accepted step ever revisited an index -- the trace-based count already
-    matches this in practice, since ``_perturb_new_case_edges`` never
-    reverts an edit back to its original value, but comparing the actual
-    before/after tensors is the more direct source of truth for a dataset
-    that gets regressed against downstream.
+    """Every (casebase_item, dim, old_E, corrected_E) entry where the sample's
+    irrelevance row changed between initial_E and final_E.
     """
     if initial_E is None or final_E is None:
         return []
@@ -168,11 +138,7 @@ def main() -> None:
         "max_iters": max_iters,
         "max_edits": max_edits,
         "device": device,
-        # Bump this if the per-sample result schema changes, so --resume
-        # against an older-schema output file is detected as a mismatch
-        # (config compares unequal) instead of silently reusing entries that
-        # are missing newly-added fields (e.g. "touched_edges").
-        "schema_version": 2,
+        "schema_version": 2,  # bump on result-schema changes so --resume detects a mismatch
     }
 
     log_dir = Path(log_dir_str)

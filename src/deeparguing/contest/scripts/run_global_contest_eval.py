@@ -1,11 +1,10 @@
-"""Compute global (full-split) test metrics for a contested model, relative
+"""Compute global test metrics for a contested model, relative
 to its uncontested baseline. Rebuilds the model + held-out split from the
 baseline checkpoint, evaluates it, swaps in the contested checkpoint's
-``A`` and evaluates again, and reports the delta.
+A and evaluates again, and reports the delta.
 
 Usage::
 
-    python -m deeparguing.contest.scripts.run_global_contest_eval
     python -m deeparguing.contest.scripts.run_global_contest_eval \\
         --checkpoint model_checkpoint.pt \\
         --contested-checkpoint contested_checkpoint.pt \\
@@ -75,7 +74,7 @@ def _confusion_matrix_block(title: str, cm: NDArray) -> str:
         index=[f"Actual {i}" for i in range(cm.shape[0])],
         columns=[f"Pred {i}" for i in range(cm.shape[1])],
     )
-    return f"{title} confusion matrix:\n```\n{df.to_string()}\n```"
+    return f"{title} confusion matrix:\n\n{df.to_string()}\n"
 
 
 def _confusion_matrix_delta_block(baseline_cm: NDArray, contested_cm: NDArray) -> str:
@@ -86,13 +85,13 @@ def _confusion_matrix_delta_block(baseline_cm: NDArray, contested_cm: NDArray) -
         index=[f"Actual {i}" for i in range(delta.shape[0])],
         columns=[f"Pred {i}" for i in range(delta.shape[1])],
     ).map(lambda v: f"{v:+d}")
-    return f"Contested confusion matrix (delta from baseline):\n```\n{df.to_string()}\n```"
+    return f"Contested confusion matrix (delta from baseline):\n\n{df.to_string()}\n"
 
 
 def _touched_edges(original_A: torch.Tensor, contested_A: torch.Tensor) -> list[dict]:
-    """Every ``model.A`` entry that differs between baseline and contested,
+    """Every model.A entry that differs between baseline and contested,
     with its source/target/dim and old/new weight -- same edge addressing
-    ``contest_all.py`` uses for its own touched-edges log."""
+    contest_all.py uses for its own touched-edges log."""
     n1, n2, d = original_A.shape
     original_flat = original_A.reshape(-1)
     contested_flat = contested_A.reshape(-1)

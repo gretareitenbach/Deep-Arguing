@@ -1,9 +1,8 @@
 """
 src/deeparguing/contest/core/bottleneck.py
 
-Escape logic for the dead-gradient case ``contest()`` hits when a hard-ReLU
-node upstream of ``target_class`` has saturated (its strength pinned at
-exactly 0). Walks backward from the target to find the saturated node, then
+Escape logic for the dead-gradient case contest() hits when a hard-ReLU
+node upstream of target_class has saturated. Walks backward from the target to find the saturated node, then
 grows a step along its highest-leverage incoming edge until it un-sticks.
 """
 
@@ -16,15 +15,13 @@ from .contest import (DEFAULT_K, THRESHOLD, _default_source_mask,
                        _forward_strengths, _perturb_adjacency,
                        _target_and_rival, select_top_k)
 
-# ---- Config -------------------------------------------------------------
-
 BOTTLENECK_ALPHA_INIT = 1e-3     # initial step size for the expanding search
 BOTTLENECK_GROWTH_FACTOR = 2.0   # growth factor per trial
 MAX_EXPANSIONS = 20              # expansion-phase retry cap
 
 
 def _node_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
-    """Forward pass of ``sample`` with ``model.A`` temporarily swapped for ``A``.
+    """Forward pass of sample with model.A temporarily swapped for A.
 
     Returns every casebase node's own converged strength, shape (n, d).
     """
@@ -42,9 +39,9 @@ def _node_strengths(model: GradualAACBR, sample: Tensor, A: Tensor) -> Tensor:
 def find_bottleneck(
     model: GradualAACBR, sample: Tensor, target_class: int
 ) -> tuple[int, Tensor] | None:
-    """Walk the influence graph backward from ``target_class``'s default
-    argument, following the strongest incoming edge at each hop, looking
-    for the first ancestor whose own strength is pinned at exactly 0.
+    """Walk the influence graph backward from target_class's default
+    argument, following the strongest incoming edge at each step, looking
+    for the first ancestor whose own strength is pinned at 0.
 
     Parameters
     ----------
@@ -53,14 +50,14 @@ def find_bottleneck(
     sample : Tensor
         A single new case, shape (1, x1, ..., xn).
     target_class : int
-        Which entry of ``model.default_indexes`` to walk backward from.
+        Which entry of model.default_indexes to walk backward from.
 
     Returns
     -------
     tuple[int, Tensor] | None
-        ``(bottleneck_node, node_strengths)`` where ``node_strengths`` is
+        (bottleneck_node, node_strengths) where node_strengths is
         the (n, d) per-node strength tensor computed during the walk, or
-        ``None`` if no saturated node is found.
+        None if no saturated node is found.
     """
     assert model.A is not None
     A = model.post_process_func(model.A)
@@ -94,10 +91,10 @@ def _bottleneck_leverage_vector(
     bottleneck_node: int,
     default_indexes: Tensor | None = None,
 ) -> Tensor:
-    """Flat (n*n*d,) vector matching ``_casebase_grae``'s layout: zero
-    everywhere except ``bottleneck_node``'s incoming edges
-    (``A[:, bottleneck_node, :]``), where source node j's entry is
-    ``node_strengths[j]``.
+    """Flat (n*n*d,) vector matching _casebase_grae's layout: zero
+    everywhere except bottleneck_node's incoming edges
+    (A[:, bottleneck_node, :]), where source node j's entry is
+    node_strengths[j].
 
     Parameters
     ----------
@@ -131,9 +128,9 @@ def select_bottleneck_edges(
     k: int,
     default_indexes: Tensor | None = None,
 ) -> Tensor:
-    """Indices (into the flattened ``model.A``, same convention as
-    ``select_top_k``) of the k edges feeding into ``bottleneck_node`` with
-    the largest ``|node_strengths[source]|``.
+    """Indices (into the flattened model.A, same convention as
+    select_top_k) of the k edges feeding into bottleneck_node with
+    the largest |node_strengths[source]|.
     """
     return select_top_k(
         _bottleneck_leverage_vector(node_strengths, A, bottleneck_node, default_indexes), k
@@ -150,14 +147,14 @@ def expanding_step_search(
     growth_factor: float = BOTTLENECK_GROWTH_FACTOR,
     max_steps: int = MAX_EXPANSIONS,
 ) -> tuple[float, Tensor] | None:
-    """Grow ``alpha`` geometrically from ``alpha_init`` until
-    ``bottleneck_node``'s own strength is no longer pinned at exactly 0, or
-    ``max_steps`` is hit.
+    """Grow alpha geometrically from alpha_init until
+    bottleneck_node's own strength is no longer pinned at exactly 0, or
+    max_steps is hit.
 
     Returns
     -------
     tuple[float, Tensor] | None
-        ``(alpha, new_A)`` for the first un-stuck trial, or ``None`` if it
+        (alpha, new_A) for the first un-stuck trial, or None if it
         never un-sticks within budget.
     """
     assert model.A is not None
@@ -190,19 +187,19 @@ def find_and_escape_bottleneck(
     sample : Tensor
         A single new case, shape (1, x1, ..., xn).
     target_class : int
-        Which entry of ``model.default_indexes`` is being contested.
+        Which entry of model.default_indexes is being contested.
     grae_vector : Tensor
-        The (dead) gradient vector from ``contest()``, used as a fallback
+        The (dead) gradient vector from contest(), used as a fallback
         direction if the local leverage vector is entirely zero.
     k, threshold
-        See ``contest.py``'s module-level defaults.
+        See contest.py's module-level defaults.
 
     Returns
     -------
     tuple | None
-        ``(edge_indices, alpha, new_A, new_target_strength,
-        new_rival_class, new_rival_strength)``, matching
-        ``bisection_line_search``'s result shape, or ``None`` if no
+        (edge_indices, alpha, new_A, new_target_strength,
+        new_rival_class, new_rival_strength), matching
+        bisection_line_search's result shape, or None if no
         bottleneck exists or it can't be escaped within budget.
     """
     assert model.A is not None
