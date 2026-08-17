@@ -1313,7 +1313,7 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
 
 - **Found `casebase_lambda`'s (then-)default of 1.0 monotonically regresses
   test accuracy at every nonzero value tested; reverted the default to 0.0**
-  (uncommitted)
+  (`ae1ca25`)
   - Prompted by asking whether `run_finetune.py`'s fine-tuning pipeline is
     "done" -- reviewing the 08-13 regression (0.8312 -> 0.8229, see that
     date's entry) surfaced that `sweep_finetune.py`'s `casebase_lambda`
@@ -1353,3 +1353,32 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     default -- so a future fix to the underlying `ReluSemantics` instability
     (e.g. the `QuadraticEnergySemantics` switch CIFAR made elsewhere) could
     make a nonzero value worth revisiting without further plumbing changes.
+
+## 2026-08-17
+
+- **Deleted `run_full_pipeline.sh`; trimmed comments/docstrings across the
+  `contest/` package and its tests** (`3b55454`)
+  - Deleted `run_full_pipeline.sh` outright (no replacement) -- the 8-stage
+    driver script added 2026-08-13, including its stage-5/stage-7 risk notes
+    about editing a shared `model.A` under `ReluSemantics`. Those notes are
+    still preserved in this changelog (2026-08-13, 2026-08-14 entries) and in
+    the individual scripts' own docstrings (`run_finetune.py`,
+    `casebase_edge_weights/finetune.py`), which this same commit trimmed but
+    did not remove.
+  - Same cleanup convention as `9402e8c` (2026-07-30): pared verbose
+    module/function docstrings and inline comments (parameter lists,
+    "why"/history prose, sanity-check annotations on individual assertions)
+    down to a few lines each across all of `contest/core/`
+    (`contest.py`, `bottleneck.py`, `new_case_contest.py`, `grae.py`,
+    `batch_contest.py`), `contest/scripts/` (`config_cli.py`,
+    `contest_all.py`, `contest_all_irrelevance.py`,
+    `counterfactual_explanations.py`, `evaluate_irrelevance_finetune.py`,
+    `prune_edges.py`, `recompute_misclassified.py`, `run_contest.py`,
+    `run_finetune.py`, both dataset-builder scripts), `contest/sweeps/`
+    (`sweep_finetune.py`, `sweep_global_contest_eval.py`,
+    `sweep_global_optimize.py`), `global_optimize.py`,
+    `casebase_edge_weights/finetune.py`, and the docstrings/inline comments
+    in `tests/contest_test.py`, `tests/finetune_test.py`, and
+    `tests/global_optimize_test.py`. No assertions, logic, or test cases were
+    removed -- confirmed by diffing every changed file's non-comment lines --
+    despite `finetune.py` alone losing 291 lines.
