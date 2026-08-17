@@ -11,14 +11,28 @@ updates.md and ``deeparguing.casebase_edge_weights.finetune``'s module
 docstring for why it's gone.)
 
 ``casebase_lambda`` axis added 2026-08-13, alongside ``contest.scripts.run_finetune``
-making ``--casebase-dataset`` required and defaulting ``casebase_lambda`` to
-1.0 -- that default was carried over from what ``run_full_pipeline.sh`` had
-already been running (untuned), and the same day's full-pipeline run
-regressed test accuracy relative to baseline, so ``casebase_lambda`` needs
-its own comparison rather than staying fixed at a guessed value. Unlike the
-other axes, sweeping it costs the same per step as toggling it on (every
-step differentiably re-fits ``model.A`` -- see ``casebase_correction_loss``'s
-docstring), so this is more expensive per combo than the pre-existing axes.
+making ``--casebase-dataset`` required and (briefly) defaulting
+``casebase_lambda`` to 1.0 -- that default was carried over from what
+``run_full_pipeline.sh`` had already been running (untuned), and the same
+day's full-pipeline run regressed test accuracy relative to baseline.
+Unlike the other axes, sweeping it costs the same per step as toggling it on
+(every step differentiably re-fits ``model.A`` -- see
+``casebase_correction_loss``'s docstring), so this is more expensive per
+combo than the pre-existing axes.
+
+Caveat this sweep can't resolve on its own: ranking combos by val
+``combined`` loss (below) isn't a valid comparison *across different
+``casebase_lambda`` values, since ``combined = correction + protect_lambda
+* protect + casebase_lambda * casebase_correction`` mechanically grows with
+``casebase_lambda`` regardless of whether the term is doing anything useful
+-- this sweep's own results table shows exactly that artifact (mean best val
+combined 0.05 at ``casebase_lambda=0`` vs. 3.11 at ``=3``, which looks like a
+clear win for 0 but isn't evidence either way). The real comparison needs
+held-out accuracy, not this sweep's loss ranking: a direct 2026-08-14 check
+(``evaluate_irrelevance_finetune.py`` run once per ``casebase_lambda`` in
+``{0, 0.3, 1, 3}``, see updates.md) found a clean monotonic accuracy
+regression as the weight increases, which is what set the default back to
+0.0.
 
 Motivation (2026-08-11, see updates.md): the first real fine-tune run showed
 val ``combined`` loss plateauing/overfitting well before its final step, at

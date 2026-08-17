@@ -1310,3 +1310,46 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
   - Verified by byte-compiling and importing all eleven touched modules end
     to end (no test suite covers these scripts -- they need real
     checkpoints/data to run for real).
+
+- **Found `casebase_lambda`'s (then-)default of 1.0 monotonically regresses
+  test accuracy at every nonzero value tested; reverted the default to 0.0**
+  (uncommitted)
+  - Prompted by asking whether `run_finetune.py`'s fine-tuning pipeline is
+    "done" -- reviewing the 08-13 regression (0.8312 -> 0.8229, see that
+    date's entry) surfaced that `sweep_finetune.py`'s `casebase_lambda`
+    sweep, the thing meant to justify that default, can't actually validate
+    it: it ranks combos by val `combined` loss, but `combined = correction +
+    protect_lambda * protect + casebase_lambda * casebase_correction`
+    mechanically grows with `casebase_lambda` regardless of whether the term
+    helps, so ranking by it always favors `casebase_lambda=0` as an artifact
+    of the objective's own structure, not evidence about accuracy.
+  - Ran the real comparison instead: reused 13Aug2026's checkpoint/datasets
+    (no need to redo pipeline stages 1-6) and re-ran `run_finetune.py` +
+    `evaluate_irrelevance_finetune.py` at `casebase_lambda in {0, 0.3, 3}`
+    (all other hyperparameters held at `tuning/contest/finetune.yaml`'s
+    defaults, matching 08-13's real run, which already covered `=1`).
+    Result, CIFAR10 test accuracy against an 0.8312 baseline: `0` ->
+    0.8310 (noise), `0.3` -> 0.8251, `1` -> 0.8229, `3` -> 0.7832 -- a clean
+    monotonic regression as the weight increases, with `0` the only
+    accuracy-neutral value tested. Full reports in
+    `outputs/14Aug2026/casebase_lambda_{0,0.3,3}/evaluate_irrelevance_finetune.md`.
+  - Diagnosis: `casebase_correction_loss` regresses `model.A` toward
+    `contest_all.py`/`batch_contest`'s touched edges -- and editing a shared
+    `model.A` under `ReluSemantics` is exactly the mechanism
+    `run_full_pipeline.sh`'s stage-5 risk note already documented (and
+    2026-08-06 found for brainwear) as capable of catastrophic
+    global-accuracy collapse from a single edit. This loss term doesn't
+    sidestep that instability, it launders it through gradient descent
+    instead of applying it directly -- the corruption still shows up in
+    accuracy, scaled by how hard the term is weighted.
+  - Reverted `casebase_lambda`'s default to 0.0 in `run_finetune.py`
+    (`DEFAULT_CASEBASE_LAMBDA`), `tuning/contest/finetune.yaml`, and
+    `CasebaseFinetuneConfig`'s dataclass default (`casebase_edge_weights/finetune.py`)
+    -- one day after `ebc4ab6` set it to 1.0. Updated the module docstrings
+    in `run_finetune.py` and `sweep_finetune.py` (the latter now explicitly
+    flags the sweep-ranking caveat above) and `run_full_pipeline.sh`'s risk
+    note to match. `--casebase-dataset` stays required -- the term is still
+    loaded and available via explicit `--casebase-lambda`, just off by
+    default -- so a future fix to the underlying `ReluSemantics` instability
+    (e.g. the `QuadraticEnergySemantics` switch CIFAR made elsewhere) could
+    make a nonzero value worth revisiting without further plumbing changes.

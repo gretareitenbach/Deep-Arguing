@@ -13,14 +13,27 @@ sample of currently-correct predictions (``global_optimize.py``'s
 ``preservation``, was removed 2026-08-12 -- see updates.md and
 ``deeparguing.casebase_edge_weights.finetune``'s module docstring for why.)
 
-``--casebase-dataset`` (added 2026-08-12, see updates.md; on by default since
-2026-08-13): also regresses ``model.A`` toward ``contest_all.py``'s
-casebase-internal (``source``-item-to-``target``-item) corrections, via
+``--casebase-dataset`` (added 2026-08-12, see updates.md): also regresses
+``model.A`` toward ``contest_all.py``'s casebase-internal
+(``source``-item-to-``target``-item) corrections, via
 ``casebase_correction_loss`` -- see that function's and
-``build_casebase_finetune_dataset.py``'s docstrings. Required, like
-``--checkpoint``/``--dataset`` -- every training step differentiably re-fits
-``model.A`` (the same cost class as the removed ``preservation_loss`` -- fine
-for a small casebase, not for a large one).
+``build_casebase_finetune_dataset.py``'s docstrings. The dataset itself is
+still required, like ``--checkpoint``/``--dataset`` (every training step
+differentiably re-fits ``model.A`` to compute it, the same cost class as the
+removed ``preservation_loss`` -- fine for a small casebase, not for a large
+one), but ``casebase_lambda`` -- its weight in the combined loss -- defaults
+to 0.0 (inert) as of 2026-08-14, back down from a brief 2026-08-13 stint at
+1.0. A same-day real-accuracy comparison across ``casebase_lambda`` in
+``{0, 0.3, 1, 3}`` (see updates.md) found a clean monotonic regression on
+CIFAR10 test accuracy as the weight increases -- 0.8310, 0.8251, 0.8229,
+0.7832 against a 0.8312 baseline -- consistent with ``run_full_pipeline.sh``'s
+stage-5 risk note: ``casebase_correction_loss`` regresses ``model.A`` toward
+``batch_contest``'s touched edges, and editing a shared ``model.A`` under
+``ReluSemantics`` is the same mechanism already documented (2026-08-06) to
+cause catastrophic accuracy collapse. This term doesn't sidestep that
+instability, it launders it through gradient descent -- pass
+``--casebase-lambda`` explicitly (nonzero) only with that in mind, and check
+``evaluate_irrelevance_finetune.py`` afterward.
 
 Before each checkpoint is saved, ``model.A`` IS recomputed (via
 ``model.fit()`` on the unchanged casebase, see ``GradualAACBR.casebase_and_defaults``)
@@ -87,7 +100,7 @@ DEFAULT_PROTECT_LAMBDA = 1.0
 DEFAULT_PROTECT_SAMPLE_SIZE = 200
 DEFAULT_SEED = 0
 DEFAULT_FINAL_CHECKPOINT_FILENAME = "finetuned_checkpoint_final.pt"
-DEFAULT_CASEBASE_LAMBDA = 1.0
+DEFAULT_CASEBASE_LAMBDA = 0.0
 
 
 def main() -> None:

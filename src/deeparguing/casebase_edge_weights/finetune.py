@@ -406,7 +406,10 @@ class CasebaseFinetuneConfig:
     y_default: Tensor
     train_edges: dict[str, Tensor]
     val_edges: dict[str, Tensor]
-    casebase_lambda: float = 1.0
+    # 0.0 (inert), not 1.0 -- see contest.scripts.run_finetune's module
+    # docstring: a 2026-08-14 real-accuracy check found every nonzero value
+    # tested monotonically regressed CIFAR10 test accuracy.
+    casebase_lambda: float = 0.0
 
     def _batch(self, edges: dict[str, Tensor]) -> CasebaseCorrectionBatch:
         return CasebaseCorrectionBatch(

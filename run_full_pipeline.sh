@@ -18,7 +18,15 @@
 # finetuned accuracy comparison is your real safety check. A large negative
 # accuracy delta there means this is what happened; rerun with tighter
 # contest_all.py hyperparameters (e.g. --alpha-init 0.001 --divergence-bound
-# 2.0) or fall back to --casebase-lambda 0 in stage 7 if so.
+# 2.0) if so.
+#
+# Stage 7's casebase_lambda (weight on regressing model.A toward stage 5's
+# touched edges) defaults to 0.0 (off) as of 2026-08-14 -- a same-day
+# real-accuracy check (see updates.md) found every nonzero value tested
+# (0.3, 1, 3) monotonically regressed CIFAR10 test accuracy, for exactly the
+# reason above: it's the same shared-model.A instability, just applied via
+# gradient descent instead of directly. Don't pass --casebase-lambda nonzero
+# without rechecking stage 8's accuracy delta afterward.
 #
 # Expect this to take hours (stage 1 alone is a 200-epoch CIFAR10 training
 # run) -- run this under tmux/screen/nohup, not a session that might drop.
