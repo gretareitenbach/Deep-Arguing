@@ -1,14 +1,5 @@
-"""Grid-sweep the five global-optimization-specific hyperparameters of
-``global_optimize.py`` -- ``protect_lambda``, ``eval_every``, ``protect_margin``,
-``protect_sample_size``, ``max_acc_drop`` -- against a single fixed baseline
-checkpoint, and report each combo's outcome in a markdown report.
-
-Usage::
-
-    python -m deeparguing.contest.sweeps.sweep_global_optimize
-    python -m deeparguing.contest.sweeps.sweep_global_optimize \\
-        --protect-lambdas 1,5,20,50 --eval-everys 1,5,10 \\
-        --max-combos 40 --output global_optimize_sweep.md
+"""Grid-sweep the hyperparameters of global_optimize.py 
+and report each combo's outcome in a markdown report.
 """
 
 import argparse
@@ -27,7 +18,7 @@ from tqdm import tqdm
 
 from deeparguing.contest.core.contest import DEFAULT_K, MARGIN, MAX_ITERS, THRESHOLD
 from deeparguing.contest.core.batch_contest import ALPHA_INIT, DIVERGENCE_BOUND, MAX_BACKTRACKS, TOL
-from deeparguing.contest.scripts.contest_all import _load_config, _required, _resolved
+from deeparguing.contest.scripts.config_cli import load_config, required, resolved
 from deeparguing.contest.global_optimize import (DEFAULT_CONFIG_PATH,
                                                   DEFAULT_EVAL_SPLIT,
                                                   global_optimize)
@@ -39,9 +30,8 @@ from deeparguing.output_paths import resolve_read_path, resolve_write_path
 DEFAULT_OUTPUT = "global_optimize_sweep.md"
 DEFAULT_SEED = 0
 CSV_DECIMALS = 6
-LARGE_GRID_WARNING_THRESHOLD = 100  # above this many combos, nudge toward --max-combos
+LARGE_GRID_WARNING_THRESHOLD = 100
 
-# Candidate values for each swept hyperparameter.
 DEFAULT_PROTECT_LAMBDAS = [5.0, 20.0]
 DEFAULT_EVAL_EVERYS = [1, 5]
 DEFAULT_PROTECT_MARGINS = [0.01, 0.05]
@@ -75,14 +65,9 @@ def _run_combo(
     model, original_A, samples, true_classes, X_eval, y_eval,
     combo: Combo, fixed_kwargs: dict[str, Any], seed: int,
 ) -> tuple[Any, float]:
-    """Reset ``model.A`` to the baseline and run ``global_optimize`` for one
-    combo, reseeding torch first so every combo's protect-set sampling
-    starts from the same RNG state.
-
-    Returns
-    -------
-    tuple[Any, float]
-        The ``GlobalOptimizeResult`` and elapsed wall time in seconds.
+    """Reset model.A to the baseline and run global_optimize for one combo,
+    reseeding torch first so every combo's protect-set sampling starts from
+    the same RNG state.
     """
     model.A = original_A.clone()
     torch.manual_seed(seed)
@@ -141,13 +126,7 @@ def _full_results_table(df: pd.DataFrame) -> str:
 
 
 def _marginal_tables(df: pd.DataFrame) -> str:
-    """For each swept hyperparameter, average outcomes across every other axis.
-
-    Returns
-    -------
-    str
-        Markdown sections, one per swept column.
-    """
+    """For each swept hyperparameter, average outcomes across every other axis."""
     sections = []
     for col in SWEEP_COLUMNS:
         grouped = (
@@ -291,26 +270,26 @@ def main() -> None:
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
-    num_samples = _resolved(args.num_samples, config, "num_samples", None)
-    k = _resolved(args.k, config, "k", DEFAULT_K)
-    threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
-    margin = _resolved(args.margin, config, "margin", MARGIN)
-    max_iters = _resolved(args.max_iters, config, "max_iters", MAX_ITERS)
-    tol = _resolved(args.tol, config, "tol", TOL)
-    max_edits = _resolved(args.max_edits, config, "max_edits", None)
-    batch_size = _resolved(args.batch_size, config, "batch_size", None)
-    divergence_bound = _resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
-    alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
-    max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(required(args.qbaf, config, "qbaf", args.config))
+    num_samples = resolved(args.num_samples, config, "num_samples", None)
+    k = resolved(args.k, config, "k", DEFAULT_K)
+    threshold = resolved(args.threshold, config, "threshold", THRESHOLD)
+    margin = resolved(args.margin, config, "margin", MARGIN)
+    max_iters = resolved(args.max_iters, config, "max_iters", MAX_ITERS)
+    tol = resolved(args.tol, config, "tol", TOL)
+    max_edits = resolved(args.max_edits, config, "max_edits", None)
+    batch_size = resolved(args.batch_size, config, "batch_size", None)
+    divergence_bound = resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
+    alpha_init = resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
+    max_backtracks = resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    eval_batch_size = _resolved(args.eval_batch_size, config, "eval_batch_size", None)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    eval_batch_size = resolved(args.eval_batch_size, config, "eval_batch_size", None)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
 
     protect_lambdas = _parse_floats(args.protect_lambdas)
     eval_everys = _parse_ints(args.eval_everys)
@@ -381,7 +360,7 @@ def main() -> None:
         )
     total_elapsed = time.perf_counter() - sweep_start
 
-    model.A = original_A  # leave the shared model exactly as it was loaded
+    model.A = original_A
 
     df = pd.DataFrame(rows)
     df_sorted = df.sort_values(

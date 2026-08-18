@@ -1,0 +1,5 @@
+before_checkpoint: outputs/30Jul2026/model_checkpoint.pt
+after_checkpoint: finetuned_checkpoint.pt
+
+log_dir: null
+output_filename: diff_finetune_edge_sparsity.md

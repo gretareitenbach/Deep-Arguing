@@ -1,8 +1,8 @@
 """Gradient-based Relation Attribution Explanations (G-RAEs).
 
 Computes the gradient of an argument's final strength with respect to
-individual edge weights of ``model.A`` (casebase-internal adjacency) and
-``model.new_cases_attacks_adjacency`` (new case's own edges), using PyTorch
+individual edge weights of model.A (casebase-internal adjacency) and
+model.new_cases_attacks_adjacency (new case's own edges), using PyTorch
 autograd.
 """
 
@@ -25,11 +25,11 @@ class GRAEResult:
     ----------
     casebase_edges : Tensor
         Gradient of the (summed, batched) target strength with respect to
-        ``model.A``. Shape matches ``model.A`` (n, n, d), or (B, n, n, d)
-        if ``per_sample`` was requested.
+        model.A. Shape matches model.A (n, n, d), or (B, n, n, d)
+        if per_sample was requested.
     new_case_edges : Tensor
         Gradient of each sample's own target strength with respect to its
-        row of ``model.new_cases_attacks_adjacency``. Shape (B, n, d).
+        row of model.new_cases_attacks_adjacency. Shape (B, n, d).
     target_indices : Sequence[int]
         The default-argument index used as the topic argument for each
         sample in the batch.
@@ -61,20 +61,20 @@ def _replay_default_strengths(
     new_cases_base_scores: Tensor,
     semantics: GradualSemantics | None = None,
 ) -> Tensor:
-    """Replay ``__new_case_influence`` + ``gradual_semantics`` with ``A``/``E``
-    swapped in for ``model.A``/``model.new_cases_attacks_adjacency``.
+    """Replay __new_case_influence + gradual_semantics with A/E
+    swapped in for model.A/model.new_cases_attacks_adjacency.
 
     Parameters
     ----------
     model : GradualAACBR
     A : Tensor
-        Casebase adjacency to use instead of ``model.A``.
+        Casebase adjacency to use instead of model.A.
     E : Tensor
-        New-case adjacency to use instead of ``model.new_cases_attacks_adjacency``.
+        New-case adjacency to use instead of model.new_cases_attacks_adjacency.
     casebase_base_scores : Tensor
     new_cases_base_scores : Tensor
     semantics : GradualSemantics | None
-        If given, replaces ``model.gradual_semantics`` for this replay only.
+        If given, replaces model.gradual_semantics for this replay only.
 
     Returns
     -------
@@ -111,23 +111,23 @@ def compute_grae(
     Parameters
     ----------
     model : GradualAACBR
-        A fitted model (``model.A`` populated).
+        A fitted model (model.A populated).
     new_cases : Tensor
         Batch of new case characterisations, shape (B, x1, ..., xn).
     target_indices : Sequence[int]
         Length-B sequence giving, for each sample, which entry of
-        ``model.default_indexes`` to differentiate the strength of.
+        model.default_indexes to differentiate the strength of.
     per_sample : bool, default False
-        If True, also recover a per-sample ``casebase_edges`` gradient at
-        the cost of B extra backward passes. If False, ``casebase_edges``
+        If True, also recover a per-sample casebase_edges gradient at
+        the cost of B extra backward passes. If False, casebase_edges
         is the aggregate gradient across the whole batch.
     rival_indices : Sequence[int | None] | None, default None
         If given, length-B, one entry per sample: differentiate
-        ``target_strength - rival_strength`` instead of just
-        ``target_strength`` for that sample (``None`` for a sample means
+        target_strength - rival_strength instead of just
+        target_strength for that sample (None for a sample means
         differentiate target only).
     semantics_override : GradualSemantics | None, default None
-        If given, replaces ``model.gradual_semantics`` for this replay only.
+        If given, replaces model.gradual_semantics for this replay only.
 
     Returns
     -------
@@ -207,7 +207,7 @@ def finite_difference_grae(
     epsilon: float = 1e-4,
 ) -> GRAEResult:
     """Approximate G-RAEs via perturbation, as a cross-check for
-    ``compute_grae``'s analytic gradients.
+    compute_grae's analytic gradients.
 
     Parameters
     ----------
@@ -216,14 +216,14 @@ def finite_difference_grae(
     new_case : Tensor
         A single new case characterisation, shape (1, x1, ..., xn).
     target_index : int
-        Which entry of ``model.default_indexes`` to treat as the topic argument.
+        Which entry of model.default_indexes to treat as the topic argument.
     epsilon : float, default 1e-4
         Perturbation size.
 
     Returns
     -------
     GRAEResult
-        Same shape/structure as ``compute_grae``'s output.
+        Same shape/structure as compute_grae's output.
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")

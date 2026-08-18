@@ -59,8 +59,7 @@ class BatchContestResult:
 def _leaky_relu_surrogate(semantics: GradualSemantics, negative_slope: float) -> GradualSemantics:
     """Copy of ``semantics`` with its ReLU swapped for leaky-ReLU, used only
     to compute ``grad_A L`` in ``batch_contest`` so saturated nodes still
-    carry a gradient. Real forward passes elsewhere keep using ``semantics``
-    (the true hard ReLU) unchanged.
+    carry a gradient.
     """
     if not isinstance(semantics, ReluSemantics):
         raise TypeError(

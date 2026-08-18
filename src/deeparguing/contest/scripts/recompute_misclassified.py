@@ -1,8 +1,8 @@
 """Recompute the misclassified-sample QBAF export for an already-fitted
-checkpoint (e.g. after pruning changed ``model.A``), without going through
-``cli/run.py``'s full train loop. Rebuilds the model + data split, runs
-inference on ``--split``, and exports the samples it gets wrong in the same
-shape ``contest_all.py``/``run_contest.py`` consume.
+checkpoint (e.g. after pruning changed model.A), without going through
+cli/run.py's full train loop. Rebuilds the model + data split, runs
+inference on --split, and exports the samples it gets wrong in the same
+shape contest_all.py/run_contest.py consume.
 
 Usage::
 
@@ -35,12 +35,12 @@ def find_misclassified(
     model : GradualAACBR
     X, y : torch.Tensor
     batch_size : int | None
-        Defaults to a single batch of all of ``X``.
+        Defaults to a single batch of all of X.
 
     Returns
     -------
     np.ndarray
-        Indices into ``X``/``y`` of the misclassified rows.
+        Indices into X/y of the misclassified rows.
     """
     model.eval()
     current_batch_size = batch_size if batch_size is not None else len(X)
@@ -113,9 +113,6 @@ def main() -> None:
 
     output_path_resolved = resolve_write_path(args.output)
 
-    # Triggers a forward pass internally to populate new_cases_base_scores
-    # and new_cases_attacks_adjacency before exporting (see
-    # GradualAACBR.export_to_json).
     model.export_to_json(
         output_path_resolved,
         image_mean=image_mean,

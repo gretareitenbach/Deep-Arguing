@@ -1,14 +1,7 @@
 """Global optimization: maximize misclassified-sample flips via
-``batch_contest`` while protecting the model's global (held-out-split)
-accuracy, using a soft per-step protect-set penalty plus a hard periodic
-accuracy guardrail with rollback.
-
-Usage::
-
-    python -m deeparguing.contest.global_optimize
-    python -m deeparguing.contest.global_optimize \\
-        --config tuning/contest/global_optimize.yaml \\
-        --num-samples 20 --max-iters 20 --eval-every 5 --max-acc-drop 0.01
+batch_contest while protecting the model's global (held-out-split) accuracy,
+using a soft per-step protect-set penalty plus a hard periodic accuracy
+guardrail with rollback.
 """
 
 import argparse
@@ -29,8 +22,8 @@ from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
                                                      batch_contest)
 from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
                                                MAX_ITERS, THRESHOLD)
-from deeparguing.contest.scripts.contest_all import (_load_config, _required,
-                                                      _resolved)
+from deeparguing.contest.scripts.config_cli import (load_config, required,
+                                                     resolved)
 from deeparguing.contest.scripts.run_contest import (load_all_samples,
                                                       load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (GlobalEvalMetrics,
@@ -53,9 +46,9 @@ DEFAULT_SEED = 0
 
 @dataclasses.dataclass
 class GlobalOptimizeResult:
-    """Outcome of ``global_optimize()``. ``batch_result``'s touched-edge
-    bookkeeping is cumulative across every accepted round; its cleared/
-    final_target_strengths/etc. reflect the final ``model.A``."""
+    """Outcome of global_optimize(). batch_result's touched edges
+    is cumulative across every accepted round; its cleared/
+    final_target_strengths/etc. reflect the final model.A."""
 
     batch_result: BatchContestResult
     baseline: GlobalEvalMetrics
@@ -70,14 +63,9 @@ class GlobalOptimizeResult:
 def _build_protect_set(
     model: GradualAACBR, X_eval: Tensor, y_eval: Tensor, sample_size: int
 ) -> tuple[Tensor, list[int]]:
-    """Predict on ``X_eval`` with the model's current (baseline) ``model.A``,
-    keep only currently correctly-classified rows, and sample up to
-    ``sample_size`` of them once.
-
-    Returns
-    -------
-    tuple[Tensor, list[int]]
-        The sampled inputs and their true class labels.
+    """Predict on X_eval with the model's current (baseline) model.A, keep
+    only currently correctly-classified rows, and sample up to sample_size
+    of them once.
     """
     with torch.no_grad():
         predicted = model(X_eval).argmax(dim=-1)
@@ -132,37 +120,9 @@ def global_optimize(
     eval_every: int = DEFAULT_EVAL_EVERY,
     eval_batch_size: int | None = None,
 ) -> GlobalOptimizeResult:
-    """Repeatedly call ``batch_contest`` in ``eval_every``-sized rounds,
-    checking real held-out accuracy between rounds and rolling back to the
-    last passing snapshot if ``max_acc_drop`` is exceeded.
-
-    Parameters
-    ----------
-    model : GradualAACBR
-        A fitted model (``model.A`` populated).
-    samples : Tensor
-        Misclassified samples to contest, shape (B, x1, ..., xn).
-    true_classes : Sequence[int]
-        Length-B, the desired class for each sample.
-    X_eval, y_eval : Tensor
-        Held-out split used for both the protect set and the guardrail check.
-    k, threshold, margin, max_iters, tol, max_edits, batch_size,
-    divergence_bound, alpha_init, max_backtracks
-        Passed through to ``batch_contest``.
-    protect_margin, protect_lambda, protect_sample_size
-        Protect-set penalty configuration; see ``batch_contest``'s
-        ``protect_*`` parameters and ``_build_protect_set``.
-    max_acc_drop : float
-        Guardrail threshold: roll back and stop once eval-split accuracy
-        has dropped this much from baseline.
-    eval_every : int
-        Outer iterations per round before the guardrail re-checks accuracy.
-    eval_batch_size : int | None
-        Batch size for the guardrail's forward pass.
-
-    Returns
-    -------
-    GlobalOptimizeResult
+    """Repeatedly call batch_contest in eval_every-sized rounds, checking
+    real held-out accuracy between rounds and rolling back to the last
+    passing snapshot if max_acc_drop is exceeded.
     """
     if model.A is None:
         raise Exception("Ensure the model has been fit first.")
@@ -359,35 +319,35 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
 
-    checkpoint = resolve_read_path(_required(args.checkpoint, config, "checkpoint", args.config))
-    qbaf = resolve_read_path(_required(args.qbaf, config, "qbaf", args.config))
-    num_samples = _resolved(args.num_samples, config, "num_samples", None)
-    k = _resolved(args.k, config, "k", DEFAULT_K)
-    threshold = _resolved(args.threshold, config, "threshold", THRESHOLD)
-    margin = _resolved(args.margin, config, "margin", MARGIN)
-    max_iters = _resolved(args.max_iters, config, "max_iters", MAX_ITERS)
-    tol = _resolved(args.tol, config, "tol", TOL)
-    max_edits = _resolved(args.max_edits, config, "max_edits", None)
-    batch_size = _resolved(args.batch_size, config, "batch_size", None)
-    divergence_bound = _resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
-    alpha_init = _resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
-    max_backtracks = _resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
-    protect_margin = _resolved(args.protect_margin, config, "protect_margin", PROTECT_MARGIN)
-    protect_lambda = _resolved(args.protect_lambda, config, "protect_lambda", DEFAULT_PROTECT_LAMBDA)
-    protect_sample_size = _resolved(
+    checkpoint = resolve_read_path(required(args.checkpoint, config, "checkpoint", args.config))
+    qbaf = resolve_read_path(required(args.qbaf, config, "qbaf", args.config))
+    num_samples = resolved(args.num_samples, config, "num_samples", None)
+    k = resolved(args.k, config, "k", DEFAULT_K)
+    threshold = resolved(args.threshold, config, "threshold", THRESHOLD)
+    margin = resolved(args.margin, config, "margin", MARGIN)
+    max_iters = resolved(args.max_iters, config, "max_iters", MAX_ITERS)
+    tol = resolved(args.tol, config, "tol", TOL)
+    max_edits = resolved(args.max_edits, config, "max_edits", None)
+    batch_size = resolved(args.batch_size, config, "batch_size", None)
+    divergence_bound = resolved(args.divergence_bound, config, "divergence_bound", DIVERGENCE_BOUND)
+    alpha_init = resolved(args.alpha_init, config, "alpha_init", ALPHA_INIT)
+    max_backtracks = resolved(args.max_backtracks, config, "max_backtracks", MAX_BACKTRACKS)
+    protect_margin = resolved(args.protect_margin, config, "protect_margin", PROTECT_MARGIN)
+    protect_lambda = resolved(args.protect_lambda, config, "protect_lambda", DEFAULT_PROTECT_LAMBDA)
+    protect_sample_size = resolved(
         args.protect_sample_size, config, "protect_sample_size", DEFAULT_PROTECT_SAMPLE_SIZE
     )
-    max_acc_drop = _resolved(args.max_acc_drop, config, "max_acc_drop", DEFAULT_MAX_ACC_DROP)
-    eval_every = _resolved(args.eval_every, config, "eval_every", DEFAULT_EVAL_EVERY)
-    eval_split = _resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
+    max_acc_drop = resolved(args.max_acc_drop, config, "max_acc_drop", DEFAULT_MAX_ACC_DROP)
+    eval_every = resolved(args.eval_every, config, "eval_every", DEFAULT_EVAL_EVERY)
+    eval_split = resolved(args.eval_split, config, "eval_split", DEFAULT_EVAL_SPLIT)
     if eval_split not in ("val", "test"):
         raise ValueError(f"eval_split must be 'val' or 'test', got {eval_split!r}.")
-    eval_batch_size = _resolved(args.eval_batch_size, config, "eval_batch_size", None)
-    seed = _resolved(args.seed, config, "seed", DEFAULT_SEED)
-    device = _resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
-    log_dir_str = _resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
+    eval_batch_size = resolved(args.eval_batch_size, config, "eval_batch_size", None)
+    seed = resolved(args.seed, config, "seed", DEFAULT_SEED)
+    device = resolved(args.device, config, "device", "cuda" if torch.cuda.is_available() else "cpu")
+    log_dir_str = resolved(args.log_dir, config, "log_dir", str(today_output_dir()))
     save_checkpoint = args.save_checkpoint if args.save_checkpoint is not None else config.get("save_checkpoint")
     md_log_path = args.md_log_path if args.md_log_path is not None else config.get("md_log_path")
     if md_log_path is None:

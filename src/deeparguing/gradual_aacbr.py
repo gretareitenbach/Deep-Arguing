@@ -500,6 +500,41 @@ class GradualAACBR(torch.nn.Module):
 
         return X_train, y_train, default_indexes
 
+    def casebase_and_defaults(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Invert ``_add_default_cases``: split this fitted model's merged
+        ``X_train``/``y_train`` back into the casebase-only rows and the
+        default rows appended at the end, using ``self.default_indexes`` (a
+        contiguous trailing block by construction -- see
+        ``_add_default_cases``).
+
+        Re-calling ``self.fit(*self.casebase_and_defaults())`` reproduces
+        the exact same ``X_train``/``y_train``/``default_indexes``, but
+        recomputes ``self.A``/``self.B`` from ``self.casebase_edge_weights``'s
+        CURRENT weights -- e.g. after fine-tuning just the edge-weight
+        network without re-fitting from scratch (see
+        ``deeparguing.casebase_edge_weights.finetune``).
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor, Tensor, Tensor]
+            ``(X_casebase, y_casebase, X_default, y_default)``.
+        """
+        n_default = self.default_indexes.numel()
+        expected = torch.arange(
+            self.X_train.shape[0] - n_default, self.X_train.shape[0],
+            device=self.default_indexes.device,
+        )
+        assert torch.equal(self.default_indexes, expected), (
+            "default_indexes isn't the trailing contiguous block "
+            "_add_default_cases always produces -- can't safely split "
+            "X_train back into casebase/default rows."
+        )
+        X_casebase = self.X_train[:-n_default]
+        y_casebase = self.y_train[:-n_default]
+        X_default = self.X_train[-n_default:]
+        y_default = self.y_train[-n_default:]
+        return X_casebase, y_casebase, X_default, y_default
+
     @override
     def forward(self, new_cases: Tensor, return_all_strengths: bool = False) -> Tensor:
         """

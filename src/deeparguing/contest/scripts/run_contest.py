@@ -1,6 +1,6 @@
-"""Standalone driver for the single-sample contestability loop in
-``contest.py``. Rebuilds a fitted model from a checkpoint and runs
-``contest()`` against one real misclassified sample end to end.
+"""Driver for the single-sample contestability loop in
+contest.py. Rebuilds a fitted model from a checkpoint and runs
+contest() against one real misclassified sample end to end.
 
 Usage::
 
@@ -8,8 +8,6 @@ Usage::
         --checkpoint model_checkpoint.pt \\
         --qbaf misclassified_qbaf.json \\
         --sample-index 0
-
-Requires a checkpoint produced by ``cli/run.py --run_test --misclassified_log``.
 """
 
 import argparse
@@ -41,8 +39,7 @@ def load_fitted_model_and_data(
     Returns
     -------
     tuple[GradualAACBR, dict]
-        The reloaded model, and the config's ``data_dict`` (e.g. for
-        callers that need a held-out ``X_<split>``/``y_<split>`` pair).
+        The reloaded model, and the config's data_dict.
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
@@ -107,7 +104,7 @@ def load_all_samples(
     Parameters
     ----------
     qbaf : dict
-        Loaded QBAF export (must have a ``new_cases`` entry).
+        Loaded QBAF export (must have a new_cases entry).
     device : str
     num_samples : int | None
         If given, caps the number of samples returned to the first N.
@@ -198,7 +195,6 @@ def main() -> None:
 
     sample, true_class = load_sample(args.qbaf, args.sample_index, args.device)
     target_class = args.target_class if args.target_class is not None else true_class
-    # default row for class c sits at index c directly (no offset)
     target_index = target_class
 
     logging.info(

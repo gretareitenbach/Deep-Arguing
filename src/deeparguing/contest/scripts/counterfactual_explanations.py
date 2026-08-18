@@ -1,20 +1,6 @@
-"""Generate human-readable counterfactual explanations for misclassified
+"""Generate counterfactual explanations for misclassified
 samples: "if these edges were this much higher/lower, this would have been
 predicted correctly."
-
-For each sample, runs the single-sample contestability search (``contest()``
-in ``core/contest.py``) to find the minimal set of ``model.A`` edge edits
-that flips the prediction, records what changed, then undoes the edit --
-this is a probe, not a real edit, so ``model.A`` is left exactly as it was
-found. Appends one markdown section per sample to a report.
-
-Usage::
-
-    python -m deeparguing.contest.scripts.counterfactual_explanations
-    python -m deeparguing.contest.scripts.counterfactual_explanations \\
-        --checkpoint model_checkpoint.pt \\
-        --qbaf misclassified_qbaf.json \\
-        --sample-index 0
 """
 
 import argparse
@@ -39,8 +25,6 @@ DEFAULT_OUTPUT_FILENAME = "counterfactual_explanations.md"
 
 @dataclass(frozen=True)
 class EdgeChange:
-    """One edge ``contest()`` touched: its flat ``model.A`` index, decoded
-    (source_case, target_case, head), and its weight before/after."""
 
     edge_id: int
     source_case: int
@@ -56,9 +40,8 @@ class EdgeChange:
 
 @dataclass
 class CounterfactualExplanation:
-    """Outcome of ``explain_sample()``: whether a counterfactual was found
-    for ``sample_index``, and if so (or even if not -- partial progress is
-    still informative), every edge that was tried."""
+    """Outcome of explain_sample(): whether a counterfactual was found
+    for sample_index, and if so, every edge that was tried."""
 
     sample_index: int
     true_class: int
@@ -72,18 +55,13 @@ class CounterfactualExplanation:
 
 
 def _decode_edge(edge_id: int, n2: int, d: int) -> tuple[int, int, int]:
-    """Flat ``model.A`` index -> (source_case, target_case, head); same
-    (n, n, d) unravel convention ``contest_all.py``'s touched-edge log uses."""
+    """Flat model.A index -> (source_case, target_case, head)."""
     return (edge_id // d) // n2, (edge_id // d) % n2, edge_id % d
 
 
 def _case_label(model: GradualAACBR, default_index_set: set[int], case_index: int) -> str:
     """Human-readable tag for a casebase row: its class label plus whether
     it's one of the model's default/topic arguments.
-
-    ``y_train`` is one-hot (shape (N, Y>1)) on real fitted models, but a
-    single scalar column (Y==1) in some synthetic test fixtures -- handle
-    both instead of assuming ``argmax`` is always right.
     """
     y_row = model.y_train[case_index]
     label = int(y_row.item()) if y_row.numel() == 1 else int(y_row.argmax().item())
@@ -103,19 +81,12 @@ def explain_sample(
     max_iters: int = MAX_ITERS,
     max_edits: int | None = None,
 ) -> CounterfactualExplanation:
-    """Run ``contest()`` against one sample to discover its minimal edge
-    edit, then undo it -- ``model.A`` is restored to exactly what it was
-    before this call, regardless of whether a counterfactual was found.
+    """Run contest() against one sample to discover its minimal edge
+    edit, then undo it.
 
-    ``max_edits`` (see ``contest()``) caps how many distinct edges the
-    search may touch, at the cost of possibly not finding a counterfactual
-    within that budget -- useful for keeping the explanation small enough
-    to read, since an unrestricted search can revisit/introduce dozens of
-    edges across iterations.
-
-    Returns a ``CounterfactualExplanation`` describing which edges would
-    need to change, and by how much, for ``model`` to predict
-    ``target_class`` for ``sample``.
+    Returns a CounterfactualExplanation describing which edges would
+    need to change, and by how much, for model to predict
+    target_class for sample.
     """
     assert model.A is not None, "model was never fit()"
     original_A = model.A.detach().clone()
@@ -140,7 +111,7 @@ def explain_sample(
         for edge_id in touched
     ]
 
-    model.A = original_A  # undo -- this is a probe, not a real edit
+    model.A = original_A # undo
 
     return CounterfactualExplanation(
         sample_index, true_class, target_class,
@@ -180,8 +151,7 @@ def render_sample(
     max_iters: int,
     margin: float,
 ) -> list[str]:
-    """Markdown lines for one sample's section, in the format
-    ``write_markdown_log`` expects (see ``md_log.py``)."""
+    """Markdown lines for one sample's section."""
     lines = [
         f"--- Sample {explanation.sample_index} (true class {explanation.true_class}) ---",
         f"Contested towards class {explanation.target_class}",
@@ -196,11 +166,6 @@ def render_sample(
             f"{explanation.final_rival_strength:.4f}."
         )
         if explanation.edges:
-            # Leading "\n" (on top of write_markdown_log's own join separator)
-            # leaves a blank line before the table -- without it, the table
-            # sits directly under the bullet above and gets parsed as that
-            # bullet's continuation text instead of its own table block, so
-            # the pipes/dashes render as literal text instead of a table.
             lines.append("\n" + _edges_table(model, default_index_set, explanation.edges, d))
         else:
             lines.append("No edges were touched.")
@@ -242,9 +207,7 @@ def main() -> None:
         help="Cap each sample's explanation to at most this many distinct "
         "edges (default: unbounded). A search that hits the cap before "
         "reaching the margin is reported as 'no counterfactual found' with "
-        "whatever partial edit it got to -- use this to keep explanations "
-        "small enough to read, at the cost of some samples no longer "
-        "finding a counterfactual at all.",
+        "whatever partial edit it got to.",
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(

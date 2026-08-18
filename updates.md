@@ -1108,3 +1108,248 @@ Everything committed by Greta Reitenbach since forking the repo from Adam Gould'
     to the shared, global `model.A` that other samples' predictions depend
     on -- the instability only bites on *persisted* edits, not on read-only
     probes.
+
+## 2026-08-10
+
+- **Added irrelevance-edge contestation (`new_case_contest`) and its CLI
+  driver** (`8a5a662`, `0b87856`, `9d638a4`)
+  - New `contest/core/new_case_contest.py`: single-sample contestability
+    search restricted to a new case's own edges into the casebase
+    (`model.new_cases_attacks_adjacency`/`E`), instead of `contest.py`'s
+    edits to the shared `model.A`. Same bracket-and-bisect line search as
+    `contest.py`, retargeted from `A` to a sample's own irrelevance row `E`
+    (`E = -irrelevance_edge_weights(sample, casebase)`); since `E` is
+    recomputed fresh by the network on every real forward pass, nothing is
+    ever written back onto the model -- `NewCaseContestResult` carries both
+    `initial_E` and `final_E` so callers collect the correction themselves.
+  - New `contest/scripts/contest_all_irrelevance.py`: runs `new_case_contest`
+    independently over every misclassified sample in a QBAF export -- a
+    plain per-sample loop, not a joint optimization like `batch_contest`,
+    since each sample's `E` is independent -- with incremental saving and
+    `--resume` support.
+  - `9d638a4` added per-sample `touched_edges` logging (`(casebase_item,
+    dim, old_E, corrected_E)` triples, diffed directly off `initial_E`/
+    `final_E`) -- this is the `(sample, casebase_item, old_E, corrected_E)`
+    triple dataset the irrelevance-channel fine-tuning step (see 2026-08-11)
+    regresses against. Bumped `schema_version` to 2 so `--resume` against an
+    older-schema output file is detected as a mismatch instead of silently
+    reusing entries missing the new field, and swapped the hand-rolled
+    ETA-printing loop for a `tqdm` progress bar with a running flip-rate
+    postfix.
+
+## 2026-08-11
+
+- **Added irrelevance-channel fine-tuning (`casebase_edge_weights/finetune.py`)
+  and its dataset builder/CLI/sweep** (`012e624`, `1484ce3`, `bce053d`)
+  - New `casebase_edge_weights/finetune.py`: three-term loss (`correction_loss`
+    + `preservation_loss` + `protect_loss`, weighted-summed) for distilling
+    `new_case_contest`'s corrections into `LearnedPartialOrder`'s trainable
+    `feature_weights_1` extractor -- everything else (frozen ResNet,
+    comparison function, base score, `model.A`) stays untouched.
+    `correction_loss` chunks the aligned (new_case, casebase_item) pairs to
+    avoid `LearnedPartialOrder.forward`'s full cross-product;
+    `preservation_loss` is a `|model.A|`-weighted MSE anchor pulling
+    `partial_order`'s raw output back toward its pre-finetune snapshot;
+    `protect_loss` is a margin hinge over a held-out sample of
+    currently-correct predictions (`global_optimize.py`'s
+    `_build_protect_set`), evaluated through the live `feature_weights_1`
+    but frozen `model.A`. Decided/verified the `corrected_E` ->
+    `partial_order` target-space conversion (`corrected_E_to_partial_order_target`:
+    `corrected_E + 1`, NOT `1 - corrected_E`), guarded by
+    `assert_shares_partial_order` since it only holds when the irrelevance
+    channel is a `RegularIrrelevance` sharing its `compute_partial_order`
+    with `casebase_edge_weights`.
+  - New `contest/scripts/build_irrelevance_finetune_dataset.py`: serializes
+    `contest_all_irrelevance.json`'s touched pairs (flipped samples only --
+    a non-flipped sample's `corrected_E` is the search's best attempt after
+    plateauing, not verified ground truth) into a training-ready `.pt`
+    dataset, split *by sample* so no sample's pairs leak across train/val.
+  - New `contest/scripts/finetune_irrelevance.py` (renamed `run_finetune.py`
+    on 2026-08-13): CLI driver, same config-file + CLI-flag pattern as
+    `contest_all.py`. Added `tests/finetune_test.py` covering `protect_loss`
+    and its wiring into `compute_losses`.
+  - `1484ce3`: swapped the training loop's plain step-by-step prints for a
+    `tqdm` bar with a live loss postfix.
+  - `bce053d`: extracted the CLI script's training loop into a shared
+    `run_finetune()` (+ `FinetuneRunResult`) inside `finetune.py` itself,
+    tracking both the final-step and best-val-`combined`-loss
+    `feature_weights_1` snapshots -- motivated by the first real 200-step
+    run plateauing/overfitting on val well before its final step, so any
+    hyperparameter comparison needs to rank by the *best* point reached, not
+    the last one. New `contest/sweeps/sweep_finetune_irrelevance.py`
+    grid-sweeps `lr`/`lam`/`batch_size`/`protect_margin`/`protect_lambda`/
+    `protect_sample_size` against a fixed baseline checkpoint/dataset using
+    that shared `run_finetune()`, one report row per combo.
+
+## 2026-08-12
+
+- **Removed `preservation_loss`, added real accuracy evaluation, and
+  replaced `preservation_loss` with `casebase_correction_loss` regressing
+  all touched `model.A` edges** (`3ca1617`, `34edf7f`, `e05a48c`, `c68ebb5`,
+  `eff460d`)
+  - `3ca1617`: removed `preservation_loss` -- it anchored `partial_order`'s
+    raw output for its own sake, but what actually matters is whether
+    currently-correct *predictions* stay correct, which `protect_loss`
+    already checks directly. A same-day ablation (`lam=0`, sweeping
+    `protect_lambda`) confirmed `protect_loss` alone catches real margin
+    violations, so it wasn't just redundant with the removed term.
+    `34edf7f` dropped the fine-tune `lr` default 0.0003 -> 0.0001.
+  - `e05a48c`: new `contest/scripts/evaluate_irrelevance_finetune.py` -- the
+    first point in the pipeline that checks real classification accuracy on
+    the full eval split (training only ever measured `partial_order`'s raw
+    output or a sampled protect set's margins), comparing baseline vs.
+    finetuned-with-frozen-`A` vs. finetuned-with-recomputed-`A`.
+  - `c68ebb5`: added `GradualAACBR.casebase_and_defaults()` (inverts
+    `_add_default_cases`, splitting a fitted model's merged `X_train`/
+    `y_train` back into casebase-only rows and the trailing default block,
+    so `model.fit()` can be re-run against an unchanged casebase after
+    fine-tuning). Wired `finetune_irrelevance.py` to recompute `model.A`
+    from the live fine-tuned weights before saving each checkpoint (new-case
+    edges already went through the live network per-call, so a frozen `A`
+    meant two inconsistent versions of the relevance function coexisting in
+    one graph) -- found accuracy-neutral relative to leaving `A` frozen.
+    Added `contest/scripts/diff_finetune_edge_sparsity.py` to quantify how
+    much that recompute changed the graph's *topology* (edges gained/lost/
+    sign-flipped), since `fit()`'s minimality/blocking product depends on
+    comparing edge weights combinatorially, not just reweighting in place.
+  - `eff460d`: superseded `diff_finetune_edge_sparsity.py` (deleted the same
+    commit) with a direct fix -- `casebase_correction_loss`, a new loss term
+    that differentiably re-fits `model.A` from the live `feature_weights_1`
+    every training step and regresses its touched entries toward
+    `contest_all.py`'s corrected values (verified in `tests/finetune_test.py`
+    that gradients really flow back through the minimality product, a
+    continuous t-norm, not a hard threshold). Since there's no cheap
+    pointwise target-space formula for `model.A` (its construction mixes the
+    whole casebase together), this is the same cost class as the removed
+    `preservation_loss` -- a full casebase `fit()` every call, fine for a
+    small casebase only. New `contest/scripts/build_casebase_finetune_dataset.py`
+    serializes `contest_all.py`'s touched casebase-internal edges into a
+    training-ready dataset (split *by edge*), dropping edges structurally
+    forced to 0 under `defaults_not_attack` (source is a default case with a
+    differing-label target) since `casebase_correction_loss` could never fit
+    a nonzero target there. `--casebase-dataset` added to
+    `finetune_irrelevance.py` as optional, off by default
+    (`casebase_lambda=0.0`).
+
+## 2026-08-13
+
+- **Assembled the end-to-end pipeline script, made casebase correction on
+  by default, and found it regresses test accuracy** (`3114e0a`, `9998a14`,
+  `ebc4ab6`, `c95835a`)
+  - New `run_full_pipeline.sh`: the full 8-stage CIFAR10 pipeline (pretrain
+    ResNet -> fit + export misclassified -> contest irrelevance edges ->
+    build irrelevance dataset -> contest casebase edges (`batch_contest`,
+    edits shared `model.A`) -> build casebase dataset -> fine-tune ->
+    evaluate), seed 0 throughout, flagging its own known risk up front:
+    stage 5 edits a shared `model.A` under `ReluSemantics`, which has
+    previously caused catastrophic global-accuracy collapse from a single
+    bad edit (both for brainwear and, historically, CIFAR10 itself) -- stage
+    8's baseline-vs-finetuned comparison is the real safety check.
+    `pretrain_resnet.py` gained a `--seed` CLI flag (was hardcoded to 42) so
+    the pipeline can drive it. `9998a14` added `PYTHONUNBUFFERED=1` so
+    status lines show up live instead of buffering once piped into `tee`.
+  - `ebc4ab6`: made `--casebase-dataset` required (like `--checkpoint`/
+    `--dataset`) and flipped `casebase_lambda`'s default 0.0 -> 1.0 --
+    carried over from what `run_full_pipeline.sh` was already running,
+    untuned. Added a `casebase_lambda` sweep axis (`[0.0, 0.3, 1.0, 3.0]`)
+    to `sweep_finetune_irrelevance.py` so it gets a real comparison instead
+    of staying fixed at that guessed value.
+  - **The same day's full-pipeline run at this new default regressed test
+    accuracy relative to baseline** (`outputs/13Aug2026/evaluate_irrelevance_finetune.md`:
+    0.8312 -> 0.8229) **even though the training objective was doing what it
+    was designed to do** -- `outputs/13Aug2026/finetune_irrelevance.md` shows
+    train `casebase_correction` dropping steadily (0.93 -> 0.77 over 200
+    steps). The checkpoint-selection criterion is val `combined` loss, which
+    is dominated in magnitude by `casebase_correction` (~1.0-1.2) over the
+    actual task-relevant `correction` term (~0.04-0.08) and never tracks
+    held-out task accuracy directly -- so the checkpoint it picked (step 40)
+    fit `model.A`'s touched edges well without being any more accurate.
+    `evaluate_irrelevance_finetune.py`'s post-hoc accuracy check is what
+    surfaced the regression; nothing in the training loop itself would have
+    caught it.
+  - `c95835a`: renamed `finetune_irrelevance.py` -> `run_finetune.py` and
+    `sweep_finetune_irrelevance.py` -> `sweep_finetune.py` (plus the
+    `tuning/contest/*.yaml` configs they read), reflecting that the script
+    now fine-tunes against both irrelevance *and* casebase-internal
+    corrections, not just irrelevance.
+
+## 2026-08-14
+
+- **Consolidated `contest/scripts`' config-CLI helpers and deduped the
+  bisection line search** (`30709b5`)
+  - New `contest/scripts/config_cli.py`: `load_config`/`resolved`/`required`
+    (the YAML-config + CLI-flag resolution trio) factored out of
+    `contest_all.py`, where it was copy-pasted verbatim into
+    `contest_all_irrelevance.py` and reached into cross-module, as private
+    `_`-prefixed names, by five more files -- `run_finetune.py`,
+    `global_optimize.py`, `evaluate_irrelevance_finetune.py`,
+    `sweep_finetune.py`, `sweep_global_contest_eval.py`,
+    `sweep_global_optimize.py`. All eight now import the same shared, public
+    helper instead of duplicating it or reaching into another script's
+    internals.
+  - `core/contest.py`: extracted the two-phase bracket-then-bisect search out
+    of `bisection_line_search` into a new `_bisection_search(trial, margin,
+    ...)`, parameterized by a `trial(alpha)` callback. `contest.py`'s and
+    `new_case_contest.py`'s `bisection_line_search` (previously near-identical
+    copies -- one perturbing `model.A`, the other a sample's own `E`) are now
+    thin wrappers supplying just their own trial step.
+  - Removed two stale docstring references (in `run_finetune.py` and
+    `evaluate_irrelevance_finetune.py`) to `diff_finetune_edge_sparsity.py`,
+    deleted in `eff460d` ("updated finetuning to use all edges") but never
+    cleaned out of the prose pointing to it.
+  - Prompted by a question about whether `contest/`'s two dataset-builder
+    scripts (`build_casebase_finetune_dataset.py`/
+    `build_irrelevance_finetune_dataset.py`) and `run_finetune.py` could be
+    merged/relocated; concluded no on both -- they're separate pipeline
+    stages invoked independently by `run_full_pipeline.sh`, and
+    `run_finetune.py`'s contest-specific CLI glue (protect-set construction,
+    checkpoint loading) correctly sits apart from
+    `casebase_edge_weights/finetune.py`'s generic, contest-agnostic training
+    loop. The config-helper trio and the line search were the actual
+    duplication found along the way.
+  - Verified by byte-compiling and importing all eleven touched modules end
+    to end (no test suite covers these scripts -- they need real
+    checkpoints/data to run for real).
+
+- **Found `casebase_lambda`'s (then-)default of 1.0 monotonically regresses
+  test accuracy at every nonzero value tested; reverted the default to 0.0**
+  (uncommitted)
+  - Prompted by asking whether `run_finetune.py`'s fine-tuning pipeline is
+    "done" -- reviewing the 08-13 regression (0.8312 -> 0.8229, see that
+    date's entry) surfaced that `sweep_finetune.py`'s `casebase_lambda`
+    sweep, the thing meant to justify that default, can't actually validate
+    it: it ranks combos by val `combined` loss, but `combined = correction +
+    protect_lambda * protect + casebase_lambda * casebase_correction`
+    mechanically grows with `casebase_lambda` regardless of whether the term
+    helps, so ranking by it always favors `casebase_lambda=0` as an artifact
+    of the objective's own structure, not evidence about accuracy.
+  - Ran the real comparison instead: reused 13Aug2026's checkpoint/datasets
+    (no need to redo pipeline stages 1-6) and re-ran `run_finetune.py` +
+    `evaluate_irrelevance_finetune.py` at `casebase_lambda in {0, 0.3, 3}`
+    (all other hyperparameters held at `tuning/contest/finetune.yaml`'s
+    defaults, matching 08-13's real run, which already covered `=1`).
+    Result, CIFAR10 test accuracy against an 0.8312 baseline: `0` ->
+    0.8310 (noise), `0.3` -> 0.8251, `1` -> 0.8229, `3` -> 0.7832 -- a clean
+    monotonic regression as the weight increases, with `0` the only
+    accuracy-neutral value tested. Full reports in
+    `outputs/14Aug2026/casebase_lambda_{0,0.3,3}/evaluate_irrelevance_finetune.md`.
+  - Diagnosis: `casebase_correction_loss` regresses `model.A` toward
+    `contest_all.py`/`batch_contest`'s touched edges -- and editing a shared
+    `model.A` under `ReluSemantics` is exactly the mechanism
+    `run_full_pipeline.sh`'s stage-5 risk note already documented (and
+    2026-08-06 found for brainwear) as capable of catastrophic
+    global-accuracy collapse from a single edit. This loss term doesn't
+    sidestep that instability, it launders it through gradient descent
+    instead of applying it directly -- the corruption still shows up in
+    accuracy, scaled by how hard the term is weighted.
+  - Reverted `casebase_lambda`'s default to 0.0 in `run_finetune.py`
+    (`DEFAULT_CASEBASE_LAMBDA`), `tuning/contest/finetune.yaml`, and
+    `CasebaseFinetuneConfig`'s dataclass default (`casebase_edge_weights/finetune.py`)
+    -- one day after `ebc4ab6` set it to 1.0. Updated the module docstrings
+    in `run_finetune.py` and `sweep_finetune.py` (the latter now explicitly
+    flags the sweep-ranking caveat above) and `run_full_pipeline.sh`'s risk
+    note to match. `--casebase-dataset` stays required -- the term is still
+    loaded and available via explicit `--casebase-lambda`, just off by
+    default -- so a future fix to the underlying `ReluSemantics` instability
+    (e.g. the `QuadraticEnergySemantics` switch CIFAR made elsewhere) could
+    make a nonzero value worth revisiting without further plumbing changes.

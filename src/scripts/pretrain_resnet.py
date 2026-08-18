@@ -1,3 +1,4 @@
+import argparse
 from typing import Any
 import torch
 import torch.nn as nn
@@ -67,10 +68,14 @@ def train(model: ResNetCIFAR, X_train: Tensor, y_train: Tensor, X_val: Tensor, y
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Pretrain a ResNet-32 backbone on CIFAR10.")
+    parser.add_argument("--seed", type=int, default=0, help="Torch/numpy/random seed (default: 0).")
+    args = parser.parse_args()
+
     config = {
         "dataset": "CIFAR10",
         "batch_size": 128,
-        "seed": 42,
+        "seed": args.seed,
         "epochs": 200,
         "lr": 0.1,
         "weight_decay": 5e-4,
@@ -82,7 +87,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(config["seed"])
 
-    X, y, _, _ = load_torch_images(config["dataset"], device, shuffle=True)
+    X, y, _, _ = load_torch_images(config["dataset"], device, shuffle=True, seed=config["seed"])
     X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, seed=config["seed"])
     batch_size = config["batch_size"]
 

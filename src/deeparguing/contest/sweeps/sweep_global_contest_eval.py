@@ -1,12 +1,5 @@
-"""Sweep ``contest_all.py``'s first-N-misclassified-samples truncation across
-several N, and record each resulting ``model.A``'s global test-set impact --
-one CSV row per N.
-
-Usage::
-
-    python -m deeparguing.contest.sweeps.sweep_global_contest_eval
-    python -m deeparguing.contest.sweeps.sweep_global_contest_eval \\
-        --ns 0,1,10,100 --seed 0 --output global_eval_sweep.csv
+"""Sweep contest_all.py across several N and record each 
+resulting model adjacency's global test-set impact.
 """
 
 import argparse
@@ -27,8 +20,8 @@ from deeparguing.contest.core.batch_contest import (ALPHA_INIT,
                                                      batch_contest)
 from deeparguing.contest.core.contest import (DEFAULT_K, MARGIN,
                                                MAX_ITERS, THRESHOLD)
-from deeparguing.contest.scripts.contest_all import (DEFAULT_CONFIG_PATH,
-                                                      _load_config)
+from deeparguing.contest.scripts.config_cli import load_config
+from deeparguing.contest.scripts.contest_all import DEFAULT_CONFIG_PATH
 from deeparguing.contest.scripts.run_contest import (load_all_samples,
                                                       load_fitted_model_and_data)
 from deeparguing.evals.global_contest_eval import (compute_baseline_metrics,
@@ -53,13 +46,6 @@ _PLOT_SECONDARY_INK = "#52514e"
 def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
     """Line chart of accuracy drop vs. N, each point labeled with how many
     of that N's contested samples flipped to correctly classified.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Must have "N", "acc_drop", "samples_flipped" columns.
-    png_path : Path
-        Where to save the chart.
     """
     df = df.sort_values("N")
 
@@ -100,13 +86,7 @@ def _plot_acc_drop_vs_n(df: pd.DataFrame, png_path: Path) -> None:
 def _touched_edge_old_new(
     original_A: Tensor, contested_A: Tensor, touched_edge_indices: list[int]
 ) -> tuple[list[float], list[float]]:
-    """Old/new weight for each edge ``batch_contest`` touched.
-
-    Returns
-    -------
-    tuple[list[float], list[float]]
-        Parallel lists of old and new weights.
-    """
+    """Old/new weight for each edge batch_contest touched."""
     original_flat = original_A.reshape(-1)
     contested_flat = contested_A.reshape(-1)
     olds = [original_flat[i].item() for i in touched_edge_indices]
@@ -117,15 +97,8 @@ def _touched_edge_old_new(
 def contest_n(
     model, original_A: Tensor, samples: Tensor, true_classes: list[int], contest_kwargs: dict[str, Any]
 ) -> tuple[BatchContestResult | None, Tensor]:
-    """Reset ``model.A`` to a fresh copy of the baseline, then contest the
-    given samples (already truncated to the first N misclassified ones by
-    the caller).
-
-    Returns
-    -------
-    tuple[BatchContestResult | None, Tensor]
-        The batch_contest result (``None`` if ``samples`` is empty) and the
-        resulting ``model.A``.
+    """Reset model.A to a copy of the baseline, then contest the given
+    samples (already truncated to the first N misclassified ones).
     """
     model.A = original_A.clone()
     if samples.shape[0] == 0:
@@ -167,7 +140,7 @@ def main() -> None:
 
     torch.manual_seed(args.seed)
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
     device = args.device or config.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = args.checkpoint or config.get("checkpoint")
     qbaf_path = args.qbaf or config.get("qbaf")
@@ -260,7 +233,7 @@ def main() -> None:
             }
         )
 
-    model.A = original_A  # leave the shared model exactly as it was loaded
+    model.A = original_A
 
     df = pd.DataFrame(rows)
 

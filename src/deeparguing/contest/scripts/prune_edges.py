@@ -1,7 +1,5 @@
-"""Prune weak edges out of a fitted model's casebase adjacency (``model.A``)
-by hard-thresholding on magnitude, as a cheap first pass before contesting.
-Operates directly on the checkpoint dict, so the output is a drop-in
-checkpoint any other ``contest/`` script's ``--checkpoint`` flag accepts.
+"""Prune weak edges out of a fitted model's casebase adjacency (model.A)
+by hard-thresholding on magnitude as a first pass before contesting.
 
 Usage::
 
@@ -37,7 +35,7 @@ class PruneResult:
 
 
 def prune_edges(A: Tensor, threshold: float = DEFAULT_THRESHOLD) -> PruneResult:
-    """Zero every entry of ``A`` with ``abs(weight) < threshold``.
+    """Zero every entry of A with abs(weight) < threshold.
 
     Parameters
     ----------
